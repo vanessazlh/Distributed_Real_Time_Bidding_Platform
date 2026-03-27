@@ -60,7 +60,6 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (string, er
 	if err == nil && existing != nil {
 		// Account exists — check if this is a buyer→seller upgrade
 		if role == "seller" && existing.Role == "buyer" {
-			// Verify the password matches the existing account
 			if err := bcrypt.CompareHashAndPassword([]byte(existing.PasswordHash), []byte(req.Password)); err != nil {
 				return "", ErrInvalidCredentials
 			}

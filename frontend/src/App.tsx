@@ -11,7 +11,6 @@ import ShopDetailPage    from '@/pages/ShopDetailPage'
 import CreateShopPage    from '@/pages/CreateShopPage'
 import CreateItemPage    from '@/pages/CreateItemPage'
 import CreateAuctionPage from '@/pages/CreateAuctionPage'
-import ShopAuthPage           from '@/pages/ShopAuthPage'
 import SellerDashboardPage    from '@/pages/SellerDashboardPage'
 import SellerShopPage              from '@/pages/SellerShopPage'
 import SellerAuctionDetailPage    from '@/pages/SellerAuctionDetailPage'
@@ -39,8 +38,8 @@ export default function App() {
               <Route path="/shops/new"                 element={<CreateShopPage />} />
               <Route path="/shops/:shopId/items/new"   element={<CreateItemPage />} />
               <Route path="/auctions/new"              element={<CreateAuctionPage />} />
-              <Route path="/shop/login"               element={<ShopAuthPage type="login" />} />
-              <Route path="/shop/register"            element={<ShopAuthPage type="register" />} />
+              <Route path="/shop/login"               element={<Navigate to="/login" replace />} />
+              <Route path="/shop/register"            element={<Navigate to="/register" replace />} />
               <Route path="/seller/dashboard"              element={<SellerDashboardPage />} />
               <Route path="/seller/auctions/:auctionId"      element={<SellerAuctionDetailPage />} />
               <Route path="/seller/shops/:shopId/:tab"     element={<SellerShopPage />} />

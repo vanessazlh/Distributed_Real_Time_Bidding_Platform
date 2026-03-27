@@ -58,10 +58,17 @@ On first run, the `init-tables` container automatically creates all DynamoDB tab
 
 ### Roles
 
-| Entry Point | Role |
+Both buyers and sellers use the same login page at `http://localhost:3000/login`.
+Select your role using the **Buyer / Seller toggle** before signing in.
+
+| Role | How to access |
 |---|---|
-| `http://localhost:3000/login` | Buyer |
-| `http://localhost:3000/shop/login` | Seller |
+| Buyer | Go to `/login`, select **Buyer**, sign in → lands on auction feed |
+| Seller | Go to `/login`, select **Seller**, sign in → lands on seller dashboard |
+| New buyer | Go to `/register`, select **Buyer** |
+| New seller | Go to `/register`, select **Seller** (or upgrade an existing buyer account) |
+
+A seller account can also log in as a buyer to browse and bid on other shops' auctions.
 
 ---
 

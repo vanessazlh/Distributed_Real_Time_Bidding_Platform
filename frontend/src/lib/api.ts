@@ -14,6 +14,12 @@ export class ApiError extends Error {
 // Translates gin/backend validation messages into plain English.
 // Applied centrally in request() so every page benefits automatically.
 function friendlyError(raw: string): string {
+  // Backend registration conflict messages
+  if (raw === 'email already registered')
+    return 'You already have an account. Try signing in instead.'
+  if (raw === 'account is already a seller')
+    return 'You already have an account with this email. Sign in and select Buyer — your seller account can also be used to browse and bid.'
+
   const m = raw.match(/Field validation for '(\w+)' failed on the '(\w+)' tag/)
   if (m) {
     const field = m[1]
@@ -167,9 +173,9 @@ export const api = {
         body: JSON.stringify(payload),
       }).then(toAuction),
 
-    /** POST /auctions/:id/bid → { success, new_highest_bid } */
+    /** POST /auctions/:id/bid → { bid_id, amount, new_highest_bid, status } */
     placeBid: (id: string, userId: string, amount: number, token: string) =>
-      request<{ success: boolean; new_highest_bid: number }>(`/auctions/${id}/bid`, {
+      request<{ bid_id: string; amount: number; new_highest_bid: number; status: string }>(`/auctions/${id}/bid`, {
         method: 'POST',
         headers: jsonHeaders(token),
         body: JSON.stringify({ user_id: userId, amount }),

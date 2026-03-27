@@ -319,10 +319,11 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 	}
 
 	return &BidResult{
-		BidID:     bidID,
-		AuctionID: auctionID,
-		Amount:    amount,
-		Status:    "ACCEPTED",
+		BidID:         bidID,
+		AuctionID:     auctionID,
+		Amount:        amount,
+		NewHighestBid: amount,
+		Status:        "ACCEPTED",
 	}, nil
 }
 

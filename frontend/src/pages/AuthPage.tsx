@@ -15,6 +15,7 @@ export default function AuthPage({ type }: AuthPageProps) {
   const navigate   = useNavigate()
   const isLogin    = type === 'login'
 
+  const [role,     setRole]     = useState<'buyer' | 'seller'>('buyer')
   const [username, setUsername] = useState('')
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
@@ -25,24 +26,31 @@ export default function AuthPage({ type }: AuthPageProps) {
     e.preventDefault()
     setError(null)
     setLoading(true)
-
     try {
       if (isLogin) {
         const { token } = await api.auth.login(email, password)
         const payload   = decodeToken(token)
+        const jwtRole   = payload?.role ?? 'buyer'
+
+        // If user picks Seller but the account has never been upgraded, reject.
+        if (role === 'seller' && jwtRole !== 'seller') {
+          setError('This account is not registered as a seller. Please sign up as a seller first.')
+          setLoading(false)
+          return
+        }
+        // Any account can log in as buyer — sellers can browse and bid too.
         login(
           {
             user_id:  payload?.user_id  ?? '',
             username: payload?.username ?? email.split('@')[0],
             email,
-            role:     payload?.role     ?? 'buyer',
+            role,
           },
           token,
         )
-        navigate('/')
+        navigate(role === 'seller' ? '/seller/dashboard' : '/')
       } else {
-        await api.auth.register(username, email, password)
-        // Registration done — send to login to obtain a token
+        await api.auth.register(username, email, password, role)
         navigate('/login')
       }
     } catch (err) {
@@ -57,9 +65,27 @@ export default function AuthPage({ type }: AuthPageProps) {
       <div className="max-w-md mx-auto mt-8">
         <Card padding="p-8">
           <h1 className="font-display text-4xl text-brand text-center mb-2">SurpriseAuction</h1>
-          <p className="text-center text-text-secondary text-base mb-8">
+          <p className="text-center text-text-secondary text-base mb-3">
             {isLogin ? 'Welcome back' : 'Create your account'}
           </p>
+
+          {/* Role toggle — shown on both login and register */}
+          <div className="flex rounded-lg border-2 border-border overflow-hidden mb-6">
+            {(['buyer', 'seller'] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRole(r)}
+                className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
+                  role === r
+                    ? 'bg-brand text-white'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {r === 'buyer' ? '🛒 Buyer' : '🏪 Seller'}
+              </button>
+            ))}
+          </div>
 
           {error && (
             <div className="mb-4">
@@ -99,7 +125,7 @@ export default function AuthPage({ type }: AuthPageProps) {
             </FormField>
 
             <Button variant="primary" size="lg" type="submit" fullWidth disabled={loading} className="mt-2">
-              {loading ? 'Please wait…' : isLogin ? 'Sign In' : 'Create Account'}
+              {loading ? 'Please wait…' : isLogin ? `Sign In as ${role === 'seller' ? 'Seller' : 'Buyer'}` : `Create ${role === 'seller' ? 'Seller' : 'Buyer'} Account`}
             </Button>
           </form>
 

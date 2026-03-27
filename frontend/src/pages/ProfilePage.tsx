@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import type { UserBid, Payment, PaymentStatus } from '@/types'
+import { ApiError } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { formatCurrency, timeAgo } from '@/lib/utils'
@@ -184,7 +185,7 @@ function AccountTab({ user, token, updateUser }: {
       {error   && <div className="mb-4"><StatusBanner type="error"   message={error}   /></div>}
 
       <Card padding="p-8 md:p-12">
-        <div className="flex flex-col gap-7 max-w-md">
+        <div className="flex flex-col gap-7 w-full">
 
           {/* Avatar */}
           <div className="flex flex-col gap-2">
@@ -266,7 +267,13 @@ function BidsTab({ user, token }: { user: { user_id: string }; token: string | n
         for (const p of payments) map.set(p.auction_id, p.status)
         setPaymentsByAuction(map)
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load bids'))
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          setError('Your session has expired. Please sign in again.')
+        } else {
+          setError(err instanceof Error ? err.message : 'Failed to load bids')
+        }
+      })
       .finally(() => setLoading(false))
   }, [user.user_id, token])
 

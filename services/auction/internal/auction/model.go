@@ -52,8 +52,9 @@ type PlaceBidRequest struct {
 
 // BidResult is the response for a successful bid.
 type BidResult struct {
-	BidID     string `json:"bid_id"`
-	AuctionID string `json:"auction_id"`
-	Amount    int64  `json:"amount"`
-	Status    string `json:"status"`
+	BidID          string `json:"bid_id"`
+	AuctionID      string `json:"auction_id"`
+	Amount         int64  `json:"amount"`
+	NewHighestBid  int64  `json:"new_highest_bid"`
+	Status         string `json:"status"`
 }

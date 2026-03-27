@@ -10,7 +10,7 @@ SurpriseAuction is a real-time surplus auction platform where local stores list 
 A buyer lands on the homepage and sees a live feed of active auctions, filterable by category (Bakery, Sushi, and more). Each card shows the item photo, the shop it comes from, the current highest bid, and a live countdown to closing. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
 
 ### 2. Account
-The buyer registers at `/login` with a username, email, and password — or logs in if they already have an account. Authentication is JWT-based; no session state is stored server-side. The account's `role` is stamped into the JWT along with `username` and `email`. The platform uses a **single-account model**: one email = one account. A buyer can later upgrade to a seller (see Seller Journey below) without creating a second account.
+The buyer registers or logs in at `/login` — the single entry point for all users. A **Buyer / Seller toggle** at the top of the page determines the session role; buyers leave it on **Buyer**. Authentication is JWT-based; no session state is stored server-side. The platform uses a **single-account model**: one email = one account. A buyer can later upgrade to a seller (see Seller Journey, step 1) without creating a second account — they simply re-register with the same email and Seller selected.
 
 ### 3. Entering an Auction
 The buyer clicks into an auction and sees:
@@ -62,11 +62,13 @@ The profile is accessible by clicking the username in the navbar. Individual pay
 ## Seller Journey
 
 ### 1. Seller Account
-The platform uses a **single-account model** — one email maps to one account. A seller registers at `/shop/register`:
-- **New user**: creates an account with the `seller` role directly
-- **Existing buyer**: entering the same email and password upgrades the existing account to `seller`. The `seller` role is a superset of `buyer` — a seller can still browse and bid on other shops' auctions
+The platform uses a **single-account model** — one email maps to one account, and one login page serves everyone. On the login and register pages, a **Buyer / Seller toggle** determines the session role:
 
-The seller logs in at `/shop/login`. If the account's role is not `seller`, the login page shows an error prompting the user to register as a seller first. The JWT carries `role: seller`, unlocking seller-only routes.
+- **New seller**: go to `/register`, select **Seller**, fill in username, email, and password
+- **Existing buyer upgrading to seller**: go to `/register`, select **Seller**, enter the same email and password — the account is upgraded automatically. The `seller` role is a superset of `buyer`, so a seller can still log in as a buyer to browse and bid on other shops' auctions
+- **Logging in**: go to `/login`, select **Seller** in the toggle. If the account has never been upgraded to seller, an error prompts the user to register as seller first
+
+The session role is determined by the toggle at login time, not by the JWT alone. A seller-account holder who selects **Buyer** at login gets a full buyer session — they can browse and bid with no seller dashboard access.
 
 ### 2. Seller Dashboard
 After login the seller lands on `/seller/dashboard`. The dashboard shows:

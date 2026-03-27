@@ -58,9 +58,6 @@ export function Navbar() {
             )
           ) : (
             <>
-              <Button variant="outline" size="md" onClick={() => navigate('/shop/login')}>
-                Sell
-              </Button>
               <Button variant="primary" size="md" onClick={() => navigate('/login')}>
                 Sign In
               </Button>
