@@ -13,34 +13,54 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/gin-gonic/gin"
-	"rtb/services/shop/internal/shop"
-	"rtb/shared/middleware"
+	"github.com/redis/go-redis/v9"
+	"github.com/surplus-auction/platform/api"
+	auctionPkg "github.com/surplus-auction/platform/internal/auction"
+	bidPkg "github.com/surplus-auction/platform/internal/bid"
+	"github.com/surplus-auction/platform/internal/events"
+	shopPkg "github.com/surplus-auction/platform/internal/shop"
+	userPkg "github.com/surplus-auction/platform/internal/user"
 )
 
 func main() {
 	db := newDynamoClient()
+	rdb := newRedisClient()
 
-	repo := shop.NewRepository(db)
-	svc := shop.NewService(repo)
-	h := shop.NewHandler(svc)
+	// Wire user layer
+	userRepo := userPkg.NewRepository(db)
+	userSvc := userPkg.NewService(userRepo)
+	userHandler := userPkg.NewHandler(userSvc)
 
-	r := gin.Default()
-	r.GET("/shops/:shop_id", h.GetShop)
-	r.GET("/shops/:shop_id/items", h.ListItems)
-	r.GET("/items/:item_id", h.GetItem)
+	// Wire shop layer
+	shopRepo := shopPkg.NewRepository(db)
+	shopSvc := shopPkg.NewService(shopRepo)
+	shopHandler := shopPkg.NewHandler(shopSvc)
 
-	protected := r.Group("/", middleware.Auth())
-	{
-		protected.POST("/shops", h.CreateShop)
-		protected.POST("/shops/:shop_id/items", h.CreateItem)
-	}
+	// Wire event publisher
+	publisher := events.NewPublisher(rdb)
 
-	addr := envOr("SERVER_ADDR", ":8082")
-	srv := &http.Server{Addr: addr, Handler: r}
+	// Wire bid layer
+	bidRepo := bidPkg.NewRepository(rdb)
+	bidSvc := bidPkg.NewService(bidRepo)
+	bidHandler := bidPkg.NewHandler(bidSvc)
+
+	// Wire auction layer
+	strategy := auctionPkg.ConcurrencyStrategy(envOr("CONCURRENCY_STRATEGY", "optimistic"))
+	auctionRepo := auctionPkg.NewRepository(rdb)
+	auctionSvc := auctionPkg.NewService(auctionRepo, bidSvc, publisher, rdb, strategy)
+	auctionHandler := auctionPkg.NewHandler(auctionSvc)
+
+	// Start auction auto-closer
+	closer := auctionPkg.NewCloser(auctionSvc)
+	closer.Start()
+
+	router := api.NewRouter(userHandler, shopHandler, auctionHandler, bidHandler)
+
+	addr := envOr("SERVER_ADDR", ":8080")
+	srv := &http.Server{Addr: addr, Handler: router}
 
 	go func() {
-		log.Printf("shop service listening on %s", addr)
+		log.Printf("server listening on %s", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
 		}
@@ -50,6 +70,8 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("shutting down...")
+
+	closer.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -75,6 +97,21 @@ func newDynamoClient() *dynamodb.Client {
 		log.Fatalf("load aws config: %v", err)
 	}
 	return dynamodb.NewFromConfig(cfg)
+}
+
+func newRedisClient() *redis.Client {
+	addr := envOr("REDIS_ADDR", "localhost:6379")
+	rdb := redis.NewClient(&redis.Options{
+		Addr: addr,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatalf("connect redis: %v", err)
+	}
+	log.Printf("connected to redis at %s", addr)
+	return rdb
 }
 
 func envOr(key, fallback string) string {
