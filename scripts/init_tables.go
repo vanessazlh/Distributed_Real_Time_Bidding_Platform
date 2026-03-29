@@ -75,9 +75,23 @@ func createShopsTable(ctx context.Context, db *dynamodb.Client) error {
 		TableName: aws.String("Shops"),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{AttributeName: aws.String("shop_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("owner_id"), AttributeType: types.ScalarAttributeTypeS},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{AttributeName: aws.String("shop_id"), KeyType: types.KeyTypeHash},
+		},
+		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
+			{
+				IndexName: aws.String("owner_id-index"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("owner_id"), KeyType: types.KeyTypeHash},
+				},
+				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
+				ProvisionedThroughput: &types.ProvisionedThroughput{
+					ReadCapacityUnits:  aws.Int64(5),
+					WriteCapacityUnits: aws.Int64(5),
+				},
+			},
 		},
 		ProvisionedThroughput: &types.ProvisionedThroughput{
 			ReadCapacityUnits:  aws.Int64(5),

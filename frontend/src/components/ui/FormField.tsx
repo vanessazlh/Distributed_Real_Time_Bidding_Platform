@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode } from 'react'
+import type { InputHTMLAttributes, TextareaHTMLAttributes, ReactNode } from 'react'
 
 // ── FormField ────────────────────────────────────────────────────────────────
 
@@ -49,5 +49,25 @@ export function TextInput({ prefix, disabled, className = '', ...props }: TextIn
         {...props}
       />
     </div>
+  )
+}
+
+// ── TextArea ──────────────────────────────────────────────────────────────────
+
+type TextAreaProps = TextareaHTMLAttributes<HTMLTextAreaElement>
+
+export function TextArea({ disabled, className = '', ...props }: TextAreaProps) {
+  return (
+    <textarea
+      disabled={disabled}
+      className={[
+        'w-full bg-surface-alt border-2 border-border rounded-lg py-3 px-4 font-sans text-text-primary resize-none',
+        'focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand',
+        'disabled:bg-surface disabled:cursor-not-allowed',
+        'transition-all',
+        className,
+      ].join(' ')}
+      {...props}
+    />
   )
 }

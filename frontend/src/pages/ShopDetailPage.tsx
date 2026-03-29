@@ -1,23 +1,31 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import type { Auction } from '@/types'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import type { Auction, Shop } from '@/types'
+import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { Avatar, Card, Button, EmptyState, Spinner } from '@/components/ui'
 import { AuctionCard } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
+import { ChevronLeftIcon } from '@/components/icons'
 import { formatCurrency } from '@/lib/utils'
 
 export default function ShopDetailPage() {
-  const { id }   = useParams<{ id: string }>()
-  const navigate = useNavigate()
+  const { id }          = useParams<{ id: string }>()
+  const { user }        = useAuth()
+  const navigate        = useNavigate()
 
+  const [shop,     setShop]     = useState<Shop | null>(null)
   const [auctions, setAuctions] = useState<Auction[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
 
   useEffect(() => {
-    api.auctions.list()
-      .then((all) => setAuctions(all.filter((a) => a.item.shop_id === id)))
+    if (!id) return
+    Promise.all([
+      api.shops.get(id),
+      api.auctions.list().then((all) => all.filter((a) => a.item.shop_id === id)),
+    ])
+      .then(([s, a]) => { setShop(s); setAuctions(a) })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load shop'))
       .finally(() => setLoading(false))
   }, [id])
@@ -26,7 +34,7 @@ export default function ShopDetailPage() {
     return <PageContainer><Spinner className="py-32" /></PageContainer>
   }
 
-  if (error || auctions.length === 0) {
+  if (error || !shop) {
     return (
       <PageContainer>
         <EmptyState
@@ -37,19 +45,36 @@ export default function ShopDetailPage() {
     )
   }
 
-  const shopRef = auctions[0]
+  const isOwner = user?.user_id === shop.owner_id
   const open    = auctions.filter((a) => a.status === 'OPEN')
   const closed  = auctions.filter((a) => a.status === 'CLOSED')
 
   return (
     <PageContainer>
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+      >
+        <ChevronLeftIcon /> All Auctions
+      </Link>
+
       {/* Shop header */}
       <Card className="mb-10 flex flex-col items-center text-center" padding="p-10">
-        <Avatar src={shopRef.shop_logo_url} alt={shopRef.item.shop_name} size="xl" />
-        <h1 className="font-display text-4xl text-text-primary mt-4 mb-2">
-          {shopRef.item.shop_name}
-        </h1>
-        <p className="text-text-secondary">Local shop selling surplus food at auction.</p>
+        <Avatar src={shop.logo_url} alt={shop.name} size="xl" />
+        <h1 className="font-display text-4xl text-text-primary mt-4 mb-2">{shop.name}</h1>
+        <p className="text-text-secondary mb-2">{shop.location}</p>
+        <p className="text-text-secondary text-sm">Local shop selling surplus food at auction.</p>
+
+        {isOwner && (
+          <div className="flex gap-3 mt-6">
+            <Button onClick={() => navigate(`/shops/${id}/items/new`)}>
+              + Add Item
+            </Button>
+            <Button variant="primary" onClick={() => navigate(`/auctions/new?shopId=${id}`)}>
+              + Publish Auction
+            </Button>
+          </div>
+        )}
       </Card>
 
       {/* Active auctions */}
@@ -86,6 +111,10 @@ export default function ShopDetailPage() {
             ))}
           </Card>
         </section>
+      )}
+
+      {open.length === 0 && closed.length === 0 && (
+        <p className="text-text-secondary text-center py-10">No auctions yet for this shop.</p>
       )}
     </PageContainer>
   )
