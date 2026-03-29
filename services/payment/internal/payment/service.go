@@ -90,7 +90,7 @@ func (s *Service) ProcessPayment(ctx context.Context, paymentID string) error {
 			AuctionID:   p.AuctionID,
 			UserID:      p.UserID,
 			Amount:      p.Amount,
-			ProcessedAt: time.Now().UTC(),
+			ProcessedAt: time.Now().UTC().Format(time.RFC3339),
 		})
 	} else {
 		reason := "payment gateway declined"
@@ -104,7 +104,7 @@ func (s *Service) ProcessPayment(ctx context.Context, paymentID string) error {
 			UserID:    p.UserID,
 			Amount:    p.Amount,
 			Reason:    reason,
-			FailedAt:  time.Now().UTC(),
+			FailedAt:  time.Now().UTC().Format(time.RFC3339),
 		})
 	}
 	return nil
@@ -130,7 +130,7 @@ func (s *Service) RefundPayment(ctx context.Context, paymentID string) error {
 		AuctionID:  p.AuctionID,
 		UserID:     p.UserID,
 		Amount:     p.Amount,
-		RefundedAt: time.Now().UTC(),
+		RefundedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 	return nil
 }
