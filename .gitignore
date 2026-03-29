@@ -1,0 +1,31 @@
+# Go
+/bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+
+# Environment
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# Claude Code
+.claude/settings.local.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# DynamoDB Local data
+dynamodb-data/
