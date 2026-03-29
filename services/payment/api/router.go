@@ -2,7 +2,7 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
-	"rtb/services/payment/internal/middleware"
+	"rtb/shared/middleware"
 	"rtb/services/payment/internal/payment"
 )
 
