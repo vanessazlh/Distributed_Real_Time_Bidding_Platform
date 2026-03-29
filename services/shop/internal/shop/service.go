@@ -21,6 +21,7 @@ var ErrInvalidInput = errors.New("invalid input")
 type Repo interface {
 	SaveShop(ctx context.Context, s Shop) error
 	FindShopByID(ctx context.Context, shopID string) (*Shop, error)
+	FindShopsByOwnerID(ctx context.Context, ownerID string) ([]Shop, error)
 	SaveItem(ctx context.Context, item Item) error
 	FindItemsByShop(ctx context.Context, shopID string) ([]Item, error)
 	FindItemByID(ctx context.Context, itemID string) (*Item, error)
@@ -95,6 +96,15 @@ func (s *Service) CreateItem(ctx context.Context, shopID string, req CreateItemR
 		return nil, fmt.Errorf("save item: %w", err)
 	}
 	return &item, nil
+}
+
+// ListSellerShops returns all shops owned by the given seller.
+func (s *Service) ListSellerShops(ctx context.Context, ownerID string) ([]Shop, error) {
+	shops, err := s.repo.FindShopsByOwnerID(ctx, ownerID)
+	if err != nil {
+		return nil, fmt.Errorf("list seller shops: %w", err)
+	}
+	return shops, nil
 }
 
 // ListItems returns all items for a shop.

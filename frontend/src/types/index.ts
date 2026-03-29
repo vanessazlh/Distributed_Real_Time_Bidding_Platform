@@ -2,12 +2,21 @@ export type AuctionStatus = 'OPEN' | 'CLOSED'
 
 /** A physical item listed in a shop (from the shop service) */
 export interface Item {
-  item_id:     string
-  shop_id:     string
-  title:       string
-  description: string
+  item_id:      string
+  shop_id:      string
+  title:        string
+  description:  string
   retail_value: number
-  image_url?:  string
+  image_url?:   string
+}
+
+/** A shop registered by a user */
+export interface Shop {
+  shop_id:  string
+  name:     string
+  location: string
+  owner_id: string
+  logo_url?: string
 }
 export type BidStatus = 'WINNING' | 'OUTBID' | 'WON' | 'LOST'
 
@@ -34,6 +43,7 @@ export interface User {
   user_id: string
   username: string
   email: string
+  role: 'buyer' | 'seller'
 }
 
 /** A bid placed by the current user, shown on My Bids page */

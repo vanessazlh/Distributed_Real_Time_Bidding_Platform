@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { formatCurrency, timeAgo } from '@/lib/utils'
 import { Card, Badge, StatCard, EmptyState, Button, Spinner } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
+import { ChevronLeftIcon } from '@/components/icons'
 
 export default function MyBidsPage() {
   const { user, token } = useAuth()
@@ -62,6 +63,13 @@ export default function MyBidsPage() {
 
   return (
     <PageContainer narrow>
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+      >
+        <ChevronLeftIcon /> All Auctions
+      </Link>
+
       <h1 className="font-sans font-semibold text-3xl text-text-primary mb-8">My Bids</h1>
 
       {/* Stats strip */}
