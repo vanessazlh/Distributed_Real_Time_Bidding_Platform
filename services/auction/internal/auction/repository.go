@@ -31,6 +31,7 @@ func (r *Repository) Create(ctx context.Context, a *Auction) error {
 	pipe.HSet(ctx, key, map[string]interface{}{
 		"auction_id":      a.AuctionID,
 		"item_id":         a.ItemID,
+		"item_title":      a.ItemTitle,
 		"shop_id":         a.ShopID,
 		"start_time":      a.StartTime.Format(time.RFC3339),
 		"end_time":        a.EndTime.Format(time.RFC3339),
@@ -138,6 +139,7 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 	return &Auction{
 		AuctionID:      vals["auction_id"],
 		ItemID:         vals["item_id"],
+		ItemTitle:      vals["item_title"],
 		ShopID:         vals["shop_id"],
 		StartTime:      startTime,
 		EndTime:        endTime,

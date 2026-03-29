@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/surplus-auction/platform/internal/auction"
+	"rtb/services/auction/internal/auction"
 )
 
 // --- mock auction repo ---
@@ -74,6 +74,7 @@ func TestCreateAuction_Success(t *testing.T) {
 	a := &auction.Auction{
 		AuctionID:      "test-auction",
 		ItemID:         "item-1",
+		ItemTitle:      "Test Item",
 		ShopID:         "shop-1",
 		StartTime:      time.Now().UTC(),
 		EndTime:        time.Now().UTC().Add(10 * time.Minute),
