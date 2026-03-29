@@ -48,8 +48,8 @@ export const api = {
   },
 
   auctions: {
-    /** GET /auctions → Auction[] */
-    list: () => request<Auction[]>('/auctions'),
+    /** GET /auctions → { auctions: Auction[] } */
+    list: () => request<{ auctions: Auction[] }>('/auctions').then((r) => r.auctions ?? []),
 
     /** GET /auctions/:id → Auction */
     get: (id: string) => request<Auction>(`/auctions/${id}`),
