@@ -1,8 +1,17 @@
 # SurpriseAuction
 
-A platform where local stores post surplus or end-of-day items as rapid **5-minute auctions** instead of throwing them away.
+A microservices-based platform where local stores auction surplus items in short 5-minute windows. Built for a distributed systems course, focusing on real-time bidding concurrency, horizontal scaling, and notification fan-out.
 
-For example, a bakery might post **3 mystery pastry boxes at 5pm**, and users have **5 minutes to bid** before the auction closes.
+## Services
+
+| Service              | Status         | Owner   | Description                                            |
+| -------------------- | -------------- | ------- | ------------------------------------------------------ |
+| User Service         | ✅ Done        | Vanessa | Registration, login, JWT auth, profile                 |
+| Shop Service         | ✅ Done        | Vanessa | Shop + item CRUD, owner verification                   |
+| Auction Service      | 🚧 In Progress | Lucy    | Auction lifecycle, bid validation, concurrency control |
+| Bid Service          | 🚧 In Progress | Lucy    | Bid history storage and queries                        |
+| Notification Service | 🚧 In Progress | Claire  | WebSocket / SSE / polling fan-out                      |
+| Payment Service      | 🚧 In Progress | Wendy   | Winner payment processing                              |
 
 ---
 
@@ -155,12 +164,41 @@ Subscribes: `bid_placed` — fans out to all connected WebSocket/SSE clients wat
 
 # Tech Stack
 
-- **Go** — all backend services
+- **Go** — all backend services (Gin framework)
 - **Redis** — Pub/Sub event bus between services; auction state storage for fast reads/writes
-- **DynamoDB** — persistent storage for payments and other records
+- **DynamoDB** — persistent storage for users, shops, items, payments
 - **ECS Fargate** with **ALB** and auto-scaling — deployment infrastructure
 - **WebSockets / SSE** — real-time bid notifications to connected clients
+- **JWT** (golang-jwt) + bcrypt — authentication
 - **Locust** — load testing and performance evaluation
+
+---
+
+# Quick Start
+
+```bash
+# 1. Start Redis + DynamoDB Local
+docker-compose up -d
+
+# 2. Start a service (e.g. payment)
+cd services/payment
+go run cmd/server/main.go
+```
+
+## Environment Variables
+
+| Variable            | Default                 | Description                                                |
+| ------------------- | ----------------------- | ---------------------------------------------------------- |
+| `JWT_SECRET`        | —                       | JWT signing key (required, must match across all services) |
+| `REDIS_ADDR`        | `localhost:6379`        | Redis address                                              |
+| `DYNAMODB_ENDPOINT` | `http://localhost:8000` | DynamoDB endpoint                                          |
+| `SERVER_ADDR`       | `:8080`                 | Server listen address                                      |
+
+## Running Tests
+
+```bash
+go test ./...
+```
 
 ---
 
@@ -181,7 +219,7 @@ Compare different concurrency control strategies:
 - Successful bid rate
 - Rejected bid rate
 - Average bid latency
-- Consistency violations  
+- Consistency violations
   (e.g., a lower bid winning over a higher bid)
 
 ---
@@ -216,7 +254,7 @@ Simulate:
 
 ### Metrics
 
-- Notification delivery latency  
+- Notification delivery latency
   (time from bid acceptance to all clients being notified)
 
 - System resource usage as the number of connected clients scales
