@@ -23,3 +23,90 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  notification:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - REDIS_ADDR=redis:6379
+      - PORT=8080
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  auction:
+    build:
+      context: .
+      dockerfile: services/auction/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVER_ADDR=:8081
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  user:
+    build:
+      context: .
+      dockerfile: services/user/Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      - SERVER_ADDR=:8082
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+
+  shop:
+    build:
+      context: .
+      dockerfile: services/shop/Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      - SERVER_ADDR=:8083
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+
+  bid:
+    build:
+      context: .
+      dockerfile: services/bid/Dockerfile
+    ports:
+      - "8084:8084"
+    environment:
+      - SERVER_ADDR=:8084
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  payment:
+    build:
+      context: .
+      dockerfile: services/payment/Dockerfile
+    ports:
+      - "8085:8085"
+    environment:
+      - SERVER_ADDR=:8085
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

@@ -35,7 +35,7 @@ func main() {
 		protected.GET("/users/:user_id/bids", h.GetBids)
 	}
 
-	addr := envOr("SERVER_ADDR", ":8081")
+	addr := envOr("SERVER_ADDR", ":8082")
 	srv := &http.Server{Addr: addr, Handler: r}
 
 	go func() {
