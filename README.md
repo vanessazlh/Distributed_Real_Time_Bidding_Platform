@@ -1,8 +1,42 @@
-# Real-Time Surplus Auction Platform
+# SurpriseAuction
 
 A platform where local stores post surplus or end-of-day items as rapid **5-minute auctions** instead of throwing them away.
 
 For example, a bakery might post **3 mystery pastry boxes at 5pm**, and users have **5 minutes to bid** before the auction closes.
+
+---
+
+# Architecture
+
+```
+Client (Browser / Mobile)
+        |
+       HTTPS
+        |
+   ALB (Path-based routing)
+        |
+        └── Routes to ECS Fargate tasks
+              |
+    ┌─────────┬──────────┬─────────────┬──────────────┬─────────────┐
+    │  User   │  Shop    │  Auction    │  Notification│  Payment    │
+    │ Service │ Service  │  Service    │   Service    │  Service    │
+    └─────────┴──────────┴──────┬──────┴──────┬───────┴──────┬──────┘
+                                │             │              │
+                         ───────┴─────────────┴──────────────┴───────
+                                     Redis Pub/Sub (async events)
+                                  bid_placed · auction_closed
+                                  payment_processed · payment_failed · refund_processed
+                         ───────────────────────────────────────────
+                                │                          │
+                         Redis (auction state)      DynamoDB
+                         real-time bid data         payments, users,
+                         + pub/sub bus              shops, bid history
+```
+
+**Key flows:**
+
+- **Bid flow** — Client → ALB → Auction Service (validates + updates bid atomically in Redis) → publishes `bid_placed` → Notification Service fans out to connected clients
+- **Auction close flow** — Auction Service publishes `auction_closed` → Payment Service creates payment record → publishes `payment_processed`
 
 ---
 
@@ -51,22 +85,82 @@ The system must:
 
 ---
 
+# Services
+
+Services communicate asynchronously via **Redis Pub/Sub**. Direct HTTP calls are only used for client-facing APIs.
+
+## User Service
+
+| Method | Path                   | Auth |
+| ------ | ---------------------- | ---- |
+| POST   | `/users`               | —    |
+| POST   | `/auth/login`          | —    |
+| GET    | `/users/:user_id`      | JWT  |
+| GET    | `/users/:user_id/bids` | JWT  |
+
+## Shop Service
+
+| Method | Path                    | Auth |
+| ------ | ----------------------- | ---- |
+| POST   | `/shops`                | JWT  |
+| GET    | `/shops/:shop_id`       | —    |
+| POST   | `/shops/:shop_id/items` | JWT  |
+| GET    | `/shops/:shop_id/items` | —    |
+| GET    | `/items/:item_id`       | —    |
+
+## Auction Service
+
+| Method | Path                   | Auth |
+| ------ | ---------------------- | ---- |
+| POST   | `/auctions`            | JWT  |
+| GET    | `/auctions`            | —    |
+| GET    | `/auctions/:id`        | —    |
+| POST   | `/auctions/:id/bid`    | JWT  |
+| POST   | `/auctions/:id/close`  | JWT  |
+| GET    | `/auctions/:id/bids`   | —    |
+| GET    | `/admin/metrics`       | —    |
+| POST   | `/admin/metrics/reset` | —    |
+| GET    | `/admin/strategy`      | —    |
+| PUT    | `/admin/strategy`      | —    |
+
+Publishes: `bid_placed`, `auction_closed`
+
+## Bid Service
+
+_Bid history is currently stored within Auction Service. Standalone Bid Service — to be updated._
+
+## Payment Service
+
+| Method | Path                            | Auth |
+| ------ | ------------------------------- | ---- |
+| GET    | `/payments/:id`                 | JWT  |
+| GET    | `/users/:user_id/payments`      | JWT  |
+| GET    | `/auctions/:auction_id/payment` | JWT  |
+| POST   | `/admin/payments/:id/process`   | —    |
+| POST   | `/admin/payments/:id/refund`    | —    |
+
+Subscribes: `auction_closed` — Publishes: `payment_processed`, `payment_failed`, `refund_processed`
+
+## Notification Service
+
+| Method | Path                                  | Auth |
+| ------ | ------------------------------------- | ---- |
+| GET    | `/auctions/:auction_id/subscribe`     | —    |
+| GET    | `/auctions/:auction_id/subscribe/sse` | —    |
+| GET    | `/metrics`                            | —    |
+
+Subscribes: `bid_placed` — fans out to all connected WebSocket/SSE clients watching the auction
+
+---
+
 # Tech Stack
 
-- **Go**  
-  Used for the auction service. Goroutines and channels naturally support concurrent bid processing.
-
-- **ECS Fargate** with **Application Load Balancer (ALB)** and **auto-scaling**  
-  Infrastructure based on the same setup used in course assignments.
-
-- **Redis or DynamoDB**  
-  Used to store auction state with fast reads/writes and strong consistency guarantees.
-
-- **WebSockets or Server-Sent Events (SSE)**  
-  For real-time bid updates to connected clients.
-
-- **Locust**  
-  For load testing and performance evaluation.
+- **Go** — all backend services
+- **Redis** — Pub/Sub event bus between services; auction state storage for fast reads/writes
+- **DynamoDB** — persistent storage for payments and other records
+- **ECS Fargate** with **ALB** and auto-scaling — deployment infrastructure
+- **WebSockets / SSE** — real-time bid notifications to connected clients
+- **Locust** — load testing and performance evaluation
 
 ---
 
