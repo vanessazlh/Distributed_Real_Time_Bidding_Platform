@@ -29,7 +29,7 @@ func main() {
 
 	router := api.NewRouter(bidHandler)
 
-	addr := envOr("SERVER_ADDR", ":8082")
+	addr := envOr("SERVER_ADDR", ":8084")
 	srv := &http.Server{Addr: addr, Handler: router}
 
 	go func() {
