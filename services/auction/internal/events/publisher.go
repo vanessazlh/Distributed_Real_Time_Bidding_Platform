@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/redis/go-redis/v9"
+	"rtb/shared/events"
 )
 
 const (
@@ -24,7 +25,7 @@ func NewPublisher(rdb *redis.Client) *Publisher {
 }
 
 // PublishBidPlaced publishes a bid-placed event.
-func (p *Publisher) PublishBidPlaced(ctx context.Context, event BidPlacedEvent) error {
+func (p *Publisher) PublishBidPlaced(ctx context.Context, event events.BidPlacedEvent) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal bid placed event: %w", err)
@@ -33,7 +34,7 @@ func (p *Publisher) PublishBidPlaced(ctx context.Context, event BidPlacedEvent) 
 }
 
 // PublishAuctionClosed publishes an auction-closed event.
-func (p *Publisher) PublishAuctionClosed(ctx context.Context, event AuctionClosedEvent) error {
+func (p *Publisher) PublishAuctionClosed(ctx context.Context, event events.AuctionClosedEvent) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal auction closed event: %w", err)

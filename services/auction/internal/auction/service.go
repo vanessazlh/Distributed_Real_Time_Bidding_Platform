@@ -8,9 +8,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"github.com/surplus-auction/platform/internal/auction/concurrency"
-	"github.com/surplus-auction/platform/internal/bid"
-	"github.com/surplus-auction/platform/internal/events"
+	"rtb/services/auction/internal/auction/concurrency"
+	localEvents "rtb/services/auction/internal/events"
+	"rtb/shared/events"
 )
 
 // ConcurrencyStrategy defines which concurrency control to use.
@@ -42,21 +42,19 @@ type Repo interface {
 // Service contains business logic for the auction domain.
 type Service struct {
 	repo      Repo
-	bidSvc    *bid.Service
-	publisher *events.Publisher
+	publisher *localEvents.Publisher
 	metrics   *Metrics
 
-	strategy   ConcurrencyStrategy
-	optimistic *concurrency.Optimistic
+	strategy    ConcurrencyStrategy
+	optimistic  *concurrency.Optimistic
 	pessimistic *concurrency.Pessimistic
-	queue      *concurrency.Queue
+	queue       *concurrency.Queue
 }
 
 // NewService creates a new Service.
-func NewService(repo Repo, bidSvc *bid.Service, publisher *events.Publisher, rdb *redis.Client, strategy ConcurrencyStrategy) *Service {
+func NewService(repo Repo, publisher *localEvents.Publisher, rdb *redis.Client, strategy ConcurrencyStrategy) *Service {
 	return &Service{
 		repo:        repo,
-		bidSvc:      bidSvc,
 		publisher:   publisher,
 		metrics:     NewMetrics(),
 		strategy:    strategy,
@@ -92,6 +90,7 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest) (
 	a := &Auction{
 		AuctionID:      uuid.NewString(),
 		ItemID:         req.ItemID,
+		ItemTitle:      req.ItemTitle,
 		ShopID:         req.ShopID,
 		StartTime:      now,
 		EndTime:        now.Add(time.Duration(req.Duration) * time.Minute),
@@ -126,6 +125,7 @@ func (s *Service) ListAuctions(ctx context.Context, status string) ([]*Auction, 
 }
 
 // PlaceBid places a bid on an auction using the current concurrency strategy.
+// Bid history is recorded asynchronously by the Bid Service via the bid_placed event.
 func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string, amount int64) (*BidResult, error) {
 	start := time.Now()
 
@@ -169,30 +169,20 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 
 	s.metrics.RecordSuccessful(latency)
 
-	// Record bid in bid service
+	// Publish event — Bid Service consumes this to record bid history
 	bidID := uuid.NewString()
-	b := &bid.Bid{
-		BidID:     bidID,
-		AuctionID: auctionID,
-		UserID:    userID,
-		Amount:    amount,
-		Timestamp: time.Now().UTC(),
-		Status:    "ACCEPTED",
-	}
-	if err := s.bidSvc.RecordBid(ctx, b); err != nil {
-		// Log but don't fail the bid — the atomic update already succeeded
-		fmt.Printf("warning: failed to record bid history: %v\n", err)
-	}
-
-	// Publish event
+	now := time.Now().UTC()
 	_ = s.publisher.PublishBidPlaced(ctx, events.BidPlacedEvent{
 		AuctionID:       auctionID,
 		BidID:           bidID,
+		ItemID:          a.ItemID,
+		ItemTitle:       a.ItemTitle,
 		UserID:          userID,
 		Amount:          amount,
 		PreviousHighest: previousHighest,
 		PreviousBidder:  previousBidder,
-		Timestamp:       time.Now().UTC(),
+		BidAcceptedAt:   now.Format(time.RFC3339Nano),
+		Timestamp:       now.Format(time.RFC3339Nano),
 	})
 
 	_ = newVersion // used internally by concurrency strategies
@@ -226,7 +216,7 @@ func (s *Service) CloseAuction(ctx context.Context, auctionID string) error {
 		WinningBid: a.CurrentHighest,
 		ItemID:     a.ItemID,
 		ShopID:     a.ShopID,
-		ClosedAt:   time.Now().UTC(),
+		ClosedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 	})
 
 	return nil

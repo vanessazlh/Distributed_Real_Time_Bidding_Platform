@@ -4,20 +4,22 @@ import "time"
 
 // Auction represents an active or closed auction.
 type Auction struct {
-	AuctionID     string    `json:"auction_id"`
-	ItemID        string    `json:"item_id"`
-	ShopID        string    `json:"shop_id"`
-	StartTime     time.Time `json:"start_time"`
-	EndTime       time.Time `json:"end_time"`
-	CurrentHighest int64    `json:"current_highest_bid"`
-	HighestBidder string    `json:"highest_bidder"`
-	Status        string    `json:"status"`  // OPEN, CLOSED
-	Version       int64     `json:"version"` // for optimistic locking
+	AuctionID      string    `json:"auction_id"`
+	ItemID         string    `json:"item_id"`
+	ItemTitle      string    `json:"item_title"`
+	ShopID         string    `json:"shop_id"`
+	StartTime      time.Time `json:"start_time"`
+	EndTime        time.Time `json:"end_time"`
+	CurrentHighest int64     `json:"current_highest_bid"`
+	HighestBidder  string    `json:"highest_bidder"`
+	Status         string    `json:"status"`  // OPEN, CLOSED
+	Version        int64     `json:"version"` // for optimistic locking
 }
 
 // CreateAuctionRequest is the payload for POST /auctions.
 type CreateAuctionRequest struct {
 	ItemID    string `json:"item_id" binding:"required"`
+	ItemTitle string `json:"item_title"`
 	ShopID    string `json:"shop_id" binding:"required"`
 	Duration  int    `json:"duration_minutes" binding:"required,min=1"` // duration in minutes
 	StartBid  int64  `json:"start_bid"`

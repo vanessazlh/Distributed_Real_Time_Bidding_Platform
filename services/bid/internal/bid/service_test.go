@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/surplus-auction/platform/internal/bid"
+	"rtb/services/bid/internal/bid"
 )
 
 // --- mock repo ---

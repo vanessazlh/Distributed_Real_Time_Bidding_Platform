@@ -20,10 +20,10 @@ type BidMetrics struct {
 
 // Metrics collects bid latency and outcome data for experiments.
 type Metrics struct {
-	mu        sync.Mutex
-	success   int64
-	rejected  int64
-	latencies []float64 // in milliseconds
+	mu         sync.Mutex
+	success    int64
+	rejected   int64
+	latencies  []float64 // in milliseconds
 	violations int64
 }
 
