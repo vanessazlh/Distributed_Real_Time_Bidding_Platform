@@ -16,6 +16,7 @@ func NewRouter(userHandler *user.Handler, shopHandler *shop.Handler) *gin.Engine
 	r.POST("/auth/login", userHandler.Login)
 	r.GET("/shops/:shop_id", shopHandler.GetShop)
 	r.GET("/shops/:shop_id/items", shopHandler.ListItems)
+	r.GET("/items/:item_id", shopHandler.GetItem)
 
 	// Protected routes
 	protected := r.Group("/", middleware.Auth())

@@ -61,6 +61,24 @@ func (h *Handler) GetShop(c *gin.Context) {
 	c.JSON(http.StatusOK, shop)
 }
 
+// GetItem godoc
+// GET /items/:item_id
+func (h *Handler) GetItem(c *gin.Context) {
+	itemID := c.Param("item_id")
+	item, err := h.svc.GetItem(c.Request.Context(), itemID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "item not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, item)
+}
+
 // CreateItem godoc
 // POST /shops/:shop_id/items
 func (h *Handler) CreateItem(c *gin.Context) {
@@ -75,6 +93,8 @@ func (h *Handler) CreateItem(c *gin.Context) {
 	item, err := h.svc.CreateItem(c.Request.Context(), shopID, req, callerID(c))
 	if err != nil {
 		switch {
+		case errors.Is(err, ErrInvalidInput):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		case errors.Is(err, ErrNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "shop not found"})
 		case errors.Is(err, ErrForbidden):

@@ -73,6 +73,27 @@ func (r *Repository) SaveItem(ctx context.Context, item Item) error {
 	return err
 }
 
+// FindItemByID retrieves a single item by its primary key.
+func (r *Repository) FindItemByID(ctx context.Context, itemID string) (*Item, error) {
+	out, err := r.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(itemsTable),
+		Key: map[string]types.AttributeValue{
+			"item_id": &types.AttributeValueMemberS{Value: itemID},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get item: %w", err)
+	}
+	if out.Item == nil {
+		return nil, errors.New("item not found")
+	}
+	var it Item
+	if err := attributevalue.UnmarshalMap(out.Item, &it); err != nil {
+		return nil, fmt.Errorf("unmarshal item: %w", err)
+	}
+	return &it, nil
+}
+
 // FindItemsByShop queries the shop_id GSI on Items.
 func (r *Repository) FindItemsByShop(ctx context.Context, shopID string) ([]Item, error) {
 	out, err := r.db.Query(ctx, &dynamodb.QueryInput{
