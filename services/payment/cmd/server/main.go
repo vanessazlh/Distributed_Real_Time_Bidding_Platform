@@ -15,9 +15,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/redis/go-redis/v9"
-	"github.com/surplus-auction/platform/api"
-	"github.com/surplus-auction/platform/internal/events"
-	paymentPkg "github.com/surplus-auction/platform/internal/payment"
+	"rtb/services/payment/api"
+	"rtb/services/payment/internal/events"
+	paymentPkg "rtb/services/payment/internal/payment"
 )
 
 func main() {
