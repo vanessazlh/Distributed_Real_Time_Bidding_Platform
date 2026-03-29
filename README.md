@@ -1,132 +1,76 @@
 # Real-Time Surplus Auction Platform
 
-A platform where local stores post surplus or end-of-day items as rapid **5-minute auctions** instead of throwing them away.
+A microservices-based platform where local stores auction surplus items in short 5-minute windows. Built for a distributed systems course, focusing on real-time bidding concurrency, horizontal scaling, and notification fan-out.
 
-For example, a bakery might post **3 mystery pastry boxes at 5pm**, and users have **5 minutes to bid** before the auction closes.
+## Services
 
----
+| Service | Status | Owner | Description |
+|---------|--------|-------|-------------|
+| User Service | ✅ Done | Vanessa | Registration, login, JWT auth, profile |
+| Shop Service | ✅ Done | Vanessa | Shop + item CRUD, owner verification |
+| Auction Service | 🚧 In Progress | Lucy | Auction lifecycle, bid validation, concurrency control |
+| Bid Service | 🚧 In Progress | Lucy | Bid history storage and queries |
+| Notification Service | 🚧 In Progress | Claire | WebSocket / SSE / polling fan-out |
+| Payment Service | 🚧 In Progress | Wendy | Winner payment processing |
 
-# Core Challenge: Real-Time Bidding Under Extreme Concurrency
+## Tech Stack
 
-When an auction is about to close, dozens of users may submit bids within the final seconds (the **"sniping" problem**).
+- **Language**: Go (gin framework)
+- **Database**: DynamoDB (Local for dev, AWS for prod)
+- **Auth**: JWT (golang-jwt) + bcrypt
+- **Infra**: ECS Fargate, ALB, auto-scaling
+- **Testing**: Locust (load testing), Go built-in testing
 
-Each bid must:
+## Quick Start
 
-- Validate that the auction is still open
-- Check that the new bid is higher than the current highest bid
-- Update the highest bid **atomically**
-- Notify other bidders that they have been outbid
+```bash
+# 1. Start DynamoDB Local
+docker-compose up -d
 
-All of these operations must happen **consistently under concurrent load**.
+# 2. Create tables
+go run scripts/init_tables.go
 
-If two users submit bids at the exact same millisecond:
+# 3. Start the server
+go run cmd/server/main.go
+```
 
-- Only **one bid should win**
-- No user should observe **stale data**
+Server runs on `localhost:8080` by default.
 
-At its core, this is a **concurrency and consistency problem**.
+## API Overview
 
----
+### User Service
+- `POST /users` — Register
+- `POST /auth/login` — Login (returns JWT)
+- `GET /users/:user_id` — Get profile (auth required)
 
-# Burst Traffic Characteristics
+### Shop Service
+- `POST /shops` — Create shop (auth required)
+- `GET /shops/:shop_id` — Get shop
+- `POST /shops/:shop_id/items` — Create item (auth required, owner only)
+- `GET /shops/:shop_id/items` — List items
 
-Auctions are **bursty by nature**.
+### Auction Service (coming soon)
+- `POST /auctions` — Create auction
+- `GET /auctions/:auction_id` — Get auction
+- `POST /auctions/:auction_id/bid` — Place bid
+- `POST /auctions/:auction_id/close` — Close auction
 
-Example scenario:
+## Environment Variables
 
-- A popular store posts **10 auctions at 5pm**
-- Thousands of users flood the system simultaneously
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JWT_SECRET` | `secret` | JWT signing key |
+| `DYNAMODB_ENDPOINT` | `http://localhost:8000` | DynamoDB endpoint |
+| `SERVER_ADDR` | `:8080` | Server listen address |
 
-Then at **5:05pm**, another spike occurs when:
+## Running Tests
 
-- Auctions close
-- Winners are processed
-- Notifications are sent
-- Payments are handled
+```bash
+go test ./...
+```
 
-The system must:
+## Experiments (Planned)
 
-- **Scale horizontally** to absorb sudden spikes
-- **Scale down** when traffic drops
-
----
-
-# Tech Stack
-
-- **Go**  
-  Used for the auction service. Goroutines and channels naturally support concurrent bid processing.
-
-- **ECS Fargate** with **Application Load Balancer (ALB)** and **auto-scaling**  
-  Infrastructure based on the same setup used in course assignments.
-
-- **Redis or DynamoDB**  
-  Used to store auction state with fast reads/writes and strong consistency guarantees.
-
-- **WebSockets or Server-Sent Events (SSE)**  
-  For real-time bid updates to connected clients.
-
-- **Locust**  
-  For load testing and performance evaluation.
-
----
-
-# Scalability Experiments
-
-## Experiment 1: Bid Contention Under Load
-
-Simulate **500 concurrent users** bidding on the same auction during the **final 10 seconds**.
-
-Compare different concurrency control strategies:
-
-- Optimistic locking with retries
-- Pessimistic locking
-- Serialized bid queue
-
-### Metrics
-
-- Successful bid rate
-- Rejected bid rate
-- Average bid latency
-- Consistency violations  
-  (e.g., a lower bid winning over a higher bid)
-
----
-
-## Experiment 2: Horizontal Scaling During Auction Spikes
-
-Simulate a **rush-hour scenario**:
-
-- **50 auctions** go live simultaneously
-- Each attracts **100 bidders**
-
-System starts with **2 ECS tasks** with auto-scaling enabled.
-
-### Metrics
-
-- Auto-scaling response time to the spike
-- Latency during the scale-up window
-- Throughput **before vs. after** new tasks join
-- Whether any bids are lost during scaling transitions
-
----
-
-## Experiment 3: Real-Time Notification Fan-Out
-
-Whenever a **new highest bid** is placed, all other bidders watching the auction must be notified.
-
-Simulate:
-
-- **1000 connected clients**
-- Watching a **single popular auction**
-- With rapid bid updates
-
-### Metrics
-
-- Notification delivery latency  
-  (time from bid acceptance to all clients being notified)
-
-- System resource usage as the number of connected clients scales
-
-- Performance comparison:
-  - **Push model** (WebSockets)
-  - **Pull model** (polling)
+1. **Bid contention** — Optimistic locking vs pessimistic locking vs serialized queue
+2. **Horizontal scaling** — Auto-scaling under auction spike traffic
+3. **Notification fan-out** — Push (WebSocket/SSE) vs pull (polling) performance
