@@ -1,4 +1,4 @@
-module github.com/surplus-auction/platform
+module rtb
 
 go 1.25.5
 

@@ -13,31 +13,34 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/surplus-auction/platform/api"
-	shopPkg "github.com/surplus-auction/platform/internal/shop"
-	userPkg "github.com/surplus-auction/platform/internal/user"
+	"github.com/gin-gonic/gin"
+	"rtb/services/shop/internal/shop"
+	"rtb/shared/middleware"
 )
 
 func main() {
 	db := newDynamoClient()
 
-	// Wire user layer
-	userRepo := userPkg.NewRepository(db)
-	userSvc := userPkg.NewService(userRepo)
-	userHandler := userPkg.NewHandler(userSvc)
+	repo := shop.NewRepository(db)
+	svc := shop.NewService(repo)
+	h := shop.NewHandler(svc)
 
-	// Wire shop layer
-	shopRepo := shopPkg.NewRepository(db)
-	shopSvc := shopPkg.NewService(shopRepo)
-	shopHandler := shopPkg.NewHandler(shopSvc)
+	r := gin.Default()
+	r.GET("/shops/:shop_id", h.GetShop)
+	r.GET("/shops/:shop_id/items", h.ListItems)
+	r.GET("/items/:item_id", h.GetItem)
 
-	router := api.NewRouter(userHandler, shopHandler)
+	protected := r.Group("/", middleware.Auth())
+	{
+		protected.POST("/shops", h.CreateShop)
+		protected.POST("/shops/:shop_id/items", h.CreateItem)
+	}
 
-	addr := envOr("SERVER_ADDR", ":8080")
-	srv := &http.Server{Addr: addr, Handler: router}
+	addr := envOr("SERVER_ADDR", ":8082")
+	srv := &http.Server{Addr: addr, Handler: r}
 
 	go func() {
-		log.Printf("server listening on %s", addr)
+		log.Printf("shop service listening on %s", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
 		}

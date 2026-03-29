@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/surplus-auction/platform/internal/shop"
+	"rtb/services/shop/internal/shop"
 )
 
 // --- mock repo ---
