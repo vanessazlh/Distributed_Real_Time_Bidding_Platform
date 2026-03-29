@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/surplus-auction/platform/internal/events"
+	"rtb/services/payment/internal/events"
 )
 
 // Service handles payment business logic.

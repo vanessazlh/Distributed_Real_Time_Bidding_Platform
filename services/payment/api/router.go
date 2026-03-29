@@ -2,8 +2,8 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/surplus-auction/platform/internal/middleware"
-	"github.com/surplus-auction/platform/internal/payment"
+	"rtb/services/payment/internal/middleware"
+	"rtb/services/payment/internal/payment"
 )
 
 // NewRouter wires all routes and returns a configured *gin.Engine.
