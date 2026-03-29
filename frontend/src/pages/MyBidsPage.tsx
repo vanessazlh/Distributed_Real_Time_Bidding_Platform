@@ -104,6 +104,14 @@ export default function MyBidsPage() {
                     Bid Again →
                   </Link>
                 )}
+                {bid.status === 'WON' && (
+                  <Link
+                    to={`/payment/auction/${bid.auction_id}`}
+                    className="text-brand text-xs font-medium hover:underline"
+                  >
+                    View Payment →
+                  </Link>
+                )}
               </div>
             </div>
           ))}

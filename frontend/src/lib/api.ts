@@ -1,4 +1,4 @@
-import type { Auction, AuctionStatus, User, UserBid, Item, Shop } from '@/types'
+import type { Auction, AuctionStatus, User, UserBid, Item, Shop, Payment } from '@/types'
 
 // ── Error type ───────────────────────────────────────────────────────────────
 
@@ -142,6 +142,20 @@ export const api = {
         method: 'POST',
         headers: jsonHeaders(token),
         body: JSON.stringify(payload),
+      }),
+  },
+
+  payments: {
+    /** GET /users/:userId/payments → Payment[] */
+    listByUser: (userId: string, token: string) =>
+      request<Payment[]>(`/users/${userId}/payments`, {
+        headers: jsonHeaders(token),
+      }).then((r) => r ?? []),
+
+    /** GET /auctions/:auctionId/payment → Payment */
+    getByAuction: (auctionId: string, token: string) =>
+      request<Payment>(`/auctions/${auctionId}/payment`, {
+        headers: jsonHeaders(token),
       }),
   },
 }

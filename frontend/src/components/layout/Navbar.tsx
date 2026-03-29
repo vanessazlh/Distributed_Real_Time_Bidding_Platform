@@ -45,6 +45,9 @@ export function Navbar() {
                 <Link to="/my-bids" className="text-text-primary hover:text-brand transition-colors text-sm">
                   My Bids
                 </Link>
+                <Link to="/my-payments" className="text-text-primary hover:text-brand transition-colors text-sm">
+                  Payments
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="text-text-secondary hover:text-text-primary transition-colors text-sm"

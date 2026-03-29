@@ -65,6 +65,21 @@ export interface BidHistoryEntry {
   time: number    // Unix ms
 }
 
+export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded'
+
+export interface Payment {
+  payment_id:  string
+  auction_id:  string
+  user_id:     string
+  item_id:     string
+  shop_id:     string
+  amount:      number  // cents
+  status:      PaymentStatus
+  fail_reason?: string
+  created_at:  string
+  updated_at:  string
+}
+
 /** WebSocket message received from the notification service */
 export interface BidPlacedEvent {
   type: 'bid_placed'

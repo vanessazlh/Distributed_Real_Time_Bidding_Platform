@@ -12,6 +12,8 @@ import CreateItemPage    from '@/pages/CreateItemPage'
 import CreateAuctionPage from '@/pages/CreateAuctionPage'
 import ShopAuthPage           from '@/pages/ShopAuthPage'
 import SellerDashboardPage    from '@/pages/SellerDashboardPage'
+import PaymentPage            from '@/pages/PaymentPage'
+import MyPaymentsPage         from '@/pages/MyPaymentsPage'
 
 export default function App() {
   return (
@@ -33,7 +35,9 @@ export default function App() {
               <Route path="/auctions/new"              element={<CreateAuctionPage />} />
               <Route path="/shop/login"               element={<ShopAuthPage type="login" />} />
               <Route path="/shop/register"            element={<ShopAuthPage type="register" />} />
-              <Route path="/seller/dashboard"         element={<SellerDashboardPage />} />
+              <Route path="/seller/dashboard"              element={<SellerDashboardPage />} />
+              <Route path="/my-payments"                  element={<MyPaymentsPage />} />
+              <Route path="/payment/auction/:auctionId"   element={<PaymentPage />} />
             </Routes>
           </main>
         </div>
