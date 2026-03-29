@@ -38,7 +38,7 @@ func main() {
 
 	router := api.NewRouter(paymentHandler)
 
-	addr := envOr("SERVER_ADDR", ":8081")
+	addr := envOr("SERVER_ADDR", ":8085")
 	srv := &http.Server{Addr: addr, Handler: router}
 
 	go func() {

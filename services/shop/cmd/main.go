@@ -37,7 +37,7 @@ func main() {
 		protected.POST("/shops/:shop_id/items", h.CreateItem)
 	}
 
-	addr := envOr("SERVER_ADDR", ":8082")
+	addr := envOr("SERVER_ADDR", ":8083")
 	srv := &http.Server{Addr: addr, Handler: r}
 
 	go func() {
