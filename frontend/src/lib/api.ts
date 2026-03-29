@@ -1,4 +1,4 @@
-import type { Auction, User, UserBid } from '@/types'
+import type { Auction, User, UserBid, Item } from '@/types'
 
 // ── Error type ───────────────────────────────────────────────────────────────
 
@@ -64,11 +64,18 @@ export const api = {
   },
 
   users: {
-    /** GET /users/:userId/bids → UserBid[] */
+    /** GET /users/:userId/bids → { bids: UserBid[] } */
     bids: (userId: string, token: string) =>
-      request<UserBid[]>(`/users/${userId}/bids`, {
+      request<{ bids: UserBid[] }>(`/users/${userId}/bids`, {
         headers: { Authorization: `Bearer ${token}` },
-      }),
+      }).then((r) => r.bids ?? []),
+  },
+
+  shops: {
+    /** GET /shops/:shopId/items → { items: Item[] } */
+    items: (shopId: string) =>
+      request<{ items: Item[] }>(`/shops/${shopId}/items`)
+        .then((r) => r.items ?? []),
   },
 }
 

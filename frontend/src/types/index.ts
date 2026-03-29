@@ -1,4 +1,14 @@
 export type AuctionStatus = 'OPEN' | 'CLOSED'
+
+/** A physical item listed in a shop (from the shop service) */
+export interface Item {
+  item_id:     string
+  shop_id:     string
+  title:       string
+  description: string
+  retail_value: number
+  image_url?:  string
+}
 export type BidStatus = 'WINNING' | 'OUTBID' | 'WON' | 'LOST'
 
 export interface AuctionItem {
