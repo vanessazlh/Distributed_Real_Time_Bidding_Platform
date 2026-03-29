@@ -1,132 +1,87 @@
-# Real-Time Surplus Auction Platform
+# Payment Service
 
-A platform where local stores post surplus or end-of-day items as rapid **5-minute auctions** instead of throwing them away.
+Handles post-auction payments for the Real-Time Surplus Auction Platform.
 
-For example, a bakery might post **3 mystery pastry boxes at 5pm**, and users have **5 minutes to bid** before the auction closes.
-
----
-
-# Core Challenge: Real-Time Bidding Under Extreme Concurrency
-
-When an auction is about to close, dozens of users may submit bids within the final seconds (the **"sniping" problem**).
-
-Each bid must:
-
-- Validate that the auction is still open
-- Check that the new bid is higher than the current highest bid
-- Update the highest bid **atomically**
-- Notify other bidders that they have been outbid
-
-All of these operations must happen **consistently under concurrent load**.
-
-If two users submit bids at the exact same millisecond:
-
-- Only **one bid should win**
-- No user should observe **stale data**
-
-At its core, this is a **concurrency and consistency problem**.
+When an auction closes, the auction service publishes an `auction_closed` event. This service picks it up, charges the winner, and records the result.
 
 ---
 
-# Burst Traffic Characteristics
+## How It Works
 
-Auctions are **bursty by nature**.
+```
+auction_closed (Redis Pub/Sub)
+        ↓
+  create Payment (pending)
+        ↓
+  simulate charge
+        ↓
+  completed ──────────────→ payment_processed
+  failed    ──→ [refund] ──→ payment_failed / refund_processed
+```
 
-Example scenario:
+Payments are stored in DynamoDB. Status transitions: `pending → processing → completed / failed → refunded`.
 
-- A popular store posts **10 auctions at 5pm**
-- Thousands of users flood the system simultaneously
-
-Then at **5:05pm**, another spike occurs when:
-
-- Auctions close
-- Winners are processed
-- Notifications are sent
-- Payments are handled
-
-The system must:
-
-- **Scale horizontally** to absorb sudden spikes
-- **Scale down** when traffic drops
+If `winner_id` is empty (no bids placed), payment is skipped.
 
 ---
 
-# Tech Stack
+## Running Locally
 
-- **Go**  
-  Used for the auction service. Goroutines and channels naturally support concurrent bid processing.
+```bash
+# Start DynamoDB local + Redis
+docker compose up -d
 
-- **ECS Fargate** with **Application Load Balancer (ALB)** and **auto-scaling**  
-  Infrastructure based on the same setup used in course assignments.
+# Run the service (port 8081)
+go run ./cmd/server
+```
 
-- **Redis or DynamoDB**  
-  Used to store auction state with fast reads/writes and strong consistency guarantees.
-
-- **WebSockets or Server-Sent Events (SSE)**  
-  For real-time bid updates to connected clients.
-
-- **Locust**  
-  For load testing and performance evaluation.
+The `payments` table is created automatically on startup.
 
 ---
 
-# Scalability Experiments
+## API
 
-## Experiment 1: Bid Contention Under Load
+All routes except admin require a `Authorization: Bearer <jwt>` header.
 
-Simulate **500 concurrent users** bidding on the same auction during the **final 10 seconds**.
-
-Compare different concurrency control strategies:
-
-- Optimistic locking with retries
-- Pessimistic locking
-- Serialized bid queue
-
-### Metrics
-
-- Successful bid rate
-- Rejected bid rate
-- Average bid latency
-- Consistency violations  
-  (e.g., a lower bid winning over a higher bid)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/payments/:id` | Get payment by ID |
+| GET | `/users/:user_id/payments` | List a user's payments |
+| GET | `/auctions/:auction_id/payment` | Get the payment for an auction |
+| POST | `/admin/payments/:id/process` | Manually trigger processing |
+| POST | `/admin/payments/:id/refund` | Refund a payment |
 
 ---
 
-## Experiment 2: Horizontal Scaling During Auction Spikes
+## Testing the Flow
 
-Simulate a **rush-hour scenario**:
+Manually publish an `auction_closed` event to trigger a payment:
 
-- **50 auctions** go live simultaneously
-- Each attracts **100 bidders**
+```bash
+redis-cli PUBLISH auction_closed '{
+  "auction_id": "a1",
+  "winner_id": "u1",
+  "winning_bid": 5000,
+  "item_id": "i1",
+  "shop_id": "s1",
+  "closed_at": "2026-03-28T10:00:00Z"
+}'
+```
 
-System starts with **2 ECS tasks** with auto-scaling enabled.
+Then query the result:
 
-### Metrics
-
-- Auto-scaling response time to the spike
-- Latency during the scale-up window
-- Throughput **before vs. after** new tasks join
-- Whether any bids are lost during scaling transitions
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8081/auctions/a1/payment
+```
 
 ---
 
-## Experiment 3: Real-Time Notification Fan-Out
+## Environment Variables
 
-Whenever a **new highest bid** is placed, all other bidders watching the auction must be notified.
-
-Simulate:
-
-- **1000 connected clients**
-- Watching a **single popular auction**
-- With rapid bid updates
-
-### Metrics
-
-- Notification delivery latency  
-  (time from bid acceptance to all clients being notified)
-
-- System resource usage as the number of connected clients scales
-
-- Performance comparison:
-  - **Push model** (WebSockets)
-  - **Pull model** (polling)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SERVER_ADDR` | `:8081` | HTTP listen address |
+| `REDIS_ADDR` | `localhost:6379` | Redis address |
+| `DYNAMODB_ENDPOINT` | `http://localhost:8000` | DynamoDB endpoint |
+| `AWS_REGION` | `us-east-1` | AWS region |
+| `JWT_SECRET` | `dev-secret` | JWT signing secret |
