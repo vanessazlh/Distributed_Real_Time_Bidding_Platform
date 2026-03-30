@@ -51,11 +51,17 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (string, er
 		return "", fmt.Errorf("hash password: %w", err)
 	}
 
+	role := req.Role
+	if role != "seller" {
+		role = "buyer"
+	}
+
 	u := User{
 		UserID:       uuid.NewString(),
 		Email:        req.Email,
 		PasswordHash: string(hash),
 		Username:     req.Username,
+		Role:         role,
 		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := s.repo.Save(ctx, u); err != nil {
@@ -75,8 +81,9 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": u.UserID,
-		"exp": time.Now().Add(24 * time.Hour).Unix(),
+		"sub":  u.UserID,
+		"role": u.Role,
+		"exp":  time.Now().Add(24 * time.Hour).Unix(),
 	})
 	signed, err := token.SignedString(jwtSecret())
 	if err != nil {

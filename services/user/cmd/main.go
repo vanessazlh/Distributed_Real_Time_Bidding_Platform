@@ -23,7 +23,8 @@ func main() {
 
 	repo := user.NewRepository(db)
 	svc := user.NewService(repo)
-	h := user.NewHandler(svc)
+	bidSvcURL := envOr("BID_SERVICE_URL", "http://bid:8084")
+	h := user.NewHandler(svc, bidSvcURL)
 
 	r := gin.Default()
 	r.POST("/users", h.Register)

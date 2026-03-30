@@ -1,100 +1,183 @@
-# Real-Time Surplus Auction Platform
+# SurpriseAuction — Real-Time Surplus Auction Platform
 
-A microservices-based platform where local stores auction surplus items in short 5-minute windows. Built for a distributed systems course, focusing on real-time bidding concurrency, horizontal scaling, and notification fan-out.
+A microservices platform where local stores auction surplus items in short live windows. Buyers compete in real-time bidding; winners are charged automatically when the auction closes.
+
+Built for a distributed systems course, with a focus on **concurrent bid processing**, **horizontal scaling**, and **real-time notification fan-out**.
+
+---
+
+## Architecture
+
+```
+Browser (React + Vite)
+        │
+        ▼
+  nginx (port 3000)  ← SPA + reverse proxy
+        │
+        ├── /auth, /users          → User Service       :8082  (DynamoDB)
+        ├── /shops, /sellers       → Shop Service       :8083  (DynamoDB)
+        ├── /auctions, /bids       → Auction Service    :8081  (Redis)
+        ├── /auctions/:id/subscribe→ Notification Svc   :8080  (Redis Pub/Sub → WebSocket)
+        ├── /bids                  → Bid Service        :8084  (Redis + DynamoDB)
+        └── /payments              → Payment Service    :8085  (DynamoDB)
+```
+
+**Infrastructure:** DynamoDB Local (dev) · Redis 7 · Docker Compose
+
+---
 
 ## Services
 
-| Service | Status | Owner | Description |
-|---------|--------|-------|-------------|
-| User Service | ✅ Done | Vanessa | Registration, login, JWT auth, profile |
-| Shop Service | ✅ Done | Vanessa | Shop + item CRUD, owner verification |
-| Auction Service | ✅ Done | Lucy | Auction lifecycle, bid validation, concurrency control |
-| Bid Service | ✅ Done | Lucy | Bid history storage, outbid tracking, user bid queries |
-| Notification Service | 🚧 In Progress | Claire | WebSocket / SSE / polling fan-out |
-| Payment Service | 🚧 In Progress | Wendy | Winner payment processing |
+| Service | Port | Storage | Description |
+|---|---|---|---|
+| User | 8082 | DynamoDB | Registration, login, JWT auth, bid proxy |
+| Shop | 8083 | DynamoDB | Shop + item CRUD, seller ownership checks |
+| Auction | 8081 | Redis | Auction lifecycle, bid validation, concurrency control |
+| Bid | 8084 | Redis + DynamoDB | Bid history, outbid tracking, per-user bid queries |
+| Notification | 8080 | Redis Pub/Sub | WebSocket fan-out of bid events to watching clients |
+| Payment | 8085 | DynamoDB | Winner charge processing, payment status tracking |
+| Frontend | 3000 | — | React SPA + nginx reverse proxy |
 
-## Tech Stack
-
-- **Language**: Go (gin framework)
-- **Database**: DynamoDB (Local for dev, AWS for prod)
-- **Cache / Concurrency**: Redis 7 (optimistic locking, pessimistic locking, pub/sub)
-- **Auth**: JWT (golang-jwt) + bcrypt
-- **Events**: Redis Pub/Sub (`bid_placed`, `auction_closed`)
-- **Infra**: Docker Compose (local), ECS Fargate + ALB (prod)
-- **Testing**: Go built-in testing, Locust (load testing)
+---
 
 ## Quick Start
 
 ```bash
-# 1. Start DynamoDB Local
-docker-compose up -d
+# Build and start all services
+docker-compose up --build
 
-# 2. Create tables
-go run scripts/init_tables.go
-
-# 3. Start the server
-go run cmd/server/main.go
+# Open the app
+open http://localhost:3000
 ```
 
-Server runs on `localhost:8080` by default.
+On first run, the `init-tables` container automatically creates all DynamoDB tables before the dependent services start.
 
-## API Overview
+### Roles
 
-### User Service
-- `POST /users` — Register
-- `POST /auth/login` — Login (returns JWT)
-- `GET /users/:user_id` — Get profile (auth required)
+| Entry Point | Role |
+|---|---|
+| `http://localhost:3000/login` | Buyer |
+| `http://localhost:3000/shop/login` | Seller |
 
-### Shop Service
-- `POST /shops` — Create shop (auth required)
-- `GET /shops/:shop_id` — Get shop
-- `POST /shops/:shop_id/items` — Create item (auth required, owner only)
-- `GET /shops/:shop_id/items` — List items
+---
 
-### Auction Service
-- `POST /auctions` — Create auction (auth required)
-- `GET /auctions` — List auctions (filterable by status)
-- `GET /auctions/:id` — Get auction details
-- `POST /auctions/:id/bid` — Place bid (auth required)
-- `POST /auctions/:id/close` — Close auction (auth required)
+## API Reference
 
-### Bid Service
-- `GET /auctions/:id/bids` — Get all bids for an auction
-- `GET /users/:user_id/bids` — Get all bids by a user (auth required)
+All requests pass through nginx at `localhost:3000`. Protected routes require `Authorization: Bearer <jwt>`.
 
-### Admin / Experiments
-- `GET /admin/metrics` — Get bid metrics (latency, success/rejection counts, P95/P99)
-- `POST /admin/metrics/reset` — Reset metrics counters
-- `GET /admin/strategy` — Get current concurrency strategy
-- `PUT /admin/strategy` — Switch strategy (`optimistic`, `pessimistic`, `queue`)
+### Auth / Users — User Service
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/users` | — | Register (role: `buyer` or `seller`) |
+| `POST` | `/auth/login` | — | Login → `{ token }` |
+| `GET` | `/users/:id` | ✓ | Get profile |
+| `GET` | `/users/:id/bids` | ✓ | List user's bids (proxied to Bid Service) |
+
+### Shops + Items — Shop Service
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/shops` | ✓ seller | Create shop |
+| `GET` | `/shops/:id` | — | Get shop |
+| `GET` | `/sellers/:userId/shops` | ✓ | List shops owned by a seller |
+| `POST` | `/shops/:id/items` | ✓ seller | Add item to shop |
+| `GET` | `/shops/:id/items` | — | List items in a shop |
+
+### Auctions — Auction Service
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/auctions` | ✓ | Create auction |
+| `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`) |
+| `GET` | `/auctions/:id` | — | Get auction details |
+| `POST` | `/auctions/:id/bid` | ✓ | Place bid |
+| `POST` | `/auctions/:id/close` | ✓ | Close auction early |
+
+### Bids — Bid Service
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/auctions/:id/bids` | — | Bid history for an auction |
+| `GET` | `/users/:id/bids` | ✓ | All bids by a user |
+
+### Payments — Payment Service
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/auctions/:id/payment` | ✓ | Payment for a specific auction |
+| `GET` | `/users/:id/payments` | ✓ | All payments for a user |
+
+### Notifications — Notification Service
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/auctions/:id/subscribe` | WebSocket — live bid events for an auction |
+
+### Admin — Auction Service
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/admin/metrics` | Bid metrics (latency, success/reject counts, P95/P99) |
+| `POST` | `/admin/metrics/reset` | Reset metrics counters |
+| `GET` | `/admin/strategy` | Current concurrency strategy |
+| `PUT` | `/admin/strategy` | Switch strategy (`optimistic` / `pessimistic` / `queue`) |
+
+---
 
 ## Concurrency Strategies
 
-The platform supports three pluggable bid-concurrency strategies, switchable at runtime via the admin endpoint:
+The platform supports three pluggable bid-concurrency strategies, switchable at runtime without restarting:
 
-| Strategy | How it works | Trade-off |
-|----------|-------------|-----------|
-| **Optimistic** | Redis `WATCH/MULTI/EXEC`, retry up to 3x with exponential backoff | Lowest latency, may fail under high contention |
-| **Pessimistic** | Redis `SETNX` distributed lock (500ms TTL), retry up to 10x | Prevents conflicts, serializes writes |
-| **Queue** | Go channel per auction, FIFO processing | Fully serialized, fairest ordering |
+| Strategy | Mechanism | Trade-off |
+|---|---|---|
+| **Optimistic** | Redis `WATCH/MULTI/EXEC`, retry up to 3× with exponential backoff | Lowest latency; may fail under extreme contention |
+| **Pessimistic** | Redis `SETNX` distributed lock (500ms TTL), retry up to 10× | Prevents all conflicts; serializes writes per auction |
+| **Queue** | Go channel per auction, FIFO processing | Fully serialized; fairest ordering; highest isolation |
 
-## Event-Driven Architecture
+Switch strategies live:
+```bash
+curl -X PUT http://localhost:3000/admin/strategy \
+  -H "Content-Type: application/json" \
+  -d '{"strategy": "pessimistic"}'
+```
 
-Domain events are published via Redis Pub/Sub for downstream services:
+---
 
-- **`bid_placed`** — auction_id, bid_id, user_id, amount, previous highest
-- **`auction_closed`** — auction_id, winner_id, winning_bid, item_id, shop_id
+## Event-Driven Flow
 
-A background goroutine auto-closes expired auctions every second.
+Services communicate through Redis Pub/Sub. Two domain events are published:
+
+**`bid_placed`**
+```
+Auction Service → Redis Pub/Sub
+    ├── Bid Service        (records bid history)
+    └── Notification Svc   (broadcasts to WebSocket watchers)
+```
+
+**`auction_closed`**
+```
+Auction Service → Redis Pub/Sub
+    ├── Payment Service    (charges the winning bidder)
+    └── Notification Svc   (notifies winner and losing bidders)
+```
+
+---
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JWT_SECRET` | `secret` | JWT signing key |
-| `DYNAMODB_ENDPOINT` | `http://localhost:8000` | DynamoDB endpoint |
-| `REDIS_ADDR` | `localhost:6379` | Redis address |
-| `SERVER_ADDR` | `:8080` | Server listen address |
+| Variable | Default | Used by |
+|---|---|---|
+| `JWT_SECRET` | `secret` | User, Shop, Auction, Bid, Payment |
+| `DYNAMODB_ENDPOINT` | `http://localhost:8000` | User, Shop, Bid, Payment |
+| `REDIS_ADDR` | `localhost:6379` | Auction, Bid, Notification, Payment |
+| `SERVER_ADDR` | `:808x` | Each service (see ports above) |
+| `BID_SERVICE_URL` | `http://bid:8084` | User (for bid proxy) |
+| `CONCURRENCY_STRATEGY` | `optimistic` | Auction |
+
+All defaults are pre-configured in `docker-compose.yml`.
+
+---
 
 ## Running Tests
 
@@ -102,8 +185,23 @@ A background goroutine auto-closes expired auctions every second.
 go test ./...
 ```
 
-## Experiments
+---
 
-1. **Bid contention** — Optimistic locking vs pessimistic locking vs serialized queue (use `/admin/strategy` to switch, `/admin/metrics` to compare)
-2. **Horizontal scaling** — Auto-scaling under auction spike traffic
-3. **Notification fan-out** — Push (WebSocket/SSE) vs pull (polling) performance
+## Research Experiments
+
+### 1. Bid Contention Under Load
+Simulate 500 concurrent users bidding on the same auction in its final 10 seconds. Compare the three concurrency strategies on:
+- Successful vs. rejected bid rate
+- Average bid latency and P95/P99
+- Consistency violations (lower bid winning)
+
+### 2. Horizontal Scaling During Auction Spikes
+Simulate a rush-hour scenario: 50 auctions go live simultaneously, each attracting 100 bidders, against 2 ECS tasks with auto-scaling enabled. Measure:
+- Auto-scaling response time
+- Latency during the scale-up window
+- Bids lost during scaling transitions
+
+### 3. Notification Fan-Out
+Simulate 1000 clients watching a single popular auction with rapid bid updates. Compare:
+- Push (WebSocket) vs. pull (polling) delivery latency
+- Resource usage as connected clients scale

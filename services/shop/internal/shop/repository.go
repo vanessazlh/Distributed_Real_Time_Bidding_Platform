@@ -94,6 +94,31 @@ func (r *Repository) FindItemByID(ctx context.Context, itemID string) (*Item, er
 	return &it, nil
 }
 
+// FindShopsByOwnerID queries the owner_id GSI on Shops.
+func (r *Repository) FindShopsByOwnerID(ctx context.Context, ownerID string) ([]Shop, error) {
+	out, err := r.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(shopsTable),
+		IndexName:              aws.String("owner_id-index"),
+		KeyConditionExpression: aws.String("owner_id = :oid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":oid": &types.AttributeValueMemberS{Value: ownerID},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query shops by owner: %w", err)
+	}
+
+	shops := make([]Shop, 0, len(out.Items))
+	for _, av := range out.Items {
+		var s Shop
+		if err := attributevalue.UnmarshalMap(av, &s); err != nil {
+			return nil, fmt.Errorf("unmarshal shop: %w", err)
+		}
+		shops = append(shops, s)
+	}
+	return shops, nil
+}
+
 // FindItemsByShop queries the shop_id GSI on Items.
 func (r *Repository) FindItemsByShop(ctx context.Context, shopID string) ([]Item, error) {
 	out, err := r.db.Query(ctx, &dynamodb.QueryInput{

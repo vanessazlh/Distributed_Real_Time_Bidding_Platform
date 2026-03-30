@@ -24,9 +24,21 @@ func callerID(c *gin.Context) string {
 	return id
 }
 
+// callerRole extracts the role claim set by the JWT middleware.
+func callerRole(c *gin.Context) string {
+	v, _ := c.Get("role")
+	r, _ := v.(string)
+	return r
+}
+
 // CreateShop godoc
 // POST /shops
 func (h *Handler) CreateShop(c *gin.Context) {
+	if callerRole(c) != "seller" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only sellers can create shops"})
+		return
+	}
+
 	var req CreateShopRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -82,6 +94,11 @@ func (h *Handler) GetItem(c *gin.Context) {
 // CreateItem godoc
 // POST /shops/:shop_id/items
 func (h *Handler) CreateItem(c *gin.Context) {
+	if callerRole(c) != "seller" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only sellers can add items"})
+		return
+	}
+
 	shopID := c.Param("shop_id")
 
 	var req CreateItemRequest
@@ -106,6 +123,18 @@ func (h *Handler) CreateItem(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, item)
+}
+
+// ListSellerShops godoc
+// GET /sellers/:user_id/shops
+func (h *Handler) ListSellerShops(c *gin.Context) {
+	ownerID := c.Param("user_id")
+	shops, err := h.svc.ListSellerShops(c.Request.Context(), ownerID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"shops": shops})
 }
 
 // ListItems godoc
