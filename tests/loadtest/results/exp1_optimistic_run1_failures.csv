@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences
+POST,/auctions/:id/bid [POST],"CatchResponseError('Unexpected status 500: {""error"":""internal error""}')",3
