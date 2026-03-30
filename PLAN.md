@@ -177,17 +177,11 @@ Payment processing is currently simulated (90% success rate mock). Replace with 
 ### 6. Shop settlement
 The payment flow records `shop_id` but does not disburse funds to the shop owner. Settlement flow to be designed.
 
----
+### 7. Image storage — file upload + S3
+Currently `image_url` and `logo_url` are free-text URL fields. There is no file upload support — sellers must paste an external URL manually.
 
-## Completed
+Plan:
+- Add a file upload endpoint (e.g. `POST /uploads`) that accepts a multipart image, stores it in S3 (or compatible object storage like MinIO for local dev), and returns a public URL
+- Replace the URL text inputs on `CreateItemPage` and `CreateShopPage` with a file picker that calls this endpoint
+- In production, serve images via CloudFront in front of S3 for low-latency delivery
 
-| # | Fix | Date |
-|---|---|---|
-| 1 | My Bids page was a stub — user service now proxies `/users/:id/bids` to the bid service | 2026-03 |
-| 2 | `bid_count` always 0 — Redis hash now increments on each bid; `parseAuction` reads it back | 2026-03 |
-| 3 | Auction enrichment fields empty — stored at creation, parsed back, passed through frontend transform | 2026-03 |
-| 4 | `payments` table missing from `init_tables.go` — added `createPaymentsTable()` | 2026-03 |
-| 5 | Seller auth UX — separate `/shop/login` entry point, `role` field in JWT, seller dashboard page | 2026-03 |
-| 6 | Payment pages missing — added `PaymentPage` and `MyPaymentsPage` with API client | 2026-03 |
-| 7 | Chrome DevTools blank — nginx `/.well-known/` returning `index.html` with 200; fixed with `return 404` | 2026-03 |
-| 8 | Auction item crash — `auction.item` undefined; added `BackendAuction` → `Auction` transform in `api.ts` | 2026-03 |
