@@ -1,0 +1,10 @@
+{
+  "mode": "pull",
+  "run": "2",
+  "timestamp": "2026-03-30T05:08:27Z",
+  "active_connections": 0,
+  "total_broadcasts": 173486,
+  "delta_broadcasts": 85,
+  "avg_delivery_latency_ms": 0.6,
+  "p99_delivery_latency_ms": 9
+}
