@@ -50,6 +50,16 @@ func (m *mockRepo) FindItemsByShop(_ context.Context, shopID string) ([]shop.Ite
 	return result, nil
 }
 
+func (m *mockRepo) FindShopsByOwnerID(_ context.Context, ownerID string) ([]shop.Shop, error) {
+	var result []shop.Shop
+	for _, s := range m.shops {
+		if s.OwnerID == ownerID {
+			result = append(result, *s)
+		}
+	}
+	return result, nil
+}
+
 func (m *mockRepo) FindItemByID(_ context.Context, itemID string) (*shop.Item, error) {
 	it, ok := m.items[itemID]
 	if !ok {
