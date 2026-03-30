@@ -37,6 +37,12 @@ func main() {
 	} else {
 		fmt.Println("created Items table")
 	}
+
+	if err := createPaymentsTable(ctx, db); err != nil {
+		log.Printf("Payments table: %v", err)
+	} else {
+		fmt.Println("created Payments table")
+	}
 }
 
 func createUsersTable(ctx context.Context, db *dynamodb.Client) error {
@@ -75,9 +81,23 @@ func createShopsTable(ctx context.Context, db *dynamodb.Client) error {
 		TableName: aws.String("Shops"),
 		AttributeDefinitions: []types.AttributeDefinition{
 			{AttributeName: aws.String("shop_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("owner_id"), AttributeType: types.ScalarAttributeTypeS},
 		},
 		KeySchema: []types.KeySchemaElement{
 			{AttributeName: aws.String("shop_id"), KeyType: types.KeyTypeHash},
+		},
+		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
+			{
+				IndexName: aws.String("owner_id-index"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("owner_id"), KeyType: types.KeyTypeHash},
+				},
+				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
+				ProvisionedThroughput: &types.ProvisionedThroughput{
+					ReadCapacityUnits:  aws.Int64(5),
+					WriteCapacityUnits: aws.Int64(5),
+				},
+			},
 		},
 		ProvisionedThroughput: &types.ProvisionedThroughput{
 			ReadCapacityUnits:  aws.Int64(5),
@@ -102,6 +122,51 @@ func createItemsTable(ctx context.Context, db *dynamodb.Client) error {
 				IndexName: aws.String("shop_id-index"),
 				KeySchema: []types.KeySchemaElement{
 					{AttributeName: aws.String("shop_id"), KeyType: types.KeyTypeHash},
+				},
+				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
+				ProvisionedThroughput: &types.ProvisionedThroughput{
+					ReadCapacityUnits:  aws.Int64(5),
+					WriteCapacityUnits: aws.Int64(5),
+				},
+			},
+		},
+		ProvisionedThroughput: &types.ProvisionedThroughput{
+			ReadCapacityUnits:  aws.Int64(5),
+			WriteCapacityUnits: aws.Int64(5),
+		},
+	})
+	return err
+}
+
+func createPaymentsTable(ctx context.Context, db *dynamodb.Client) error {
+	_, err := db.CreateTable(ctx, &dynamodb.CreateTableInput{
+		TableName: aws.String("payments"),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{AttributeName: aws.String("payment_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("auction_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("user_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("created_at"), AttributeType: types.ScalarAttributeTypeS},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{AttributeName: aws.String("payment_id"), KeyType: types.KeyTypeHash},
+		},
+		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
+			{
+				IndexName: aws.String("auction-index"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("auction_id"), KeyType: types.KeyTypeHash},
+				},
+				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
+				ProvisionedThroughput: &types.ProvisionedThroughput{
+					ReadCapacityUnits:  aws.Int64(5),
+					WriteCapacityUnits: aws.Int64(5),
+				},
+			},
+			{
+				IndexName: aws.String("user-index"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("user_id"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("created_at"), KeyType: types.KeyTypeRange},
 				},
 				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
 				ProvisionedThroughput: &types.ProvisionedThroughput{

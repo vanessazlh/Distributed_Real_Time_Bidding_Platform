@@ -4,7 +4,7 @@ import { Button } from '@/components/ui'
 import { UserIcon } from '@/components/icons'
 
 export function Navbar() {
-  const { user, logout } = useAuth()
+  const { user, isSeller, logout } = useAuth()
   const navigate = useNavigate()
 
   const handleLogout = () => {
@@ -24,25 +24,51 @@ export function Navbar() {
 
         <div className="flex items-center gap-5 font-sans font-medium">
           {user ? (
-            <>
-              <Link to="/my-bids" className="text-text-primary hover:text-brand transition-colors text-sm">
-                My Bids
-              </Link>
-              <button
-                onClick={handleLogout}
-                className="text-text-secondary hover:text-text-primary transition-colors text-sm"
-              >
-                Sign Out
-              </button>
-              <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-border shadow-sm">
-                <UserIcon width={18} height={18} />
-                <span className="text-sm">{user.username}</span>
-              </div>
-            </>
+            isSeller ? (
+              <>
+                <Link to="/seller/dashboard" className="text-text-primary hover:text-brand transition-colors text-sm">
+                  My Dashboard
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-text-secondary hover:text-text-primary transition-colors text-sm"
+                >
+                  Sign Out
+                </button>
+                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-border shadow-sm">
+                  <UserIcon width={18} height={18} />
+                  <span className="text-sm">{user.username}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <Link to="/my-bids" className="text-text-primary hover:text-brand transition-colors text-sm">
+                  My Bids
+                </Link>
+                <Link to="/my-payments" className="text-text-primary hover:text-brand transition-colors text-sm">
+                  Payments
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-text-secondary hover:text-text-primary transition-colors text-sm"
+                >
+                  Sign Out
+                </button>
+                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-border shadow-sm">
+                  <UserIcon width={18} height={18} />
+                  <span className="text-sm">{user.username}</span>
+                </div>
+              </>
+            )
           ) : (
-            <Button variant="primary" size="md" onClick={() => navigate('/login')}>
-              Sign In
-            </Button>
+            <>
+              <Button variant="outline" size="md" onClick={() => navigate('/shop/login')}>
+                Sell
+              </Button>
+              <Button variant="primary" size="md" onClick={() => navigate('/login')}>
+                Sign In
+              </Button>
+            </>
           )}
         </div>
       </div>

@@ -1,7 +1,10 @@
 package user
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,12 +12,13 @@ import (
 
 // Handler holds HTTP handlers for the user domain.
 type Handler struct {
-	svc *Service
+	svc       *Service
+	bidSvcURL string
 }
 
 // NewHandler creates a new Handler.
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, bidSvcURL string) *Handler {
+	return &Handler{svc: svc, bidSvcURL: bidSvcURL}
 }
 
 // Register godoc
@@ -87,7 +91,37 @@ func (h *Handler) GetProfile(c *gin.Context) {
 }
 
 // GetBids godoc
-// GET /users/:user_id/bids — placeholder, will call Bid Service later
+// GET /users/:user_id/bids — proxied to the bid service
 func (h *Handler) GetBids(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"bids": []interface{}{}})
+	userID := c.Param("user_id")
+
+	url := fmt.Sprintf("%s/users/%s/bids", h.bidSvcURL, userID)
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	// Forward the caller's JWT so the bid service can authenticate it.
+	req.Header.Set("Authorization", c.GetHeader("Authorization"))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "bid service unavailable"})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	var result json.RawMessage
+	if err := json.Unmarshal(body, &result); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	c.Data(resp.StatusCode, "application/json", body)
 }

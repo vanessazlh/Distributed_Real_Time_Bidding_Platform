@@ -24,6 +24,19 @@ services:
       timeout: 5s
       retries: 10
 
+  init-tables:
+    image: golang:1.25-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+    command: go run scripts/init_tables.go
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+    restart: "no"
+
   notification:
     build:
       context: .
@@ -65,6 +78,8 @@ services:
     depends_on:
       dynamodb-local:
         condition: service_healthy
+      init-tables:
+        condition: service_completed_successfully
 
   shop:
     build:
@@ -78,6 +93,8 @@ services:
     depends_on:
       dynamodb-local:
         condition: service_healthy
+      init-tables:
+        condition: service_completed_successfully
 
   bid:
     build:

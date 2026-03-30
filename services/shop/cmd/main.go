@@ -35,6 +35,7 @@ func main() {
 	{
 		protected.POST("/shops", h.CreateShop)
 		protected.POST("/shops/:shop_id/items", h.CreateItem)
+		protected.GET("/sellers/:user_id/shops", h.ListSellerShops)
 	}
 
 	addr := envOr("SERVER_ADDR", ":8083")

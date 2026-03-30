@@ -3,10 +3,11 @@ import type { ReactNode } from 'react'
 import type { User } from '@/types'
 
 interface AuthContextValue {
-  user:   User | null
-  token:  string | null
-  login:  (user: User, token: string) => void
-  logout: () => void
+  user:     User | null
+  token:    string | null
+  isSeller: boolean
+  login:    (user: User, token: string) => void
+  logout:   () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -38,8 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('auth_token')
   }
 
+  const isSeller = user?.role === 'seller'
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isSeller, login, logout }}>
       {children}
     </AuthContext.Provider>
   )
