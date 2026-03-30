@@ -1,0 +1,12 @@
+{
+  "total_bids": 67537,
+  "successful_bids": 19810,
+  "rejected_bids": 47727,
+  "avg_latency_ms": 0.54,
+  "p95_latency_ms": 0.82,
+  "p99_latency_ms": 1.16,
+  "consistency_violations": 0,
+  "strategy": "pessimistic",
+  "auction_id": "7c899246-7203-46d9-980f-648945ed4d39",
+  "timestamp": "2026-03-30T03:49:37Z"
+}
