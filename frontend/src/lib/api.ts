@@ -26,6 +26,29 @@ function jsonHeaders(token?: string | null): HeadersInit {
   return headers
 }
 
+// ── Bid response transform ───────────────────────────────────────────────────
+
+interface BackendBid {
+  bid_id:     string
+  auction_id: string
+  user_id:    string
+  amount:     number
+  timestamp:  string  // RFC3339
+  status:     string  // ACCEPTED | OUTBID
+}
+
+function toUserBid(b: BackendBid): UserBid {
+  return {
+    bid_id:     b.bid_id,
+    auction_id: b.auction_id,
+    item_title: '',
+    shop_name:  '',
+    amount:     b.amount,
+    timestamp:  new Date(b.timestamp).getTime(),
+    status:     b.status === 'ACCEPTED' ? 'WINNING' : 'OUTBID',
+  }
+}
+
 // ── Auction response transform ───────────────────────────────────────────────
 
 /** Shape the auction service actually returns (flat, end_time as RFC3339 string). */
@@ -34,8 +57,14 @@ interface BackendAuction {
   item_id:             string
   item_title:          string
   shop_id:             string
+  shop_name:           string
+  retail_price:        number
+  image_url:           string
+  shop_logo_url:       string
+  description:         string
   end_time:            string   // RFC3339
   current_highest_bid: number
+  bid_count:           number
   status:              string
 }
 
@@ -43,18 +72,18 @@ function toAuction(b: BackendAuction): Auction {
   return {
     auction_id:          b.auction_id,
     item: {
-      title:     b.item_title ?? '',
-      shop_name: '',
-      shop_id:   b.shop_id   ?? '',
+      title:     b.item_title  ?? '',
+      shop_name: b.shop_name   ?? '',
+      shop_id:   b.shop_id     ?? '',
     },
     current_highest_bid: b.current_highest_bid ?? 0,
-    retail_price:        0,
+    retail_price:        b.retail_price        ?? 0,
     end_time:            new Date(b.end_time).getTime(),
     status:              (b.status as AuctionStatus) ?? 'OPEN',
-    bid_count:           0,
-    image_url:           '',
-    shop_logo_url:       '',
-    description:         '',
+    bid_count:           b.bid_count           ?? 0,
+    image_url:           b.image_url           ?? '',
+    shop_logo_url:       b.shop_logo_url       ?? '',
+    description:         b.description         ?? '',
   }
 }
 
@@ -90,7 +119,7 @@ export const api = {
       request<BackendAuction>(`/auctions/${id}`).then(toAuction),
 
     /** POST /auctions → Auction */
-    create: (payload: { item_id: string; item_title: string; shop_id: string; duration_minutes: number; start_bid: number }, token: string) =>
+    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; image_url: string; shop_logo_url: string; description: string; duration_minutes: number; start_bid: number }, token: string) =>
       request<BackendAuction>('/auctions', {
         method: 'POST',
         headers: jsonHeaders(token),
@@ -109,9 +138,9 @@ export const api = {
   users: {
     /** GET /users/:userId/bids → { bids: UserBid[] } */
     bids: (userId: string, token: string) =>
-      request<{ bids: UserBid[] }>(`/users/${userId}/bids`, {
+      request<{ bids: BackendBid[] }>(`/users/${userId}/bids`, {
         headers: { Authorization: `Bearer ${token}` },
-      }).then((r) => r.bids ?? []),
+      }).then((r) => (r.bids ?? []).map(toUserBid)),
   },
 
   shops: {
