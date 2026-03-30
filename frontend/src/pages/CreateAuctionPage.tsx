@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import type { Item } from '@/types'
+import type { Item, Shop } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { Card, Button, FormField, TextInput, StatusBanner, EmptyState, Spinner } from '@/components/ui'
@@ -16,6 +16,7 @@ export default function CreateAuctionPage() {
   const navigate        = useNavigate()
 
   const [items,       setItems]       = useState<Item[]>([])
+  const [shop,        setShop]        = useState<Shop | null>(null)
   const [loadingItems,setLoadingItems]= useState(true)
   const [itemId,      setItemId]      = useState('')
   const [duration,    setDuration]    = useState('5')
@@ -25,10 +26,13 @@ export default function CreateAuctionPage() {
 
   useEffect(() => {
     if (!shopId) { setLoadingItems(false); return }
-    api.shops.items(shopId)
-      .then(setItems)
-      .catch(() => setItems([]))
-      .finally(() => setLoadingItems(false))
+    Promise.all([
+      api.shops.items(shopId).catch(() => [] as Item[]),
+      api.shops.get(shopId).catch(() => null),
+    ]).then(([fetchedItems, fetchedShop]) => {
+      setItems(fetchedItems)
+      setShop(fetchedShop)
+    }).finally(() => setLoadingItems(false))
   }, [shopId])
 
   if (!user || !isSeller) {
@@ -66,6 +70,11 @@ export default function CreateAuctionPage() {
           item_id:          selectedItem.item_id,
           item_title:       selectedItem.title,
           shop_id:          shopId,
+          shop_name:        shop?.name        ?? '',
+          retail_price:     selectedItem.retail_value,
+          image_url:        selectedItem.image_url  ?? '',
+          shop_logo_url:    shop?.logo_url    ?? '',
+          description:      selectedItem.description ?? '',
           duration_minutes: parseInt(duration, 10),
           start_bid:        Math.round(parseFloat(startBid) * 100),
         },

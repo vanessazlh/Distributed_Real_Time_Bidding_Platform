@@ -33,9 +33,15 @@ func (r *Repository) Create(ctx context.Context, a *Auction) error {
 		"item_id":         a.ItemID,
 		"item_title":      a.ItemTitle,
 		"shop_id":         a.ShopID,
+		"shop_name":       a.ShopName,
+		"retail_price":    a.RetailPrice,
+		"image_url":       a.ImageURL,
+		"shop_logo_url":   a.ShopLogoURL,
+		"description":     a.Description,
 		"start_time":      a.StartTime.Format(time.RFC3339),
 		"end_time":        a.EndTime.Format(time.RFC3339),
 		"current_highest": a.CurrentHighest,
+		"bid_count":       a.BidCount,
 		"highest_bidder":  a.HighestBidder,
 		"status":          a.Status,
 		"version":         a.Version,
@@ -101,6 +107,7 @@ func (r *Repository) UpdateHighestBid(ctx context.Context, auctionID string, amo
 				"highest_bidder":  bidderID,
 				"version":         expectedVersion + 1,
 			})
+			pipe.HIncrBy(ctx, key, "bid_count", 1)
 			return nil
 		})
 		return err
@@ -135,15 +142,23 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 	endTime, _ := time.Parse(time.RFC3339, vals["end_time"])
 	currentHighest, _ := strconv.ParseInt(vals["current_highest"], 10, 64)
 	version, _ := strconv.ParseInt(vals["version"], 10, 64)
+	bidCount, _ := strconv.ParseInt(vals["bid_count"], 10, 64)
+	retailPrice, _ := strconv.ParseInt(vals["retail_price"], 10, 64)
 
 	return &Auction{
 		AuctionID:      vals["auction_id"],
 		ItemID:         vals["item_id"],
 		ItemTitle:      vals["item_title"],
 		ShopID:         vals["shop_id"],
+		ShopName:       vals["shop_name"],
+		RetailPrice:    retailPrice,
+		ImageURL:       vals["image_url"],
+		ShopLogoURL:    vals["shop_logo_url"],
+		Description:    vals["description"],
 		StartTime:      startTime,
 		EndTime:        endTime,
 		CurrentHighest: currentHighest,
+		BidCount:       bidCount,
 		HighestBidder:  vals["highest_bidder"],
 		Status:         vals["status"],
 		Version:        version,
