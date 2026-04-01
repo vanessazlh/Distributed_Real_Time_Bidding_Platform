@@ -64,48 +64,73 @@ func (s *Service) InitiatePayment(ctx context.Context, event events.AuctionClose
 }
 
 // ProcessPayment transitions a pending payment to completed or failed.
+// Also accepts PROCESSING to support retries of records stuck mid-flight
+// (e.g. after a crash between status updates).
 func (s *Service) ProcessPayment(ctx context.Context, paymentID string) error {
 	p, err := s.repo.GetByID(ctx, paymentID)
 	if err != nil {
 		return err
 	}
-	if p.Status != StatusPending {
+	if p.Status != StatusPending && p.Status != StatusProcessing {
 		return fmt.Errorf("%w: cannot process a payment in status %q", ErrInvalidStatus, p.Status)
 	}
 
-	// Mark as processing.
-	if err := s.repo.UpdateStatus(ctx, paymentID, StatusProcessing, ""); err != nil {
-		return fmt.Errorf("mark processing: %w", err)
+	// Transition PENDING → PROCESSING (skip if already PROCESSING from a prior attempt).
+	if p.Status == StatusPending {
+		if err := s.repo.UpdateStatus(ctx, paymentID, StatusProcessing, ""); err != nil {
+			return fmt.Errorf("mark processing: %w", err)
+		}
 	}
 
-	// Simulate payment gateway: 90% success rate.
-	success := rand.Intn(10) < 9
+	// Determine the gateway outcome. If gateway_decision is already set, a prior
+	// attempt reached the gateway and we reuse its result to avoid re-randomizing.
+	//
+	// NOTE: this is a mock simplification. A real gateway (e.g. Stripe) stores the
+	// idempotency result on its own side; the caller would query the gateway using
+	// paymentID as the idempotency key and get back the same outcome on retry.
+	decision := p.GatewayDecision
+	if decision == "" {
+		if rand.Intn(10) < 9 {
+			decision = "success"
+		} else {
+			decision = "failed"
+		}
+		if err := s.repo.SetGatewayDecision(ctx, paymentID, decision); err != nil {
+			return fmt.Errorf("record gateway decision: %w", err)
+		}
+	}
+
+	success := decision == "success"
 	if success {
 		if err := s.repo.UpdateStatus(ctx, paymentID, StatusCompleted, ""); err != nil {
 			return fmt.Errorf("mark completed: %w", err)
 		}
 		log.Printf("payment: %s completed", paymentID)
-		_ = s.publisher.PublishPaymentProcessed(ctx, events.PaymentProcessedEvent{
+		if err := s.publisher.PublishPaymentProcessed(ctx, events.PaymentProcessedEvent{
 			PaymentID:   paymentID,
 			AuctionID:   p.AuctionID,
 			UserID:      p.UserID,
 			Amount:      p.Amount,
 			ProcessedAt: time.Now().UTC().Format(time.RFC3339),
-		})
+		}); err != nil {
+			log.Printf("payment: failed to publish payment_processed for %s: %v", paymentID, err)
+		}
 	} else {
 		reason := "payment gateway declined"
 		if err := s.repo.UpdateStatus(ctx, paymentID, StatusFailed, reason); err != nil {
 			return fmt.Errorf("mark failed: %w", err)
 		}
 		log.Printf("payment: %s failed (%s)", paymentID, reason)
-		_ = s.publisher.PublishPaymentFailed(ctx, events.PaymentFailedEvent{
+		if err := s.publisher.PublishPaymentFailed(ctx, events.PaymentFailedEvent{
 			PaymentID: paymentID,
 			AuctionID: p.AuctionID,
 			UserID:    p.UserID,
 			Amount:    p.Amount,
 			Reason:    reason,
 			FailedAt:  time.Now().UTC().Format(time.RFC3339),
-		})
+		}); err != nil {
+			log.Printf("payment: failed to publish payment_failed for %s: %v", paymentID, err)
+		}
 	}
 	return nil
 }
@@ -125,13 +150,40 @@ func (s *Service) RefundPayment(ctx context.Context, paymentID string) error {
 	}
 	log.Printf("payment: %s refunded", paymentID)
 
-	_ = s.publisher.PublishRefundProcessed(ctx, events.RefundProcessedEvent{
+	if err := s.publisher.PublishRefundProcessed(ctx, events.RefundProcessedEvent{
 		PaymentID:  paymentID,
 		AuctionID:  p.AuctionID,
 		UserID:     p.UserID,
 		Amount:     p.Amount,
 		RefundedAt: time.Now().UTC().Format(time.RFC3339),
-	})
+	}); err != nil {
+		log.Printf("payment: failed to publish refund_processed for %s: %v", paymentID, err)
+	}
+	return nil
+}
+
+// AbandonPayment marks a payment as FAILED and publishes a payment_failed event.
+// Called by the recovery job when a stuck payment has exhausted its retry budget.
+// The published event is what triggers downstream user notification.
+func (s *Service) AbandonPayment(ctx context.Context, paymentID, reason string) error {
+	p, err := s.repo.GetByID(ctx, paymentID)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.UpdateStatus(ctx, paymentID, StatusFailed, reason); err != nil {
+		return fmt.Errorf("abandon payment: %w", err)
+	}
+	log.Printf("payment: %s abandoned after max retries (%s)", paymentID, reason)
+	if err := s.publisher.PublishPaymentFailed(ctx, events.PaymentFailedEvent{
+		PaymentID: paymentID,
+		AuctionID: p.AuctionID,
+		UserID:    p.UserID,
+		Amount:    p.Amount,
+		Reason:    reason,
+		FailedAt:  time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		log.Printf("payment: failed to publish payment_failed for abandoned payment %s: %v", paymentID, err)
+	}
 	return nil
 }
 

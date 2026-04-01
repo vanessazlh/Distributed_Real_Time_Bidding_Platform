@@ -114,6 +114,80 @@ func (r *Repository) GetByUserID(ctx context.Context, userID string) ([]*Payment
 	return payments, nil
 }
 
+// ScanStuck returns all payments in PENDING or PROCESSING whose updated_at is
+// older than cutoff — these are candidates for recovery.
+func (r *Repository) ScanStuck(ctx context.Context, cutoff time.Time) ([]*Payment, error) {
+	out, err := r.db.Scan(ctx, &dynamodb.ScanInput{
+		TableName:        aws.String(tableName),
+		FilterExpression: aws.String("#s IN (:pending, :processing) AND updated_at < :cutoff"),
+		ExpressionAttributeNames: map[string]string{
+			"#s": "status",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pending":    &types.AttributeValueMemberS{Value: StatusPending},
+			":processing": &types.AttributeValueMemberS{Value: StatusProcessing},
+			":cutoff":     &types.AttributeValueMemberS{Value: cutoff.UTC().Format(time.RFC3339)},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan stuck payments: %w", err)
+	}
+
+	payments := make([]*Payment, 0, len(out.Items))
+	for _, item := range out.Items {
+		var p Payment
+		if err := attributevalue.UnmarshalMap(item, &p); err != nil {
+			continue
+		}
+		payments = append(payments, &p)
+	}
+	return payments, nil
+}
+
+// IncrementRetryCount atomically increments retry_count and refreshes updated_at.
+// Called by the recovery job before each retry attempt so that if the process
+// crashes again, the next scan sees the updated count and enforces the retry cap.
+func (r *Repository) IncrementRetryCount(ctx context.Context, paymentID string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]types.AttributeValue{
+			"payment_id": &types.AttributeValueMemberS{Value: paymentID},
+		},
+		UpdateExpression: aws.String("ADD retry_count :one SET updated_at = :ua"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":one": &types.AttributeValueMemberN{Value: "1"},
+			":ua":  &types.AttributeValueMemberS{Value: now},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("increment retry count: %w", err)
+	}
+	return nil
+}
+
+// SetGatewayDecision writes the mock gateway outcome to the payment record.
+// Called once per payment before applying the result; retries read this field
+// instead of re-randomizing. See model.go for why this field exists.
+func (r *Repository) SetGatewayDecision(ctx context.Context, paymentID, decision string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]types.AttributeValue{
+			"payment_id": &types.AttributeValueMemberS{Value: paymentID},
+		},
+		UpdateExpression: aws.String("SET gateway_decision = :gd, updated_at = :ua"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":gd": &types.AttributeValueMemberS{Value: decision},
+			":ua": &types.AttributeValueMemberS{Value: now},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("set gateway decision: %w", err)
+	}
+	return nil
+}
+
 // UpdateStatus updates the status (and optional fail_reason) of a payment.
 func (r *Repository) UpdateStatus(ctx context.Context, paymentID, status, failReason string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
