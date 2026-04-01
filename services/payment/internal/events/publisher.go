@@ -9,13 +9,12 @@ import (
 )
 
 const (
-	ChannelAuctionClosed   = "auction_closed"
-	ChannelPaymentProcessed = "payment_processed"
-	ChannelPaymentFailed    = "payment_failed"
-	ChannelRefundProcessed  = "refund_processed"
+	StreamPaymentProcessed = "payment:processed"
+	StreamPaymentFailed    = "payment:failed"
+	StreamRefundProcessed  = "refund:processed"
 )
 
-// Publisher publishes domain events to Redis Pub/Sub.
+// Publisher publishes domain events to Redis Streams.
 type Publisher struct {
 	rdb *redis.Client
 }
@@ -31,7 +30,10 @@ func (p *Publisher) PublishPaymentProcessed(ctx context.Context, event PaymentPr
 	if err != nil {
 		return fmt.Errorf("marshal payment processed event: %w", err)
 	}
-	return p.rdb.Publish(ctx, ChannelPaymentProcessed, data).Err()
+	return p.rdb.XAdd(ctx, &redis.XAddArgs{
+		Stream: StreamPaymentProcessed,
+		Values: map[string]interface{}{"payload": string(data)},
+	}).Err()
 }
 
 // PublishPaymentFailed publishes a payment-failed event.
@@ -40,7 +42,10 @@ func (p *Publisher) PublishPaymentFailed(ctx context.Context, event PaymentFaile
 	if err != nil {
 		return fmt.Errorf("marshal payment failed event: %w", err)
 	}
-	return p.rdb.Publish(ctx, ChannelPaymentFailed, data).Err()
+	return p.rdb.XAdd(ctx, &redis.XAddArgs{
+		Stream: StreamPaymentFailed,
+		Values: map[string]interface{}{"payload": string(data)},
+	}).Err()
 }
 
 // PublishRefundProcessed publishes a refund-processed event.
@@ -49,5 +54,8 @@ func (p *Publisher) PublishRefundProcessed(ctx context.Context, event RefundProc
 	if err != nil {
 		return fmt.Errorf("marshal refund processed event: %w", err)
 	}
-	return p.rdb.Publish(ctx, ChannelRefundProcessed, data).Err()
+	return p.rdb.XAdd(ctx, &redis.XAddArgs{
+		Stream: StreamRefundProcessed,
+		Values: map[string]interface{}{"payload": string(data)},
+	}).Err()
 }
