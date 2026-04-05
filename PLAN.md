@@ -11,8 +11,12 @@
 | Payment processing (simulated) | Working |
 | My Bids page | Working |
 | Auction enrichment fields | Working |
-| Seller auction management UI | **Not started** |
-| Automatic auction expiry | **Not started** |
+| Seller auction management UI | **Basic dashboard exists; auction list + close management not done** |
+| Automatic auction expiry | **Basic version done** (closer.go polls every 1s, closes OPEN auctions past end_time) |
+| Payment service Redis Streams migration | **Complete** |
+| Auction/notification Redis Streams migration | **Not started** (still on Pub/Sub) |
+| Bid service WON status on close | **Not started** |
+| Cache reliability (ensureRedisCached) | **Not started** |
 
 ---
 
@@ -104,42 +108,102 @@ A dedicated page listing all auctions for one shop with full management controls
 
 ### High
 
-#### 1. No automatic auction expiry
-Auctions have an `end_time` in Redis but nothing closes them when it passes. The auction stays `OPEN` forever unless `POST /auctions/:id/close` is called manually.
+#### 1. Auction expiry: basic done, PENDING status not yet added
+`closer.go` polls every 1 second and closes OPEN auctions past `end_time` — this works.
 
-Fix: background worker in the auction service polling for expired auctions, or Redis keyspace notifications with a TTL.
+Missing: PENDING status for pre-scheduled auctions. Currently auctions go OPEN immediately on creation. To support a future `start_time`, add a PENDING state and an AuctionOpener goroutine that transitions `PENDING → OPEN` at `start_time`.
 
 #### 2. `POST /auctions` unprotected by role
 Any authenticated user (buyer or seller) can create an auction. The auction handler has no role check.
 
 Fix: add `callerRole` check to the `CreateAuction` handler, same pattern as the shop service.
 
+#### 3. Seller can bid on their own auction
+`placeBid()` does not check whether the bidder is the auction's seller. `seller_id` is stored in the Redis hash and can be read without extra calls.
+
+Fix: read `seller_id` from Redis hash in `placeBid()`, reject if `bidderID == sellerID`.
+
+#### 4. Bid service: `ensureConsumerGroup()` MKSTREAM
+Bid service currently uses Pub/Sub, not Streams. When migrated to Streams, `XGROUP CREATE` will fail on cold start if the stream key doesn't exist yet.
+
+Fix: pass `MKSTREAM=true` when creating the consumer group so the stream is created atomically. Apply this fix during the Streams migration, not before.
+
+#### 5. Bid service: self-rebid produces multiple WON records
+`recordBid()` does not mark the current bidder's own previous `ACTIVE` bid as `OUTBID` before writing the new one. When a user raises their own bid, both records end up as `WON` after close.
+
+Fix: in `recordBid()`, query and mark the caller's own previous `ACTIVE` bid for this auction as `OUTBID` before inserting the new record.
+
 ### Medium
 
-#### 3. Bid enrichment missing on My Bids page
+#### 6. Bid enrichment missing on My Bids page
 `GET /users/:id/bids` returns bid records with no `item_title` or `shop_name`. The bid service stores `auction_id` but not the item title at write time. My Bids page shows blank titles and shop names.
 
 Options:
 - Store `item_title` in the bid record at write time (same denormalization as auctions)
 - Enrich in the user service proxy before returning to the client
 
-#### 4. WebSocket notifications incomplete
+#### 7. WebSocket notifications incomplete
 The notification service broadcasts `bid_placed` events. Missing:
 - "You've been outbid" push to the previous highest bidder
 - Auction close notification to winner and losing bidders
 
-The `auction_closed` event is published by the auction service but the notification service may not be consuming it for WebSocket pushes.
+#### 8. Bid WON status never set
+The bid service has no consumer for `auction:closed` stream. After an auction closes, winning bids remain in `ACTIVE` status forever — the `WON` state is never written.
+
+Fix: add `AuctionClosedConsumer` in bid service that consumes `auction:closed` stream and marks the winner's bid as `WON`.
 
 ### Low
 
-#### 5. `POST /auctions/:id/close` unprotected
-Anyone with a valid JWT can close any auction. Should require the caller to own the shop the auction belongs to.
+#### 9. `POST /auctions/:id/close` missing ownership check
+The handler calls `callerID()` but does not verify the caller owns the shop the auction belongs to. Any authenticated user can close any auction.
+
+Fix: read `seller_id` from the auction Redis hash and compare to `callerID(c)` before proceeding.
+
+#### 10. Auction creation missing input validation
+No validation on `startTime < endTime`, `endTime` in the future, or `maxPrice > startingBid`.
+
+Fix: add these checks in `CreateAuction` handler before writing to Redis.
 
 ---
 
 ## Backlog Features
 
-### 1. Geo support (buyer + seller)
+### 1. Auction lifecycle: maxPrice field
+Replace the unused `reservePrice` field with `maxPrice` as a bid ceiling. Lua script in pessimistic strategy handles both `maxPrice` upper bound and `startingBid` lower bound in a single atomic operation.
+
+### 2. Pessimistic strategy: Lua script atomicity
+Replace the current multi-step HSET in `PessimisticStrategy` with a single Lua script. The script handles read → validate (`startingBid`, `maxPrice`, `status`) → write atomically, eliminating the gap between reads and writes.
+
+### 3. Cache reliability: ensureRedisCached() + stampede protection
+Redis is the primary store for auction state. If a key is evicted or Redis restarts, bids fail with "auction not found".
+
+- `ensureRedisCached()`: on cache miss, rebuild from DynamoDB before proceeding
+- Double-checked locking via Redisson rebuild lock: prevents thundering herd when many requests hit the same missing key simultaneously
+- `seedRedisCache()`: add `seller_id`, `quantity`, `max_price` fields to reduce per-bid DynamoDB reads
+- On auction close: explicitly delete Redis hash and ZSET to avoid memory leaks
+
+### 4. Close sequence reliability
+Current order risks a dead state if event publishing fails after DynamoDB write.
+
+New order: read winners → publish `auction:closed` event → write CLOSED to DynamoDB → delete Redis keys. If event publish fails, auction stays OPEN and close can be retried.
+
+Also add three-level fallback for winner resolution: Redis ZSET → DynamoDB winners map → DynamoDB `highestBidder`. Write full winners map to DynamoDB on each successful bid so recovery is possible after Redis restart.
+
+### 5. Multiple winners (quantity auctions)
+Add `quantity` field to support auctions where N buyers can win.
+
+- Redis Sorted Set maintains top-N winners by bid amount
+- Lua script handles slot management: when full, lowest winner is evicted if a higher bid arrives; `current_highest` always reflects current floor winner price
+- Payment service triggers N payment records on close
+
+### 6. Move optimistic and queue strategies to experimental/
+Both strategies have deployment limitations:
+- `OptimisticStrategy` (Redis WATCH) does not work correctly across multiple Redis nodes without careful sharding
+- `QueueStrategy` (Go channel) is per-process only; does not work with multiple auction service instances
+
+Move both to `concurrency/experimental/` with clear comments. `PessimisticStrategy` (upgraded with Lua) becomes the default.
+
+### 7. Geo support (buyer + seller)
 Neither buyers nor sellers have location data. Add `lat`/`lng` or a structured address to the `Shop` model so shops can be surfaced by proximity.
 
 - Seller: structured address on shop creation
@@ -161,7 +225,7 @@ Users and sellers can register and log in but cannot update their details.
 - `PUT /shops/:shop_id` — edit shop name, location, logo URL (ownership check required)
 - Frontend: "Edit Profile" page for buyers; "Edit Shop" button on the seller dashboard
 
-### 4. Redis Pub/Sub → Redis Streams
+### 10. Redis Pub/Sub → Redis Streams
 The auction, notification, and payment services all use Redis Pub/Sub, which is fire-and-forget.
 
 Problems:
@@ -171,10 +235,10 @@ Problems:
 
 Plan: migrate all three services to Redis Streams with consumer groups for durable, replayable, exactly-once delivery.
 
-### 5. Real payment gateway
+### 11. Real payment gateway
 Payment processing is currently simulated (90% success rate mock). Replace with Stripe or equivalent for production.
 
-### 6. Shop settlement
+### 12. Shop settlement
 The payment flow records `shop_id` but does not disburse funds to the shop owner. Settlement flow to be designed.
 
 ---
