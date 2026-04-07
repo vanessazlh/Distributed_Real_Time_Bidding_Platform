@@ -28,16 +28,18 @@ export default function ShopAuthPage({ type }: ShopAuthPageProps) {
 
     try {
       if (isLogin) {
+        // Single-account model: just login normally, JWT carries the role
         const { token } = await api.auth.login(email, password)
         const payload   = decodeToken(token)
         if (payload?.role !== 'seller') {
-          setError('This account is not registered as a seller.')
+          setError('This account is not a seller. Register as a seller first.')
+          setLoading(false)
           return
         }
         login(
           {
-            user_id:  payload.user_id  ?? '',
-            username: payload.username ?? email.split('@')[0],
+            user_id:  payload?.user_id  ?? '',
+            username: payload?.username ?? email.split('@')[0],
             email,
             role:     'seller',
           },
@@ -45,6 +47,7 @@ export default function ShopAuthPage({ type }: ShopAuthPageProps) {
         )
         navigate('/seller/dashboard')
       } else {
+        // Register as seller — backend handles buyer→seller upgrade automatically
         await api.auth.register(username, email, password, 'seller')
         navigate('/shop/login')
       }
@@ -64,7 +67,9 @@ export default function ShopAuthPage({ type }: ShopAuthPageProps) {
             {isLogin ? 'Seller sign in' : 'Create a seller account'}
           </p>
           <p className="text-center text-xs text-text-secondary mb-8">
-            Manage your shop, list items, and run auctions.
+            {isLogin
+              ? 'Manage your shop, list items, and run auctions.'
+              : 'Already have a buyer account? Use the same email and password to upgrade.'}
           </p>
 
           {error && (

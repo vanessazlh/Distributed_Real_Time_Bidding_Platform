@@ -72,8 +72,8 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/users` | — | Register (role: `buyer` or `seller`) |
-| `POST` | `/auth/login` | — | Login → `{ token }` |
+| `POST` | `/users` | — | Register (`role: buyer` or `seller`; existing buyer + seller role = upgrade) |
+| `POST` | `/auth/login` | — | Login → `{ token }` (single account per email) |
 | `GET` | `/users/:id` | ✓ | Get profile |
 | `GET` | `/users/:id/bids` | ✓ | List user's bids (proxied to Bid Service) |
 
