@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import type { Auction, BidHistoryEntry, BidPlacedEvent } from '@/types'
+import type { Auction, BidHistoryEntry, BidPlacedEvent, AuctionClosedEvent } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { useAuctionWebSocket } from '@/hooks/useAuctionWebSocket'
@@ -9,7 +9,7 @@ import { BidHistoryFeed, BiddingPanel } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
 
-type BannerState = 'WINNING' | 'OUTBID' | null
+type BannerState = 'WINNING' | 'OUTBID' | 'WON' | 'CLOSED' | null
 
 export default function AuctionDetailPage() {
   const { id }          = useParams<{ id: string }>()
@@ -55,12 +55,28 @@ export default function AuctionDetailPage() {
   }, [])
 
   // Real-time updates via WebSocket
-  const handleWsMessage = useCallback((event: BidPlacedEvent) => {
+  const handleBidPlaced = useCallback((event: BidPlacedEvent) => {
     applyNewBid(event.amount, event.user_id)
-    setBanner((cur) => (cur === 'WINNING' ? 'OUTBID' : cur))
-  }, [applyNewBid])
+    if (user && event.previous_bidder === user.user_id) {
+      setBanner('OUTBID')
+    } else if (user && event.user_id === user.user_id) {
+      setBanner('WINNING')
+    }
+  }, [applyNewBid, user])
 
-  useAuctionWebSocket(id ?? '', handleWsMessage)
+  const handleAuctionClosed = useCallback((event: AuctionClosedEvent) => {
+    setAuction((prev) => prev ? { ...prev, status: 'CLOSED' } : prev)
+    if (user && event.winner_id === user.user_id) {
+      setBanner('WON')
+    } else if (user && banner !== null) {
+      setBanner('CLOSED')
+    }
+  }, [user, banner])
+
+  useAuctionWebSocket(id ?? '', {
+    onBidPlaced: handleBidPlaced,
+    onAuctionClosed: handleAuctionClosed,
+  })
 
   if (loading) {
     return (

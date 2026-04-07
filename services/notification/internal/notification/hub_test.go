@@ -39,8 +39,9 @@ func (c *mockClient) received() [][]byte {
 // never call SubscribeRedis).
 func newTestHub() *Hub {
 	return &Hub{
-		clients: make(map[string]map[Client]struct{}),
-		latency: newLatencyTracker(),
+		clients:     make(map[string]map[Client]struct{}),
+		userClients: make(map[string]map[Client]struct{}),
+		latency:     newLatencyTracker(),
 	}
 }
 
@@ -80,12 +81,12 @@ func TestMultipleConnectionsAllReceiveBroadcast(t *testing.T) {
 	}
 }
 
-func TestNoPreviousBidderSkipsNotification(t *testing.T) {
+func TestFirstBidBroadcastsToWatchers(t *testing.T) {
 	hub := newTestHub()
 	client := newMockClient("websocket")
 	hub.Register("auc-001", client)
 
-	// previous_bidder is empty → first bid, nobody to notify.
+	// previous_bidder is empty → first bid, still broadcast to watchers.
 	payload := `{
 		"auction_id": "auc-001",
 		"user_id":    "usr-001",
@@ -97,8 +98,29 @@ func TestNoPreviousBidderSkipsNotification(t *testing.T) {
 	}`
 	hub.handleBidEvent(payload)
 
-	if msgs := client.received(); len(msgs) != 0 {
-		t.Errorf("expected 0 messages on first bid, got %d", len(msgs))
+	if msgs := client.received(); len(msgs) != 1 {
+		t.Errorf("expected 1 message on first bid, got %d", len(msgs))
+	}
+}
+
+func TestAuctionClosedBroadcast(t *testing.T) {
+	hub := newTestHub()
+	client := newMockClient("websocket")
+	hub.Register("auc-001", client)
+
+	payload := `{
+		"auction_id": "auc-001",
+		"winner_id":  "usr-001",
+		"winning_bid": 5000,
+		"item_id":    "item-001",
+		"shop_id":    "shop-001",
+		"closed_at":  "2026-03-28T10:05:00Z"
+	}`
+	hub.handleAuctionClosedEvent(payload)
+
+	msgs := client.received()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message on auction close, got %d", len(msgs))
 	}
 }
 

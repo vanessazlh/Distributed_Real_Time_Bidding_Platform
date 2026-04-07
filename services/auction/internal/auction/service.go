@@ -241,6 +241,7 @@ func (s *Service) CloseAuction(ctx context.Context, auctionID string) error {
 		WinnerID:   a.HighestBidder,
 		WinningBid: a.CurrentHighest,
 		ItemID:     a.ItemID,
+		ItemTitle:  a.ItemTitle,
 		ShopID:     a.ShopID,
 		ClosedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 	})

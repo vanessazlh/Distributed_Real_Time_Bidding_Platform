@@ -93,3 +93,35 @@ export interface BidPlacedEvent {
   delivered_at: string
   timestamp: string
 }
+
+export interface AuctionClosedEvent {
+  type: 'auction_closed'
+  auction_id: string
+  winner_id: string
+  winning_bid: number
+  message: string
+  closed_at: string
+}
+
+export type NotificationEvent = BidPlacedEvent | AuctionClosedEvent
+
+export type NotificationType = 'outbid' | 'won' | 'auction_closed'
+
+export interface StoredNotification {
+  id:         string
+  type:       NotificationType
+  auction_id: string
+  item_title: string
+  message:    string
+  link:       string
+  amount:     number  // cents
+  created_at: number  // Unix ms
+  read:       boolean
+}
+
+/** Wrapper sent over the user-level WebSocket */
+export interface UserNotificationEvent {
+  type: 'notification'
+  notification: StoredNotification
+  unread_count: number
+}

@@ -1,4 +1,4 @@
-import type { Auction, AuctionStatus, User, UserBid, Item, Shop, Payment } from '@/types'
+import type { Auction, AuctionStatus, User, UserBid, Item, Shop, Payment, StoredNotification } from '@/types'
 
 // ── Error type ───────────────────────────────────────────────────────────────
 
@@ -188,6 +188,21 @@ export const api = {
         method: 'POST',
         headers: jsonHeaders(token),
         body: JSON.stringify(payload),
+      }),
+  },
+
+  notifications: {
+    /** GET /notifications → { notifications, unread_count } */
+    list: (token: string) =>
+      request<{ notifications: StoredNotification[]; unread_count: number }>('/notifications', {
+        headers: jsonHeaders(token),
+      }),
+
+    /** POST /notifications/read → { ok } */
+    markAllRead: (token: string) =>
+      request<{ ok: boolean }>('/notifications/read', {
+        method: 'POST',
+        headers: jsonHeaders(token),
       }),
   },
 

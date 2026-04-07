@@ -5,7 +5,7 @@ import { formatCurrency } from '@/lib/utils'
 import { CountdownTimer } from './CountdownTimer'
 import { PriceDisplay } from './PriceDisplay'
 
-type BidBannerState = 'WINNING' | 'OUTBID' | null
+type BidBannerState = 'WINNING' | 'OUTBID' | 'WON' | 'CLOSED' | null
 
 interface BiddingPanelProps {
   auction: Auction
@@ -51,6 +51,16 @@ export function BiddingPanel({
       {banner === 'WINNING' && (
         <div className="mb-6">
           <StatusBanner type="winning" message="You're currently winning!" detail="Keep an eye on the timer." />
+        </div>
+      )}
+      {banner === 'WON' && (
+        <div className="mb-6">
+          <StatusBanner type="success" message="You won this auction!" detail={`Final price: ${formatCurrency(highestBid)}`} />
+        </div>
+      )}
+      {banner === 'CLOSED' && (
+        <div className="mb-6">
+          <StatusBanner type="error" message="This auction has ended." detail="Better luck next time!" />
         </div>
       )}
 
