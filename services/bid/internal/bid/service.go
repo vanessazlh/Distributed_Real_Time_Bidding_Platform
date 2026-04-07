@@ -15,6 +15,7 @@ type Repo interface {
 	GetByAuction(ctx context.Context, auctionID string) ([]*Bid, error)
 	GetByUser(ctx context.Context, userID string) ([]*Bid, error)
 	MarkOutbid(ctx context.Context, auctionID string, excludeBidID string) error
+	MarkUserPreviousBids(ctx context.Context, auctionID string, userID string, excludeBidID string) error
 }
 
 // Service contains business logic for the bid domain.
@@ -29,6 +30,10 @@ func NewService(repo Repo) *Service {
 
 // RecordBid records a new bid and marks previous bids as outbid.
 func (s *Service) RecordBid(ctx context.Context, b *Bid) error {
+	// Mark the caller's own previous ACTIVE bids as OUTBID first (self-rebid case)
+	if err := s.repo.MarkUserPreviousBids(ctx, b.AuctionID, b.UserID, b.BidID); err != nil {
+		return fmt.Errorf("mark user previous bids: %w", err)
+	}
 	if err := s.repo.Create(ctx, b); err != nil {
 		return fmt.Errorf("record bid: %w", err)
 	}

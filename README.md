@@ -16,6 +16,7 @@ Browser (React + Vite)
         │
         ├── /auth, /users          → User Service       :8082  (DynamoDB)
         ├── /shops, /sellers       → Shop Service       :8083  (DynamoDB)
+        ├── /shops/:id/auctions    → Auction Service    :8081  (Redis)
         ├── /auctions, /bids       → Auction Service    :8081  (Redis)
         ├── /auctions/:id/subscribe→ Notification Svc   :8080  (Redis Pub/Sub → WebSocket)
         ├── /bids                  → Bid Service        :8084  (Redis + DynamoDB)
@@ -92,7 +93,8 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 | `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`) |
 | `GET` | `/auctions/:id` | — | Get auction details |
 | `POST` | `/auctions/:id/bid` | ✓ | Place bid |
-| `POST` | `/auctions/:id/close` | ✓ | Close auction early |
+| `POST` | `/auctions/:id/close` | ✓ | Close auction early (owner only) |
+| `GET` | `/shops/:id/auctions` | ✓ | List auctions for a shop |
 
 ### Bids — Bid Service
 
