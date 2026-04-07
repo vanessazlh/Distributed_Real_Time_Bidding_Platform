@@ -59,7 +59,7 @@ export default function PaymentPage() {
       <PageContainer narrow>
         <EmptyState
           message={error ?? 'Payment not found.'}
-          action={<Button onClick={() => navigate('/my-bids')}>Back to My Bids</Button>}
+          action={<Button onClick={() => navigate('/profile/bids')}>Back to My Bids</Button>}
         />
       </PageContainer>
     )
@@ -70,7 +70,7 @@ export default function PaymentPage() {
   return (
     <PageContainer narrow>
       <Link
-        to="/my-bids"
+        to="/profile/bids"
         className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
       >
         <ChevronLeftIcon /> My Bids

@@ -30,6 +30,7 @@ type Repo interface {
 	FindByID(ctx context.Context, userID string) (*User, error)
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	UpdateRole(ctx context.Context, userID, role string) error
+	UpdateUsername(ctx context.Context, userID, username string) error
 }
 
 // Service contains business logic for the user domain.
@@ -124,6 +125,17 @@ func (s *Service) GetProfile(ctx context.Context, userID string) (*User, error) 
 		return nil, ErrNotFound
 	}
 	return u, nil
+}
+
+// UpdateProfile updates mutable user fields (currently just username).
+func (s *Service) UpdateProfile(ctx context.Context, userID string, req UpdateProfileRequest) error {
+	if _, err := s.repo.FindByID(ctx, userID); err != nil {
+		return ErrNotFound
+	}
+	if err := s.repo.UpdateUsername(ctx, userID, req.Username); err != nil {
+		return fmt.Errorf("update username: %w", err)
+	}
+	return nil
 }
 
 func jwtSecret() []byte {

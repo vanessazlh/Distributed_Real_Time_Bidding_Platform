@@ -41,6 +41,15 @@ func (m *mockRepo) FindByEmail(_ context.Context, email string) (*user.User, err
 	return nil, errors.New("user not found")
 }
 
+func (m *mockRepo) UpdateUsername(_ context.Context, userID, username string) error {
+	u, ok := m.users[userID]
+	if !ok {
+		return errors.New("user not found")
+	}
+	u.Username = username
+	return nil
+}
+
 func (m *mockRepo) UpdateRole(_ context.Context, userID, role string) error {
 	u, ok := m.users[userID]
 	if !ok {

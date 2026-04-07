@@ -153,6 +153,20 @@ export const api = {
   },
 
   users: {
+    /** GET /users/:userId → User */
+    get: (userId: string, token: string) =>
+      request<User>(`/users/${userId}`, {
+        headers: jsonHeaders(token),
+      }),
+
+    /** PUT /users/:userId → { ok } */
+    updateProfile: (userId: string, payload: { username: string }, token: string) =>
+      request<{ ok: boolean }>(`/users/${userId}`, {
+        method: 'PUT',
+        headers: jsonHeaders(token),
+        body: JSON.stringify(payload),
+      }),
+
     /** GET /users/:userId/bids → { bids: UserBid[] } */
     bids: (userId: string, token: string) =>
       request<{ bids: BackendBid[] }>(`/users/${userId}/bids`, {
