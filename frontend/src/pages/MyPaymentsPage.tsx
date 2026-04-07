@@ -55,7 +55,7 @@ export default function MyPaymentsPage() {
     <PageContainer narrow>
       <Link
         to="/"
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
         <ChevronLeftIcon /> All Auctions
       </Link>
@@ -63,7 +63,7 @@ export default function MyPaymentsPage() {
       <div className="flex items-end justify-between mb-8">
         <h1 className="font-sans font-semibold text-3xl text-text-primary">My Payments</h1>
         {totalSpent > 0 && (
-          <p className="text-text-secondary text-sm">
+          <p className="text-text-secondary text-base">
             Total spent: <span className="font-semibold text-text-primary">{formatCurrency(totalSpent)}</span>
           </p>
         )}
@@ -83,14 +83,14 @@ export default function MyPaymentsPage() {
             >
               <div className="flex flex-col gap-1">
                 <span
-                  className={`self-start text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${STATUS_BADGE[payment.status] ?? ''}`}
+                  className={`self-start text-sm font-semibold px-2 py-0.5 rounded-full capitalize ${STATUS_BADGE[payment.status] ?? ''}`}
                 >
                   {payment.status}
                 </span>
-                <p className="text-text-secondary text-xs font-mono mt-1">
+                <p className="text-text-secondary text-sm font-mono mt-1">
                   {payment.auction_id}
                 </p>
-                <p className="text-text-secondary text-xs">
+                <p className="text-text-secondary text-sm">
                   {new Date(payment.created_at).toLocaleDateString()}
                 </p>
               </div>
@@ -101,7 +101,7 @@ export default function MyPaymentsPage() {
                 </p>
                 <Link
                   to={`/payment/auction/${payment.auction_id}`}
-                  className="text-brand text-xs font-medium hover:underline"
+                  className="text-brand text-sm font-medium hover:underline"
                 >
                   View details →
                 </Link>

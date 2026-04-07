@@ -57,7 +57,7 @@ export default function AuthPage({ type }: AuthPageProps) {
       <div className="max-w-md mx-auto mt-8">
         <Card padding="p-8">
           <h1 className="font-display text-4xl text-brand text-center mb-2">SurpriseAuction</h1>
-          <p className="text-center text-text-secondary text-sm mb-8">
+          <p className="text-center text-text-secondary text-base mb-8">
             {isLogin ? 'Welcome back' : 'Create your account'}
           </p>
 
@@ -103,7 +103,7 @@ export default function AuthPage({ type }: AuthPageProps) {
             </Button>
           </form>
 
-          <p className="text-center text-sm text-text-secondary mt-6">
+          <p className="text-center text-base text-text-secondary mt-6">
             {isLogin ? "Don't have an account? " : 'Already have an account? '}
             <Link
               to={isLogin ? '/register' : '/login'}

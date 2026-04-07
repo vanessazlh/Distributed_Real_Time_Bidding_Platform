@@ -71,7 +71,7 @@ export default function PaymentPage() {
     <PageContainer narrow>
       <Link
         to="/profile/bids"
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
         <ChevronLeftIcon /> My Bids
       </Link>
@@ -81,36 +81,36 @@ export default function PaymentPage() {
       <Card padding="p-8" className="flex flex-col gap-6">
         {/* Status banner */}
         <div className={`flex items-center gap-3 px-4 py-3 rounded-lg ${style.classes}`}>
-          <span className="font-sans font-semibold text-sm">{style.label}</span>
-          <span className="text-sm">{STATUS_MESSAGES[payment.status]}</span>
+          <span className="font-sans font-semibold text-base">{style.label}</span>
+          <span className="text-base">{STATUS_MESSAGES[payment.status]}</span>
         </div>
 
         {payment.fail_reason && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <p className="text-base text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
             {payment.fail_reason}
           </p>
         )}
 
         {/* Amount */}
         <div className="flex items-baseline justify-between border-b border-border pb-6">
-          <span className="text-text-secondary font-sans text-sm">Amount due</span>
+          <span className="text-text-secondary font-sans text-base">Amount due</span>
           <span className="font-display text-4xl text-text-primary">
             {formatCurrency(payment.amount)}
           </span>
         </div>
 
         {/* Details */}
-        <dl className="flex flex-col gap-3 text-sm">
+        <dl className="flex flex-col gap-3 text-base">
           <div className="flex justify-between">
             <dt className="text-text-secondary">Payment ID</dt>
-            <dd className="text-text-primary font-mono text-xs">{payment.payment_id}</dd>
+            <dd className="text-text-primary font-mono text-sm">{payment.payment_id}</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-text-secondary">Auction</dt>
             <dd>
               <Link
                 to={`/auction/${payment.auction_id}`}
-                className="text-brand font-medium hover:underline text-xs font-mono"
+                className="text-brand font-medium hover:underline text-sm font-mono"
               >
                 {payment.auction_id}
               </Link>

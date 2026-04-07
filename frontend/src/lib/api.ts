@@ -1,4 +1,4 @@
-import type { Auction, AuctionStatus, User, UserBid, Item, Shop, Payment, StoredNotification } from '@/types'
+import type { Auction, AuctionStatus, Category, User, UserBid, Item, Shop, Payment, StoredNotification } from '@/types'
 
 // ── Error type ───────────────────────────────────────────────────────────────
 
@@ -11,11 +11,42 @@ export class ApiError extends Error {
 
 // ── Core fetch wrapper ───────────────────────────────────────────────────────
 
+// Translates gin/backend validation messages into plain English.
+// Applied centrally in request() so every page benefits automatically.
+function friendlyError(raw: string): string {
+  const m = raw.match(/Field validation for '(\w+)' failed on the '(\w+)' tag/)
+  if (m) {
+    const field = m[1]
+    const tag   = m[2]
+    const label = field.replace(/([A-Z])/g, ' $1').trim() // "RetailValue" → "Retail Value"
+    switch (tag) {
+      case 'required': return `${label} is required.`
+      case 'email':    return 'Please enter a valid email address.'
+      case 'url':      return 'Please enter a valid URL.'
+      case 'min':
+        if (field === 'Password') return 'Password must be at least 6 characters.'
+        if (field === 'Username') return 'Username must be at least 2 characters.'
+        return `${label} is too short.`
+      case 'max':      return `${label} is too long.`
+      case 'gt':
+      case 'gte':      return `${label} must be greater than zero.`
+      case 'numeric':  return `${label} must be a number.`
+    }
+  }
+  return raw
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, options)
   if (!res.ok) {
-    const text = await res.text().catch(() => `HTTP ${res.status}`)
-    throw new ApiError(res.status, text)
+    let message = `HTTP ${res.status}`
+    try {
+      const body = await res.json() as Record<string, unknown>
+      message = (body.error ?? body.message ?? message) as string
+    } catch {
+      message = await res.text().catch(() => message)
+    }
+    throw new ApiError(res.status, friendlyError(message))
   }
   return res.json() as Promise<T>
 }
@@ -66,6 +97,7 @@ interface BackendAuction {
   image_url:           string
   shop_logo_url:       string
   description:         string
+  category?:           string
   end_time:            string   // RFC3339
   current_highest_bid: number
   bid_count:           number
@@ -88,6 +120,7 @@ function toAuction(b: BackendAuction): Auction {
     image_url:           b.image_url           ?? '',
     shop_logo_url:       b.shop_logo_url       ?? '',
     description:         b.description         ?? '',
+    category:            (b.category as Category) || undefined,
   }
 }
 
@@ -123,7 +156,7 @@ export const api = {
       request<BackendAuction>(`/auctions/${id}`).then(toAuction),
 
     /** POST /auctions → Auction */
-    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; image_url: string; shop_logo_url: string; description: string; duration_minutes: number; start_bid: number; scheduled_start?: string }, token: string) =>
+    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string }, token: string) =>
       request<BackendAuction>('/auctions', {
         method: 'POST',
         headers: jsonHeaders(token),
@@ -160,7 +193,7 @@ export const api = {
       }),
 
     /** PUT /users/:userId → { ok } */
-    updateProfile: (userId: string, payload: { username: string }, token: string) =>
+    updateProfile: (userId: string, payload: { username: string; avatar_url?: string }, token: string) =>
       request<{ ok: boolean }>(`/users/${userId}`, {
         method: 'PUT',
         headers: jsonHeaders(token),
@@ -197,7 +230,7 @@ export const api = {
       request<{ items: Item[] }>(`/shops/${shopId}/items`).then((r) => r.items ?? []),
 
     /** POST /shops/:shopId/items → Item */
-    createItem: (shopId: string, payload: { title: string; description: string; retail_value: number; image_url?: string }, token: string) =>
+    createItem: (shopId: string, payload: { title: string; description: string; retail_value: number; image_url?: string; category?: string }, token: string) =>
       request<Item>(`/shops/${shopId}/items`, {
         method: 'POST',
         headers: jsonHeaders(token),

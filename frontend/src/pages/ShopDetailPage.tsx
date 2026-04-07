@@ -52,10 +52,10 @@ export default function ShopDetailPage() {
   return (
     <PageContainer>
       <Link
-        to="/"
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        to={isOwner ? '/seller/dashboard' : '/'}
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
-        <ChevronLeftIcon /> All Auctions
+        <ChevronLeftIcon /> {isOwner ? 'Back to Dashboard' : 'All Auctions'}
       </Link>
 
       {/* Shop header */}
@@ -63,7 +63,7 @@ export default function ShopDetailPage() {
         <Avatar src={shop.logo_url} alt={shop.name} size="xl" />
         <h1 className="font-display text-4xl text-text-primary mt-4 mb-2">{shop.name}</h1>
         <p className="text-text-secondary mb-2">{shop.location}</p>
-        <p className="text-text-secondary text-sm">Local shop selling surplus food at auction.</p>
+        <p className="text-text-secondary text-base">Local shop selling surplus food at auction.</p>
 
         {isOwner && (
           <div className="flex gap-3 mt-6">
@@ -101,7 +101,7 @@ export default function ShopDetailPage() {
               >
                 <div>
                   <p className="font-sans font-medium text-text-primary">{a.item.title}</p>
-                  <p className="text-text-secondary text-sm mt-0.5">{a.bid_count} bids</p>
+                  <p className="text-text-secondary text-base mt-0.5">{a.bid_count} bids</p>
                 </div>
                 <div className="text-right">
                   <p className="font-display text-lg text-text-secondary line-through">{formatCurrency(a.retail_price)}</p>

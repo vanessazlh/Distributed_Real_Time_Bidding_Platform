@@ -30,7 +30,7 @@ type Repo interface {
 	FindByID(ctx context.Context, userID string) (*User, error)
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	UpdateRole(ctx context.Context, userID, role string) error
-	UpdateUsername(ctx context.Context, userID, username string) error
+	UpdateProfile(ctx context.Context, userID, username, avatarURL string) error
 }
 
 // Service contains business logic for the user domain.
@@ -127,13 +127,13 @@ func (s *Service) GetProfile(ctx context.Context, userID string) (*User, error) 
 	return u, nil
 }
 
-// UpdateProfile updates mutable user fields (currently just username).
+// UpdateProfile updates mutable user fields (username and optionally avatar_url).
 func (s *Service) UpdateProfile(ctx context.Context, userID string, req UpdateProfileRequest) error {
 	if _, err := s.repo.FindByID(ctx, userID); err != nil {
 		return ErrNotFound
 	}
-	if err := s.repo.UpdateUsername(ctx, userID, req.Username); err != nil {
-		return fmt.Errorf("update username: %w", err)
+	if err := s.repo.UpdateProfile(ctx, userID, req.Username, req.AvatarURL); err != nil {
+		return fmt.Errorf("update profile: %w", err)
 	}
 	return nil
 }

@@ -1,6 +1,9 @@
 export type AuctionStatus = 'PENDING' | 'OPEN' | 'CLOSED'
 
 /** A physical item listed in a shop (from the shop service) */
+export const CATEGORIES = ['Bakery', 'Meals', 'Groceries', 'Others'] as const
+export type Category = typeof CATEGORIES[number]
+
 export interface Item {
   item_id:      string
   shop_id:      string
@@ -8,6 +11,7 @@ export interface Item {
   description:  string
   retail_value: number
   image_url?:   string
+  category?:    Category
 }
 
 /** A shop registered by a user */
@@ -37,13 +41,15 @@ export interface Auction {
   image_url: string
   shop_logo_url: string
   description: string
+  category?: Category
 }
 
 export interface User {
-  user_id: string
-  username: string
-  email: string
-  role: 'buyer' | 'seller'
+  user_id:    string
+  username:   string
+  email:      string
+  role:       'buyer' | 'seller'
+  avatar_url?: string
 }
 
 /** A bid placed by the current user, shown on My Bids page */

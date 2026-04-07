@@ -82,9 +82,10 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, erro
 	return &u, nil
 }
 
-// UpdateUsername updates the username of an existing user.
-func (r *Repository) UpdateUsername(ctx context.Context, userID, username string) error {
-	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+// UpdateProfile updates the username and optionally the avatar_url of an existing user.
+// If avatarURL is empty the avatar_url attribute is left unchanged.
+func (r *Repository) UpdateProfile(ctx context.Context, userID, username, avatarURL string) error {
+	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]types.AttributeValue{
 			"user_id": &types.AttributeValueMemberS{Value: userID},
@@ -93,7 +94,12 @@ func (r *Repository) UpdateUsername(ctx context.Context, userID, username string
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":username": &types.AttributeValueMemberS{Value: username},
 		},
-	})
+	}
+	if avatarURL != "" {
+		input.UpdateExpression = aws.String("SET username = :username, avatar_url = :avatar_url")
+		input.ExpressionAttributeValues[":avatar_url"] = &types.AttributeValueMemberS{Value: avatarURL}
+	}
+	_, err := r.db.UpdateItem(ctx, input)
 	return err
 }
 

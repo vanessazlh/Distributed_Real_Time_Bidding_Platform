@@ -1,28 +1,19 @@
 import { useState, useEffect } from 'react'
 import type { Auction } from '@/types'
+import { CATEGORIES } from '@/types'
 import { api } from '@/lib/api'
 import { AuctionCard } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
 import { Spinner, EmptyState } from '@/components/ui'
 
-const TABS = ['All', 'Bakery', 'Sushi', 'Other'] as const
-
-function matchesFilter(auction: Auction, filter: string): boolean {
-  if (filter === 'All') return true
-  const haystack = `${auction.item.title} ${auction.item.shop_name}`.toLowerCase()
-  const isBakery  = /bakery|bread|pastry|cake|croissant|sourdough/i.test(haystack)
-  const isSushi   = /sushi|bento|nigiri|maki|roll/i.test(haystack)
-  if (filter === 'Bakery') return isBakery
-  if (filter === 'Sushi')  return isSushi
-  if (filter === 'Other')  return !isBakery && !isSushi
-  return true
-}
+const TABS = ['All', ...CATEGORIES] as const
+type TabFilter = typeof TABS[number]
 
 export default function HomePage() {
   const [auctions, setAuctions] = useState<Auction[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
-  const [filter,   setFilter]   = useState<string>('All')
+  const [filter,   setFilter]   = useState<TabFilter>('All')
 
   useEffect(() => {
     api.auctions.list()
@@ -31,7 +22,9 @@ export default function HomePage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const visible = auctions.filter((a) => matchesFilter(a, filter))
+  const visible = filter === 'All'
+    ? auctions
+    : auctions.filter((a) => a.category === filter)
 
   return (
     <PageContainer>
