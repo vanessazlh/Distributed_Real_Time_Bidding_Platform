@@ -16,8 +16,11 @@ Browser (React + Vite)
         │
         ├── /auth, /users          → User Service       :8082  (DynamoDB)
         ├── /shops, /sellers       → Shop Service       :8083  (DynamoDB)
+        ├── /shops/:id/auctions    → Auction Service    :8081  (Redis)
         ├── /auctions, /bids       → Auction Service    :8081  (Redis)
         ├── /auctions/:id/subscribe→ Notification Svc   :8080  (Redis Pub/Sub → WebSocket)
+        ├── /notifications/subscribe→ Notification Svc  :8080  (per-user WebSocket)
+        ├── /notifications          → Notification Svc  :8080  (REST — list/mark-read)
         ├── /bids                  → Bid Service        :8084  (Redis + DynamoDB)
         └── /payments              → Payment Service    :8085  (DynamoDB)
 ```
@@ -34,7 +37,7 @@ Browser (React + Vite)
 | Shop | 8083 | DynamoDB | Shop + item CRUD, seller ownership checks |
 | Auction | 8081 | Redis | Auction lifecycle, bid validation, concurrency control |
 | Bid | 8084 | Redis + DynamoDB | Bid history, outbid tracking, per-user bid queries |
-| Notification | 8080 | Redis Pub/Sub | WebSocket fan-out of bid events to watching clients |
+| Notification | 8080 | Redis Pub/Sub + Redis | Per-auction WebSocket fan-out, per-user global WebSocket, persistent notification inbox |
 | Payment | 8085 | DynamoDB | Winner charge processing, payment status tracking |
 | Frontend | 3000 | — | React SPA + nginx reverse proxy |
 
@@ -69,9 +72,10 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/users` | — | Register (role: `buyer` or `seller`) |
-| `POST` | `/auth/login` | — | Login → `{ token }` |
+| `POST` | `/users` | — | Register (`role: buyer` or `seller`; existing buyer + seller role = upgrade) |
+| `POST` | `/auth/login` | — | Login → `{ token }` (single account per email) |
 | `GET` | `/users/:id` | ✓ | Get profile |
+| `PUT` | `/users/:id` | ✓ | Update profile (username) — owner only |
 | `GET` | `/users/:id/bids` | ✓ | List user's bids (proxied to Bid Service) |
 
 ### Shops + Items — Shop Service
@@ -92,7 +96,8 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 | `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`) |
 | `GET` | `/auctions/:id` | — | Get auction details |
 | `POST` | `/auctions/:id/bid` | ✓ | Place bid |
-| `POST` | `/auctions/:id/close` | ✓ | Close auction early |
+| `POST` | `/auctions/:id/close` | ✓ | Close auction early (owner only) |
+| `GET` | `/shops/:id/auctions` | ✓ | List auctions for a shop |
 
 ### Bids — Bid Service
 
@@ -110,9 +115,12 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 
 ### Notifications — Notification Service
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/auctions/:id/subscribe` | WebSocket — live bid events for an auction |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/auctions/:id/subscribe` | — | WebSocket — live bid/close events for an auction |
+| `GET` | `/notifications/subscribe?token=<jwt>` | ✓ | WebSocket — global per-user notifications (outbid, won) |
+| `GET` | `/notifications` | ✓ | List stored notifications + unread count |
+| `POST` | `/notifications/read` | ✓ | Mark all notifications as read |
 
 ### Admin — Auction Service
 
@@ -152,14 +160,15 @@ Services communicate through Redis Pub/Sub. Two domain events are published:
 ```
 Auction Service → Redis Pub/Sub
     ├── Bid Service        (records bid history)
-    └── Notification Svc   (broadcasts to WebSocket watchers)
+    └── Notification Svc   (broadcasts to auction watchers + stores/pushes "outbid" to previous bidder)
 ```
 
 **`auction_closed`**
 ```
 Auction Service → Redis Pub/Sub
     ├── Payment Service    (charges the winning bidder)
-    └── Notification Svc   (notifies winner and losing bidders)
+    ├── Bid Service        (marks winning bid as WON)
+    └── Notification Svc   (broadcasts to auction watchers + stores/pushes "won" to winner)
 ```
 
 ---

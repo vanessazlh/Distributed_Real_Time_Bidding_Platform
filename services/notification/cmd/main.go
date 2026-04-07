@@ -36,7 +36,8 @@ func main() {
 	}
 	log.Printf("connected to Redis at %s", redisAddr)
 
-	hub := notification.NewHub(rdb)
+	store := notification.NewStore(rdb)
+	hub := notification.NewHub(rdb, store)
 
 	// Graceful shutdown context.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -56,7 +57,7 @@ func main() {
 	}
 	mux.Handle("/", http.FileServer(http.Dir(frontendDir)))
 
-	api.RegisterRoutes(mux, hub)
+	api.RegisterRoutes(mux, hub, store)
 
 	srv := &http.Server{
 		Addr:    ":" + port,

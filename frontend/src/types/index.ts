@@ -1,6 +1,9 @@
-export type AuctionStatus = 'OPEN' | 'CLOSED'
+export type AuctionStatus = 'PENDING' | 'OPEN' | 'CLOSED'
 
 /** A physical item listed in a shop (from the shop service) */
+export const CATEGORIES = ['Bakery', 'Meals', 'Groceries', 'Others'] as const
+export type Category = typeof CATEGORIES[number]
+
 export interface Item {
   item_id:      string
   shop_id:      string
@@ -8,6 +11,7 @@ export interface Item {
   description:  string
   retail_value: number
   image_url?:   string
+  category?:    Category
 }
 
 /** A shop registered by a user */
@@ -37,13 +41,15 @@ export interface Auction {
   image_url: string
   shop_logo_url: string
   description: string
+  category?: Category
 }
 
 export interface User {
-  user_id: string
-  username: string
-  email: string
-  role: 'buyer' | 'seller'
+  user_id:    string
+  username:   string
+  email:      string
+  role:       'buyer' | 'seller'
+  avatar_url?: string
 }
 
 /** A bid placed by the current user, shown on My Bids page */
@@ -92,4 +98,36 @@ export interface BidPlacedEvent {
   bid_accepted_at: string  // ISO timestamp — for latency measurement
   delivered_at: string
   timestamp: string
+}
+
+export interface AuctionClosedEvent {
+  type: 'auction_closed'
+  auction_id: string
+  winner_id: string
+  winning_bid: number
+  message: string
+  closed_at: string
+}
+
+export type NotificationEvent = BidPlacedEvent | AuctionClosedEvent
+
+export type NotificationType = 'outbid' | 'won' | 'auction_closed'
+
+export interface StoredNotification {
+  id:         string
+  type:       NotificationType
+  auction_id: string
+  item_title: string
+  message:    string
+  link:       string
+  amount:     number  // cents
+  created_at: number  // Unix ms
+  read:       boolean
+}
+
+/** Wrapper sent over the user-level WebSocket */
+export interface UserNotificationEvent {
+  type: 'notification'
+  notification: StoredNotification
+  unread_count: number
 }

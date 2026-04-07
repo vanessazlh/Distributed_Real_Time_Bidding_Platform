@@ -20,7 +20,8 @@ func NewRepository(rdb *redis.Client) *Repository {
 	return &Repository{rdb: rdb}
 }
 
-func auctionKey(id string) string { return "auction:" + id }
+func auctionKey(id string) string        { return "auction:" + id }
+func shopAuctionsKey(shopID string) string { return "shop:" + shopID + ":auctions" }
 
 const activeSetKey = "auctions:active"
 
@@ -30,6 +31,7 @@ func (r *Repository) Create(ctx context.Context, a *Auction) error {
 	pipe := r.rdb.Pipeline()
 	pipe.HSet(ctx, key, map[string]interface{}{
 		"auction_id":      a.AuctionID,
+		"seller_id":       a.SellerID,
 		"item_id":         a.ItemID,
 		"item_title":      a.ItemTitle,
 		"shop_id":         a.ShopID,
@@ -38,6 +40,7 @@ func (r *Repository) Create(ctx context.Context, a *Auction) error {
 		"image_url":       a.ImageURL,
 		"shop_logo_url":   a.ShopLogoURL,
 		"description":     a.Description,
+		"category":        a.Category,
 		"start_time":      a.StartTime.Format(time.RFC3339),
 		"end_time":        a.EndTime.Format(time.RFC3339),
 		"current_highest": a.CurrentHighest,
@@ -47,6 +50,7 @@ func (r *Repository) Create(ctx context.Context, a *Auction) error {
 		"version":         a.Version,
 	})
 	pipe.SAdd(ctx, activeSetKey, a.AuctionID)
+	pipe.SAdd(ctx, shopAuctionsKey(a.ShopID), a.AuctionID)
 	_, err := pipe.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("create auction: %w", err)
@@ -86,6 +90,24 @@ func (r *Repository) List(ctx context.Context, status string) ([]*Auction, error
 	return auctions, nil
 }
 
+// ListByShop returns all auctions belonging to a shop.
+func (r *Repository) ListByShop(ctx context.Context, shopID string) ([]*Auction, error) {
+	ids, err := r.rdb.SMembers(ctx, shopAuctionsKey(shopID)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("list shop auctions: %w", err)
+	}
+
+	auctions := make([]*Auction, 0, len(ids))
+	for _, id := range ids {
+		a, err := r.GetByID(ctx, id)
+		if err != nil {
+			continue
+		}
+		auctions = append(auctions, a)
+	}
+	return auctions, nil
+}
+
 // UpdateHighestBid atomically updates the highest bid using optimistic locking.
 func (r *Repository) UpdateHighestBid(ctx context.Context, auctionID string, amount int64, bidderID string, expectedVersion int64) error {
 	key := auctionKey(auctionID)
@@ -119,6 +141,16 @@ func (r *Repository) UpdateHighestBid(ctx context.Context, auctionID string, amo
 	return nil
 }
 
+// Open transitions a PENDING auction to OPEN.
+func (r *Repository) Open(ctx context.Context, auctionID string) error {
+	key := auctionKey(auctionID)
+	err := r.rdb.HSet(ctx, key, "status", "OPEN").Err()
+	if err != nil {
+		return fmt.Errorf("open auction: %w", err)
+	}
+	return nil
+}
+
 // Close marks an auction as CLOSED and removes it from the active set.
 func (r *Repository) Close(ctx context.Context, auctionID string) error {
 	key := auctionKey(auctionID)
@@ -147,6 +179,7 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 
 	return &Auction{
 		AuctionID:      vals["auction_id"],
+		SellerID:       vals["seller_id"],
 		ItemID:         vals["item_id"],
 		ItemTitle:      vals["item_title"],
 		ShopID:         vals["shop_id"],
@@ -155,6 +188,7 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 		ImageURL:       vals["image_url"],
 		ShopLogoURL:    vals["shop_logo_url"],
 		Description:    vals["description"],
+		Category:       vals["category"],
 		StartTime:      startTime,
 		EndTime:        endTime,
 		CurrentHighest: currentHighest,

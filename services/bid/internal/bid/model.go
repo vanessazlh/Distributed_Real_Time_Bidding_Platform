@@ -7,7 +7,9 @@ type Bid struct {
 	BidID     string    `json:"bid_id"`
 	AuctionID string    `json:"auction_id"`
 	UserID    string    `json:"user_id"`
+	ItemTitle string    `json:"item_title"`
+	ShopName  string    `json:"shop_name"`
 	Amount    int64     `json:"amount"`
 	Timestamp time.Time `json:"timestamp"`
-	Status    string    `json:"status"` // ACCEPTED, OUTBID
+	Status    string    `json:"status"` // ACCEPTED, OUTBID, WON
 }

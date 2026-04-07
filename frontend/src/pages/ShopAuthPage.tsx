@@ -28,16 +28,18 @@ export default function ShopAuthPage({ type }: ShopAuthPageProps) {
 
     try {
       if (isLogin) {
+        // Single-account model: just login normally, JWT carries the role
         const { token } = await api.auth.login(email, password)
         const payload   = decodeToken(token)
         if (payload?.role !== 'seller') {
-          setError('This account is not registered as a seller.')
+          setError('This account is not a seller. Register as a seller first.')
+          setLoading(false)
           return
         }
         login(
           {
-            user_id:  payload.user_id  ?? '',
-            username: payload.username ?? email.split('@')[0],
+            user_id:  payload?.user_id  ?? '',
+            username: payload?.username ?? email.split('@')[0],
             email,
             role:     'seller',
           },
@@ -45,6 +47,7 @@ export default function ShopAuthPage({ type }: ShopAuthPageProps) {
         )
         navigate('/seller/dashboard')
       } else {
+        // Register as seller — backend handles buyer→seller upgrade automatically
         await api.auth.register(username, email, password, 'seller')
         navigate('/shop/login')
       }
@@ -60,11 +63,13 @@ export default function ShopAuthPage({ type }: ShopAuthPageProps) {
       <div className="max-w-md mx-auto mt-8">
         <Card padding="p-8">
           <h1 className="font-display text-4xl text-brand text-center mb-2">SurpriseAuction</h1>
-          <p className="text-center text-text-secondary text-sm mb-1">
+          <p className="text-center text-text-secondary text-base mb-1">
             {isLogin ? 'Seller sign in' : 'Create a seller account'}
           </p>
-          <p className="text-center text-xs text-text-secondary mb-8">
-            Manage your shop, list items, and run auctions.
+          <p className="text-center text-sm text-text-secondary mb-8">
+            {isLogin
+              ? 'Manage your shop, list items, and run auctions.'
+              : 'Already have a buyer account? Use the same email and password to upgrade.'}
           </p>
 
           {error && (
@@ -109,7 +114,7 @@ export default function ShopAuthPage({ type }: ShopAuthPageProps) {
             </Button>
           </form>
 
-          <p className="text-center text-sm text-text-secondary mt-6">
+          <p className="text-center text-base text-text-secondary mt-6">
             {isLogin ? "Don't have a seller account? " : 'Already have a seller account? '}
             <Link
               to={isLogin ? '/shop/register' : '/shop/login'}
@@ -119,7 +124,7 @@ export default function ShopAuthPage({ type }: ShopAuthPageProps) {
             </Link>
           </p>
 
-          <p className="text-center text-xs text-text-secondary mt-4">
+          <p className="text-center text-sm text-text-secondary mt-4">
             Looking to buy?{' '}
             <Link to="/login" className="text-brand hover:underline">
               Buyer sign in

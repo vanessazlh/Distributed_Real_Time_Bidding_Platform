@@ -31,11 +31,19 @@ var ErrAuctionClosed = errors.New("auction is not open")
 // ErrBidTooLow is returned when the bid is not higher than the current highest.
 var ErrBidTooLow = errors.New("bid too low")
 
+// ErrSelfBid is returned when a seller tries to bid on their own auction.
+var ErrSelfBid = errors.New("sellers cannot bid on their own auction")
+
+// ErrValidation is returned when auction creation input is invalid.
+var ErrValidation = errors.New("validation error")
+
 // Repo is the interface the service depends on.
 type Repo interface {
 	Create(ctx context.Context, a *Auction) error
 	GetByID(ctx context.Context, auctionID string) (*Auction, error)
 	List(ctx context.Context, status string) ([]*Auction, error)
+	ListByShop(ctx context.Context, shopID string) ([]*Auction, error)
+	Open(ctx context.Context, auctionID string) error
 	Close(ctx context.Context, auctionID string) error
 }
 
@@ -84,11 +92,42 @@ func (s *Service) ResetMetrics() {
 	s.metrics.Reset()
 }
 
-// CreateAuction creates a new auction.
-func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest) (*Auction, error) {
+// CreateAuction creates a new auction with input validation and optional scheduling.
+func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, sellerID string) (*Auction, error) {
 	now := time.Now().UTC()
+
+	// ── Input validation ──
+	if req.StartBid < 0 {
+		return nil, fmt.Errorf("%w: start_bid must be >= 0", ErrValidation)
+	}
+	if req.Duration < 1 {
+		return nil, fmt.Errorf("%w: duration_minutes must be >= 1", ErrValidation)
+	}
+	if req.Duration > 10080 { // 7 days max
+		return nil, fmt.Errorf("%w: duration_minutes must be <= 10080 (7 days)", ErrValidation)
+	}
+
+	// Determine start time and status
+	startTime := now
+	status := "OPEN"
+
+	if req.ScheduledStart != "" {
+		parsed, err := time.Parse(time.RFC3339, req.ScheduledStart)
+		if err != nil {
+			return nil, fmt.Errorf("%w: scheduled_start must be a valid RFC3339 timestamp", ErrValidation)
+		}
+		if parsed.Before(now) {
+			return nil, fmt.Errorf("%w: scheduled_start must be in the future", ErrValidation)
+		}
+		startTime = parsed.UTC()
+		status = "PENDING"
+	}
+
+	endTime := startTime.Add(time.Duration(req.Duration) * time.Minute)
+
 	a := &Auction{
 		AuctionID:      uuid.NewString(),
+		SellerID:       sellerID,
 		ItemID:         req.ItemID,
 		ItemTitle:      req.ItemTitle,
 		ShopID:         req.ShopID,
@@ -97,12 +136,13 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest) (
 		ImageURL:       req.ImageURL,
 		ShopLogoURL:    req.ShopLogoURL,
 		Description:    req.Description,
-		StartTime:      now,
-		EndTime:        now.Add(time.Duration(req.Duration) * time.Minute),
+		Category:       req.Category,
+		StartTime:      startTime,
+		EndTime:        endTime,
 		CurrentHighest: req.StartBid,
 		BidCount:       0,
 		HighestBidder:  "",
-		Status:         "OPEN",
+		Status:         status,
 		Version:        0,
 	}
 
@@ -110,6 +150,14 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest) (
 		return nil, fmt.Errorf("create auction: %w", err)
 	}
 	return a, nil
+}
+
+// OpenAuction transitions a PENDING auction to OPEN.
+func (s *Service) OpenAuction(ctx context.Context, auctionID string) error {
+	if err := s.repo.Open(ctx, auctionID); err != nil {
+		return fmt.Errorf("open auction: %w", err)
+	}
+	return nil
 }
 
 // GetAuction returns an auction by ID.
@@ -130,6 +178,15 @@ func (s *Service) ListAuctions(ctx context.Context, status string) ([]*Auction, 
 	return auctions, nil
 }
 
+// ListAuctionsByShop returns all auctions for a given shop.
+func (s *Service) ListAuctionsByShop(ctx context.Context, shopID string) ([]*Auction, error) {
+	auctions, err := s.repo.ListByShop(ctx, shopID)
+	if err != nil {
+		return nil, fmt.Errorf("list auctions by shop: %w", err)
+	}
+	return auctions, nil
+}
+
 // PlaceBid places a bid on an auction using the current concurrency strategy.
 // Bid history is recorded asynchronously by the Bid Service via the bid_placed event.
 func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string, amount int64) (*BidResult, error) {
@@ -140,6 +197,11 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 	if err != nil {
 		s.metrics.RecordRejected()
 		return nil, ErrNotFound
+	}
+
+	if a.SellerID != "" && a.SellerID == userID {
+		s.metrics.RecordRejected()
+		return nil, ErrSelfBid
 	}
 
 	previousHighest := a.CurrentHighest
@@ -183,6 +245,7 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 		BidID:           bidID,
 		ItemID:          a.ItemID,
 		ItemTitle:       a.ItemTitle,
+		ShopName:        a.ShopName,
 		UserID:          userID,
 		Amount:          amount,
 		PreviousHighest: previousHighest,
@@ -221,6 +284,7 @@ func (s *Service) CloseAuction(ctx context.Context, auctionID string) error {
 		WinnerID:   a.HighestBidder,
 		WinningBid: a.CurrentHighest,
 		ItemID:     a.ItemID,
+		ItemTitle:  a.ItemTitle,
 		ShopID:     a.ShopID,
 		ClosedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 	})

@@ -38,6 +38,19 @@ type OutbidMessage struct {
 	Timestamp      string `json:"timestamp"`
 }
 
+// AuctionClosedMessage is broadcast when an auction ends.
+type AuctionClosedMessage struct {
+	Type       string `json:"type"`
+	AuctionID  string `json:"auction_id"`
+	WinnerID   string `json:"winner_id"`
+	WinningBid int64  `json:"winning_bid"`
+	Message    string `json:"message"`
+	ClosedAt   string `json:"closed_at"`
+}
+
+// AuctionClosedEvent is the shared event type from the events package.
+type AuctionClosedEvent = events.AuctionClosedEvent
+
 // Metrics holds hub statistics
 type Metrics struct {
 	ActiveConnections  int64   `json:"active_connections"`
@@ -98,25 +111,31 @@ func (t *latencyTracker) stats() (avg, p99 float64) {
 // Hub manages the in-memory client registry and Redis subscription.
 // It maintains the mapping auction_id → []Client and fans out
 // bid_placed events from Redis to all connected watchers.
+// It also tracks user-level WebSocket clients for global notifications.
 type Hub struct {
 	mu             sync.RWMutex
 	clients        map[string]map[Client]struct{} // auction_id → set of clients
+	userMu         sync.RWMutex
+	userClients    map[string]map[Client]struct{} // user_id → set of clients
 	wsCount        atomic.Int64
 	broadcastCount atomic.Int64
 	latency        *latencyTracker
 	rdb            *redis.Client
+	store          *Store
 }
 
 // NewHub creates a new Hub backed by the given Redis client.
-func NewHub(rdb *redis.Client) *Hub {
+func NewHub(rdb *redis.Client, store *Store) *Hub {
 	return &Hub{
-		clients: make(map[string]map[Client]struct{}),
-		latency: newLatencyTracker(),
-		rdb:     rdb,
+		clients:     make(map[string]map[Client]struct{}),
+		userClients: make(map[string]map[Client]struct{}),
+		latency:     newLatencyTracker(),
+		rdb:         rdb,
+		store:       store,
 	}
 }
 
-// Register adds c to the subscriber list for auctionID.
+// Register adds c to the subscriber list for auctionID (per-auction WS).
 func (h *Hub) Register(auctionID string, c Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -144,6 +163,79 @@ func (h *Hub) Unregister(auctionID string, c Client) {
 	if len(clients) == 0 {
 		delete(h.clients, auctionID)
 	}
+}
+
+// RegisterUser adds c to the global user-level client list.
+func (h *Hub) RegisterUser(userID string, c Client) {
+	h.userMu.Lock()
+	defer h.userMu.Unlock()
+	if h.userClients[userID] == nil {
+		h.userClients[userID] = make(map[Client]struct{})
+	}
+	h.userClients[userID][c] = struct{}{}
+	h.wsCount.Add(1)
+}
+
+// UnregisterUser removes c from the user-level client list.
+func (h *Hub) UnregisterUser(userID string, c Client) {
+	h.userMu.Lock()
+	defer h.userMu.Unlock()
+	clients, ok := h.userClients[userID]
+	if !ok {
+		return
+	}
+	if _, exists := clients[c]; !exists {
+		return
+	}
+	delete(clients, c)
+	h.wsCount.Add(-1)
+	if len(clients) == 0 {
+		delete(h.userClients, userID)
+	}
+}
+
+// SendToUser sends a message to all WebSocket connections for a given user.
+func (h *Hub) SendToUser(userID string, msg []byte) {
+	h.userMu.RLock()
+	targets := make([]Client, 0, len(h.userClients[userID]))
+	for c := range h.userClients[userID] {
+		targets = append(targets, c)
+	}
+	h.userMu.RUnlock()
+
+	for _, c := range targets {
+		if err := c.Send(msg); err != nil {
+			log.Printf("hub: user send error (user %s): %v", userID, err)
+		}
+	}
+}
+
+// storeAndPushNotification persists a notification and pushes it via user WS.
+func (h *Hub) storeAndPushNotification(userID string, n StoredNotification) {
+	if h.store == nil {
+		return
+	}
+	ctx := context.Background()
+	if err := h.store.Add(ctx, userID, n); err != nil {
+		log.Printf("hub: failed to store notification for user %s: %v", userID, err)
+		return
+	}
+	unread, err := h.store.UnreadCount(ctx, userID)
+	if err != nil {
+		log.Printf("hub: failed to get unread count for user %s: %v", userID, err)
+		unread = 0
+	}
+	wrapper := UserNotificationMessage{
+		Type:         "notification",
+		Notification: n,
+		UnreadCount:  unread,
+	}
+	data, err := json.Marshal(wrapper)
+	if err != nil {
+		log.Printf("hub: failed to marshal user notification: %v", err)
+		return
+	}
+	h.SendToUser(userID, data)
 }
 
 // Broadcast sends msg to all clients currently watching auctionID.
@@ -183,13 +275,13 @@ func (h *Hub) GetMetrics() Metrics {
 	}
 }
 
-// SubscribeRedis blocks and listens to the "bid_placed" Redis channel.
-// For each event it calls handleBidEvent; returns when ctx is cancelled.
+// SubscribeRedis blocks and listens to the "bid_placed" and "auction_closed" Redis channels.
+// For each event it calls the appropriate handler; returns when ctx is cancelled.
 func (h *Hub) SubscribeRedis(ctx context.Context) {
-	sub := h.rdb.Subscribe(ctx, "bid_placed")
+	sub := h.rdb.Subscribe(ctx, "bid_placed", "auction_closed")
 	defer sub.Close()
 
-	log.Println("hub: subscribed to Redis channel 'bid_placed'")
+	log.Println("hub: subscribed to Redis channels 'bid_placed', 'auction_closed'")
 	ch := sub.Channel()
 	for {
 		select {
@@ -201,14 +293,18 @@ func (h *Hub) SubscribeRedis(ctx context.Context) {
 				log.Println("hub: Redis subscription channel closed")
 				return
 			}
-			h.handleBidEvent(msg.Payload)
+			switch msg.Channel {
+			case "bid_placed":
+				h.handleBidEvent(msg.Payload)
+			case "auction_closed":
+				h.handleAuctionClosedEvent(msg.Payload)
+			}
 		}
 	}
 }
 
-// handleBidEvent parses a raw bid_placed payload and broadcasts an outbid
-// notification to all watchers of the affected auction.
-// If previous_bidder is empty this is the first bid — no notification is sent.
+// handleBidEvent parses a raw bid_placed payload and broadcasts a notification
+// to all watchers of the affected auction.
 func (h *Hub) handleBidEvent(payload string) {
 	var event BidPlacedEvent
 	if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -216,9 +312,9 @@ func (h *Hub) handleBidEvent(payload string) {
 		return
 	}
 
-	// First bid on this auction — nobody has been outbid yet.
-	if event.PreviousBidder == "" {
-		return
+	message := fmt.Sprintf("New bid on %s: $%.2f", event.ItemTitle, float64(event.Amount)/100)
+	if event.PreviousBidder != "" {
+		message = fmt.Sprintf("You've been outbid on %s! Current: $%.2f", event.ItemTitle, float64(event.Amount)/100)
 	}
 
 	outbid := OutbidMessage{
@@ -228,7 +324,7 @@ func (h *Hub) handleBidEvent(payload string) {
 		Amount:         event.Amount,
 		PreviousBidder: event.PreviousBidder,
 		ItemTitle:      event.ItemTitle,
-		Message:        fmt.Sprintf("You've been outbid on %s! Current: $%.2f", event.ItemTitle, float64(event.Amount)/100),
+		Message:        message,
 		BidAcceptedAt:  event.BidAcceptedAt,
 		DeliveredAt:    time.Now().UTC().Format(time.RFC3339Nano),
 		Timestamp:      event.Timestamp,
@@ -241,6 +337,73 @@ func (h *Hub) handleBidEvent(payload string) {
 	}
 
 	h.Broadcast(event.AuctionID, data, event.BidAcceptedAt)
-	log.Printf("hub: broadcast to auction %s — new bid $%.2f, outbid user %s",
-		event.AuctionID, float64(event.Amount)/100, event.PreviousBidder)
+	log.Printf("hub: broadcast to auction %s — new bid $%.2f by %s",
+		event.AuctionID, float64(event.Amount)/100, event.UserID)
+
+	// Store + push outbid notification to the previous bidder's global WS.
+	if event.PreviousBidder != "" && event.PreviousBidder != event.UserID {
+		h.storeAndPushNotification(event.PreviousBidder, StoredNotification{
+			ID:        fmt.Sprintf("outbid:%s", event.AuctionID),
+			Type:      "outbid",
+			AuctionID: event.AuctionID,
+			ItemTitle: event.ItemTitle,
+			Message:   fmt.Sprintf("You've been outbid on %s! Current: $%.2f", event.ItemTitle, float64(event.Amount)/100),
+			Link:      fmt.Sprintf("/auction/%s", event.AuctionID),
+			Amount:    event.Amount,
+			CreatedAt: time.Now().UnixMilli(),
+			Read:      false,
+		})
+	}
+}
+
+// handleAuctionClosedEvent parses an auction_closed payload and broadcasts
+// a close notification to all watchers of the auction.
+func (h *Hub) handleAuctionClosedEvent(payload string) {
+	var event AuctionClosedEvent
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		log.Printf("hub: failed to parse auction_closed event: %v", err)
+		return
+	}
+
+	message := "Auction closed with no bids."
+	if event.WinnerID != "" {
+		message = fmt.Sprintf("Auction closed! Winning bid: $%.2f", float64(event.WinningBid)/100)
+	}
+
+	closed := AuctionClosedMessage{
+		Type:       "auction_closed",
+		AuctionID:  event.AuctionID,
+		WinnerID:   event.WinnerID,
+		WinningBid: event.WinningBid,
+		Message:    message,
+		ClosedAt:   event.ClosedAt,
+	}
+
+	data, err := json.Marshal(closed)
+	if err != nil {
+		log.Printf("hub: failed to marshal auction_closed message: %v", err)
+		return
+	}
+
+	h.Broadcast(event.AuctionID, data, "")
+	log.Printf("hub: broadcast auction_closed for %s, winner %s", event.AuctionID, event.WinnerID)
+
+	// Store + push "won" notification to the winner's global WS.
+	if event.WinnerID != "" {
+		wonMsg := fmt.Sprintf("You won the auction! Winning bid: $%.2f", float64(event.WinningBid)/100)
+		if event.ItemTitle != "" {
+			wonMsg = fmt.Sprintf("You won %s! Winning bid: $%.2f", event.ItemTitle, float64(event.WinningBid)/100)
+		}
+		h.storeAndPushNotification(event.WinnerID, StoredNotification{
+			ID:        fmt.Sprintf("won:%s", event.AuctionID),
+			Type:      "won",
+			AuctionID: event.AuctionID,
+			ItemTitle: event.ItemTitle,
+			Message:   wonMsg,
+			Link:      fmt.Sprintf("/auction/%s", event.AuctionID),
+			Amount:    event.WinningBid,
+			CreatedAt: time.Now().UnixMilli(),
+			Read:      false,
+		})
+	}
 }

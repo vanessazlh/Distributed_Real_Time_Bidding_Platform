@@ -1,4 +1,4 @@
-export type BannerType = 'outbid' | 'winning' | 'success' | 'error'
+export type BannerType = 'outbid' | 'winning' | 'success' | 'error' | 'info'
 
 interface BannerStyle {
   border: string
@@ -12,6 +12,7 @@ const BANNER_STYLES: Record<BannerType, BannerStyle> = {
   winning: { border: 'border-brand',    bg: 'bg-teal-50',   textColor: 'text-brand',    icon: '🎉' },
   success: { border: 'border-brand',    bg: 'bg-teal-50',   textColor: 'text-brand',    icon: '✓'  },
   error:   { border: 'border-critical', bg: 'bg-red-50',    textColor: 'text-critical', icon: '✕'  },
+  info:    { border: 'border-blue-400', bg: 'bg-blue-50',  textColor: 'text-blue-600', icon: 'ℹ'  },
 }
 
 interface StatusBannerProps {

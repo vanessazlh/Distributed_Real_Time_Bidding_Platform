@@ -8,6 +8,7 @@ type BidPlacedEvent struct {
 	BidID           string `json:"bid_id"`
 	ItemID          string `json:"item_id"`
 	ItemTitle       string `json:"item_title"`
+	ShopName        string `json:"shop_name"`
 	UserID          string `json:"user_id"`          // new highest bidder
 	Amount          int64  `json:"amount"`            // cents
 	PreviousHighest int64  `json:"previous_highest"`  // cents
@@ -23,6 +24,7 @@ type AuctionClosedEvent struct {
 	WinnerID   string `json:"winner_id"`    // who to charge; "" if no bids placed
 	WinningBid int64  `json:"winning_bid"`  // cents; equals start bid if no bids
 	ItemID     string `json:"item_id"`
+	ItemTitle  string `json:"item_title"`
 	ShopID     string `json:"shop_id"`      // seller — for payment routing
 	ClosedAt   string `json:"closed_at"`
 }

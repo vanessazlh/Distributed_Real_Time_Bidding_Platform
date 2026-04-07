@@ -5,7 +5,7 @@ import { formatCurrency } from '@/lib/utils'
 import { CountdownTimer } from './CountdownTimer'
 import { PriceDisplay } from './PriceDisplay'
 
-type BidBannerState = 'WINNING' | 'OUTBID' | null
+type BidBannerState = 'WINNING' | 'OUTBID' | 'WON' | 'CLOSED' | null
 
 interface BiddingPanelProps {
   auction: Auction
@@ -14,6 +14,7 @@ interface BiddingPanelProps {
   flash: boolean
   banner: BidBannerState
   isClosed: boolean
+  isPending?: boolean
   user: User | null
   bidInput: string
   onBidInputChange: (value: string) => void
@@ -28,6 +29,7 @@ export function BiddingPanel({
   flash,
   banner,
   isClosed,
+  isPending = false,
   user,
   bidInput,
   onBidInputChange,
@@ -39,6 +41,11 @@ export function BiddingPanel({
   return (
     <Card padding="p-8">
       {/* Status banner */}
+      {isPending && (
+        <div className="mb-6">
+          <StatusBanner type="info" message="This auction hasn't started yet." detail="Bidding will open at the scheduled time." />
+        </div>
+      )}
       {banner === 'OUTBID' && (
         <div className="mb-6">
           <StatusBanner
@@ -51,6 +58,16 @@ export function BiddingPanel({
       {banner === 'WINNING' && (
         <div className="mb-6">
           <StatusBanner type="winning" message="You're currently winning!" detail="Keep an eye on the timer." />
+        </div>
+      )}
+      {banner === 'WON' && (
+        <div className="mb-6">
+          <StatusBanner type="success" message="You won this auction!" detail={`Final price: ${formatCurrency(highestBid)}`} />
+        </div>
+      )}
+      {banner === 'CLOSED' && (
+        <div className="mb-6">
+          <StatusBanner type="error" message="This auction has ended." detail="Better luck next time!" />
         </div>
       )}
 
@@ -93,7 +110,7 @@ export function BiddingPanel({
 
         {user ? (
           <Button variant="action" size="lg" disabled={isClosed} type="submit" fullWidth>
-            {isClosed ? 'Auction Closed' : 'Place Bid'}
+            {isPending ? 'Starting Soon' : isClosed ? 'Auction Closed' : 'Place Bid'}
           </Button>
         ) : (
           <Button variant="dark" size="lg" fullWidth type="button" onClick={onSignIn}>

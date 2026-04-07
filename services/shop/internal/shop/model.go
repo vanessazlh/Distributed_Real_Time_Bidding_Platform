@@ -17,6 +17,7 @@ type Item struct {
 	Description string `dynamodbav:"description" json:"description"`
 	RetailValue int64  `dynamodbav:"retail_value" json:"retail_value"`
 	ImageURL    string `dynamodbav:"image_url,omitempty" json:"image_url,omitempty"`
+	Category    string `dynamodbav:"category,omitempty" json:"category,omitempty"`
 }
 
 // CreateShopRequest is the payload for POST /shops.
@@ -32,4 +33,5 @@ type CreateItemRequest struct {
 	Description string `json:"description"`
 	RetailValue int64  `json:"retail_value"`
 	ImageURL    string `json:"image_url"`
+	Category    string `json:"category"`
 }
