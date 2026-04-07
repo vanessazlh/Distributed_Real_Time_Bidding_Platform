@@ -28,8 +28,6 @@ func (c *WSClient) Send(msg []byte) error {
 	return c.conn.WriteMessage(websocket.TextMessage, msg)
 }
 
-func (c *WSClient) ClientType() string { return "websocket" }
-
 // ServeWS upgrades an HTTP connection to WebSocket and registers it with the hub.
 // Route: GET /auctions/{auction_id}/subscribe
 //
