@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -33,8 +34,13 @@ func main() {
 	paymentHandler := paymentPkg.NewHandler(paymentSvc)
 
 	// Start auction_closed event consumer
-	consumer := events.NewConsumer(rdb, paymentSvc)
+	numWorkers, _ := strconv.Atoi(envOr("PAYMENT_WORKERS", "10"))
+	consumer := events.NewConsumer(rdb, paymentSvc, numWorkers)
 	consumer.Start()
+
+	// Start recovery job for payments stuck in PENDING/PROCESSING
+	recoveryCtx, recoveryCancel := context.WithCancel(context.Background())
+	paymentPkg.NewRecoveryJob(paymentRepo, paymentSvc).Start(recoveryCtx)
 
 	router := api.NewRouter(paymentHandler)
 
@@ -53,6 +59,7 @@ func main() {
 	<-quit
 	log.Println("shutting down...")
 
+	recoveryCancel()
 	consumer.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
