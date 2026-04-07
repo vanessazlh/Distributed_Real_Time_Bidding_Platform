@@ -48,6 +48,10 @@ func (h *Handler) CreateAuction(c *gin.Context) {
 	sellerID := callerID(c)
 	auction, err := h.svc.CreateAuction(c.Request.Context(), req, sellerID)
 	if err != nil {
+		if errors.Is(err, ErrValidation) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}

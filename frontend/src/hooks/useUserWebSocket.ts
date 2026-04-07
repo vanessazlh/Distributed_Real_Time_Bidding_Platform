@@ -25,7 +25,7 @@ export function useUserWebSocket(
     function connect() {
       if (unmounted) return
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      ws = new WebSocket(`${protocol}//${window.location.host}/notifications/subscribe?token=${encodeURIComponent(token)}`)
+      ws = new WebSocket(`${protocol}//${window.location.host}/notifications/subscribe?token=${encodeURIComponent(token!)}`)
 
       ws.onmessage = (e: MessageEvent<string>) => {
         try {

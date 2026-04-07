@@ -19,7 +19,7 @@ type Auction struct {
 	CurrentHighest int64     `json:"current_highest_bid"`
 	BidCount       int64     `json:"bid_count"`
 	HighestBidder  string    `json:"highest_bidder"`
-	Status         string    `json:"status"`  // OPEN, CLOSED
+	Status         string    `json:"status"`  // PENDING, OPEN, CLOSED
 	Version        int64     `json:"version"` // for optimistic locking
 }
 
@@ -33,8 +33,9 @@ type CreateAuctionRequest struct {
 	ImageURL    string `json:"image_url"`
 	ShopLogoURL string `json:"shop_logo_url"`
 	Description string `json:"description"`
-	Duration    int    `json:"duration_minutes" binding:"required,min=1"`
-	StartBid    int64  `json:"start_bid"`
+	Duration       int    `json:"duration_minutes" binding:"required,min=1"`
+	StartBid       int64  `json:"start_bid"`
+	ScheduledStart string `json:"scheduled_start"` // optional RFC3339; if set, auction starts as PENDING
 }
 
 // PlaceBidRequest is the payload for POST /auctions/:id/bid.

@@ -14,6 +14,7 @@ interface BiddingPanelProps {
   flash: boolean
   banner: BidBannerState
   isClosed: boolean
+  isPending?: boolean
   user: User | null
   bidInput: string
   onBidInputChange: (value: string) => void
@@ -28,6 +29,7 @@ export function BiddingPanel({
   flash,
   banner,
   isClosed,
+  isPending = false,
   user,
   bidInput,
   onBidInputChange,
@@ -39,6 +41,11 @@ export function BiddingPanel({
   return (
     <Card padding="p-8">
       {/* Status banner */}
+      {isPending && (
+        <div className="mb-6">
+          <StatusBanner type="info" message="This auction hasn't started yet." detail="Bidding will open at the scheduled time." />
+        </div>
+      )}
       {banner === 'OUTBID' && (
         <div className="mb-6">
           <StatusBanner
@@ -103,7 +110,7 @@ export function BiddingPanel({
 
         {user ? (
           <Button variant="action" size="lg" disabled={isClosed} type="submit" fullWidth>
-            {isClosed ? 'Auction Closed' : 'Place Bid'}
+            {isPending ? 'Starting Soon' : isClosed ? 'Auction Closed' : 'Place Bid'}
           </Button>
         ) : (
           <Button variant="dark" size="lg" fullWidth type="button" onClick={onSignIn}>

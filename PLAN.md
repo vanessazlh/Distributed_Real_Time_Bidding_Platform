@@ -39,10 +39,8 @@ Implemented both inline dashboard preview and dedicated drill-down page. CloseAu
 
 ### High
 
-#### 1. Auction expiry: basic done, PENDING status not yet added
-`closer.go` polls every 1 second and closes OPEN auctions past `end_time` — this works.
-
-Missing: PENDING status for pre-scheduled auctions. Currently auctions go OPEN immediately on creation. To support a future `start_time`, add a PENDING state and an AuctionOpener goroutine that transitions `PENDING → OPEN` at `start_time`.
+#### 1. ~~Auction expiry: PENDING status~~ **Fixed**
+`closer.go` now handles both directions: closes OPEN auctions past `end_time` and opens PENDING auctions when `start_time` arrives. CreateAuction accepts optional `scheduled_start` (RFC3339); if set, auction starts as PENDING. Frontend includes optional schedule picker on create form and shows "Starting Soon" overlay for PENDING auctions.
 
 #### 2. ~~`POST /auctions` unprotected by role~~ **Fixed**
 CreateAuction handler now checks `callerRole(c) != "seller"` and returns 403.
@@ -74,10 +72,8 @@ Bid service consumer now subscribes to `auction_closed` Pub/Sub channel. On clos
 #### 9. ~~`POST /auctions/:id/close` missing ownership check~~ **Fixed**
 CloseAuction handler now compares `auction.SellerID` to `callerID(c)` and returns 403 on mismatch.
 
-#### 10. Auction creation missing input validation
-No validation on `startTime < endTime`, `endTime` in the future, or `maxPrice > startingBid`.
-
-Fix: add these checks in `CreateAuction` handler before writing to Redis.
+#### 10. ~~Auction creation missing input validation~~ **Fixed**
+CreateAuction now validates: `start_bid >= 0`, `duration_minutes` between 1–10080, `scheduled_start` must be valid RFC3339 and in the future. Returns 400 with descriptive error messages.
 
 ---
 

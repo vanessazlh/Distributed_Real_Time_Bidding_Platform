@@ -1,4 +1,4 @@
-export type AuctionStatus = 'OPEN' | 'CLOSED'
+export type AuctionStatus = 'PENDING' | 'OPEN' | 'CLOSED'
 
 /** A physical item listed in a shop (from the shop service) */
 export interface Item {

@@ -140,6 +140,16 @@ func (r *Repository) UpdateHighestBid(ctx context.Context, auctionID string, amo
 	return nil
 }
 
+// Open transitions a PENDING auction to OPEN.
+func (r *Repository) Open(ctx context.Context, auctionID string) error {
+	key := auctionKey(auctionID)
+	err := r.rdb.HSet(ctx, key, "status", "OPEN").Err()
+	if err != nil {
+		return fmt.Errorf("open auction: %w", err)
+	}
+	return nil
+}
+
 // Close marks an auction as CLOSED and removes it from the active set.
 func (r *Repository) Close(ctx context.Context, auctionID string) error {
 	key := auctionKey(auctionID)

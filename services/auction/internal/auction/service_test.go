@@ -68,6 +68,17 @@ func (m *mockAuctionRepo) ListByShop(_ context.Context, shopID string) ([]*aucti
 	return result, nil
 }
 
+func (m *mockAuctionRepo) Open(_ context.Context, auctionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.auctions[auctionID]
+	if !ok {
+		return errors.New("auction not found")
+	}
+	a.Status = "OPEN"
+	return nil
+}
+
 func (m *mockAuctionRepo) Close(_ context.Context, auctionID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
