@@ -11,7 +11,7 @@
 | Payment processing (simulated) | Working |
 | My Bids page | Working |
 | Auction enrichment fields | Working |
-| Seller auction management UI | **Basic dashboard exists; auction list + close management not done** |
+| Seller auction management UI | **Done** (dashboard inline preview + dedicated /seller/shops/:shopId/auctions page with close) |
 | Automatic auction expiry | **Basic version done** (closer.go polls every 1s, closes OPEN auctions past end_time) |
 | Payment service Redis Streams migration | **Complete** |
 | Auction/notification Redis Streams migration | **Not started** (still on Pub/Sub) |

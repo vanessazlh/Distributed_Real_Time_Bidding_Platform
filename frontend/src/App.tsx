@@ -12,6 +12,7 @@ import CreateItemPage    from '@/pages/CreateItemPage'
 import CreateAuctionPage from '@/pages/CreateAuctionPage'
 import ShopAuthPage           from '@/pages/ShopAuthPage'
 import SellerDashboardPage    from '@/pages/SellerDashboardPage'
+import SellerAuctionPage     from '@/pages/SellerAuctionPage'
 import PaymentPage            from '@/pages/PaymentPage'
 import MyPaymentsPage         from '@/pages/MyPaymentsPage'
 
@@ -36,6 +37,7 @@ export default function App() {
               <Route path="/shop/login"               element={<ShopAuthPage type="login" />} />
               <Route path="/shop/register"            element={<ShopAuthPage type="register" />} />
               <Route path="/seller/dashboard"              element={<SellerDashboardPage />} />
+              <Route path="/seller/shops/:shopId/auctions" element={<SellerAuctionPage />} />
               <Route path="/my-payments"                  element={<MyPaymentsPage />} />
               <Route path="/payment/auction/:auctionId"   element={<PaymentPage />} />
             </Routes>

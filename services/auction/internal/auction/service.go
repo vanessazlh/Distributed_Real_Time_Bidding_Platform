@@ -36,6 +36,7 @@ type Repo interface {
 	Create(ctx context.Context, a *Auction) error
 	GetByID(ctx context.Context, auctionID string) (*Auction, error)
 	List(ctx context.Context, status string) ([]*Auction, error)
+	ListByShop(ctx context.Context, shopID string) ([]*Auction, error)
 	Close(ctx context.Context, auctionID string) error
 }
 
@@ -85,10 +86,11 @@ func (s *Service) ResetMetrics() {
 }
 
 // CreateAuction creates a new auction.
-func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest) (*Auction, error) {
+func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, sellerID string) (*Auction, error) {
 	now := time.Now().UTC()
 	a := &Auction{
 		AuctionID:      uuid.NewString(),
+		SellerID:       sellerID,
 		ItemID:         req.ItemID,
 		ItemTitle:      req.ItemTitle,
 		ShopID:         req.ShopID,
@@ -126,6 +128,15 @@ func (s *Service) ListAuctions(ctx context.Context, status string) ([]*Auction, 
 	auctions, err := s.repo.List(ctx, status)
 	if err != nil {
 		return nil, fmt.Errorf("list auctions: %w", err)
+	}
+	return auctions, nil
+}
+
+// ListAuctionsByShop returns all auctions for a given shop.
+func (s *Service) ListAuctionsByShop(ctx context.Context, shopID string) ([]*Auction, error) {
+	auctions, err := s.repo.ListByShop(ctx, shopID)
+	if err != nil {
+		return nil, fmt.Errorf("list auctions by shop: %w", err)
 	}
 	return auctions, nil
 }

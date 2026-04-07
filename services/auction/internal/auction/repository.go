@@ -20,7 +20,8 @@ func NewRepository(rdb *redis.Client) *Repository {
 	return &Repository{rdb: rdb}
 }
 
-func auctionKey(id string) string { return "auction:" + id }
+func auctionKey(id string) string        { return "auction:" + id }
+func shopAuctionsKey(shopID string) string { return "shop:" + shopID + ":auctions" }
 
 const activeSetKey = "auctions:active"
 
@@ -30,6 +31,7 @@ func (r *Repository) Create(ctx context.Context, a *Auction) error {
 	pipe := r.rdb.Pipeline()
 	pipe.HSet(ctx, key, map[string]interface{}{
 		"auction_id":      a.AuctionID,
+		"seller_id":       a.SellerID,
 		"item_id":         a.ItemID,
 		"item_title":      a.ItemTitle,
 		"shop_id":         a.ShopID,
@@ -47,6 +49,7 @@ func (r *Repository) Create(ctx context.Context, a *Auction) error {
 		"version":         a.Version,
 	})
 	pipe.SAdd(ctx, activeSetKey, a.AuctionID)
+	pipe.SAdd(ctx, shopAuctionsKey(a.ShopID), a.AuctionID)
 	_, err := pipe.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("create auction: %w", err)
@@ -82,6 +85,24 @@ func (r *Repository) List(ctx context.Context, status string) ([]*Auction, error
 		if status == "" || a.Status == status {
 			auctions = append(auctions, a)
 		}
+	}
+	return auctions, nil
+}
+
+// ListByShop returns all auctions belonging to a shop.
+func (r *Repository) ListByShop(ctx context.Context, shopID string) ([]*Auction, error) {
+	ids, err := r.rdb.SMembers(ctx, shopAuctionsKey(shopID)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("list shop auctions: %w", err)
+	}
+
+	auctions := make([]*Auction, 0, len(ids))
+	for _, id := range ids {
+		a, err := r.GetByID(ctx, id)
+		if err != nil {
+			continue
+		}
+		auctions = append(auctions, a)
 	}
 	return auctions, nil
 }
@@ -147,6 +168,7 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 
 	return &Auction{
 		AuctionID:      vals["auction_id"],
+		SellerID:       vals["seller_id"],
 		ItemID:         vals["item_id"],
 		ItemTitle:      vals["item_title"],
 		ShopID:         vals["shop_id"],
