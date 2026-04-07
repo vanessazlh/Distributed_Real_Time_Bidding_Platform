@@ -75,6 +75,9 @@ CloseAuction handler now compares `auction.SellerID` to `callerID(c)` and return
 #### 10. ~~Auction creation missing input validation~~ **Fixed**
 CreateAuction now validates: `start_bid >= 0`, `duration_minutes` between 1–10080, `scheduled_start` must be valid RFC3339 and in the future. Returns 400 with descriptive error messages.
 
+#### 11. ~~Same email cannot register as both buyer and seller~~ **Fixed**
+Replaced dual-account model with single-account model: one email = one account. Registering as seller with an existing buyer email upgrades the role (after password verification) instead of creating a duplicate. JWT now includes `username` and `email` claims. Login no longer takes a role parameter — role is determined by the account state.
+
 ---
 
 ## Backlog Features
