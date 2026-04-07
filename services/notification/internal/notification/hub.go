@@ -11,14 +11,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"rtb/shared/events"
+
+	"github.com/redis/go-redis/v9"
 )
 
-// Client is implemented by both WebSocket and SSE clients.
+// Client is implemented by WebSocket clients.
 type Client interface {
 	Send(msg []byte) error
-	ClientType() string
 }
 
 // BidPlacedEvent is the shared event type from the events package.
@@ -28,22 +28,22 @@ type BidPlacedEvent = events.BidPlacedEvent
 type OutbidMessage struct {
 	Type           string `json:"type"`
 	AuctionID      string `json:"auction_id"`
-	UserID         string `json:"user_id"`          // new highest bidder
-	Amount         int64  `json:"amount"`            // cents
-	PreviousBidder string `json:"previous_bidder"`   // the outbid user
+	UserID         string `json:"user_id"`         // new highest bidder
+	Amount         int64  `json:"amount"`          // cents
+	PreviousBidder string `json:"previous_bidder"` // the outbid user
 	ItemTitle      string `json:"item_title"`
-	Message        string `json:"message"`           // human-readable outbid notification
-	BidAcceptedAt  string `json:"bid_accepted_at"`   // when Auction Service accepted the bid
-	DeliveredAt    string `json:"delivered_at"`      // when notification was sent (for latency calc)
+	Message        string `json:"message"`         // human-readable outbid notification
+	BidAcceptedAt  string `json:"bid_accepted_at"` // when Auction Service accepted the bid
+	DeliveredAt    string `json:"delivered_at"`    // when notification was sent (for latency calc)
 	Timestamp      string `json:"timestamp"`
 }
 
-// Metrics holds hub statistics in the format Person 4 requires for Experiment 3.
+// Metrics holds hub statistics
 type Metrics struct {
-	ActiveConnections   int64   `json:"active_connections"`
-	TotalBroadcasts     int64   `json:"total_broadcasts"`
-	AvgDeliveryLatency  float64 `json:"avg_delivery_latency_ms"`
-	P99DeliveryLatency  float64 `json:"p99_delivery_latency_ms"`
+	ActiveConnections  int64   `json:"active_connections"`
+	TotalBroadcasts    int64   `json:"total_broadcasts"`
+	AvgDeliveryLatency float64 `json:"avg_delivery_latency_ms"`
+	P99DeliveryLatency float64 `json:"p99_delivery_latency_ms"`
 }
 
 // latencyTracker stores delivery latency samples and computes avg / p99.
@@ -102,7 +102,6 @@ type Hub struct {
 	mu             sync.RWMutex
 	clients        map[string]map[Client]struct{} // auction_id → set of clients
 	wsCount        atomic.Int64
-	sseCount       atomic.Int64
 	broadcastCount atomic.Int64
 	latency        *latencyTracker
 	rdb            *redis.Client
@@ -125,11 +124,7 @@ func (h *Hub) Register(auctionID string, c Client) {
 		h.clients[auctionID] = make(map[Client]struct{})
 	}
 	h.clients[auctionID][c] = struct{}{}
-	if c.ClientType() == "websocket" {
-		h.wsCount.Add(1)
-	} else {
-		h.sseCount.Add(1)
-	}
+	h.wsCount.Add(1)
 }
 
 // Unregister removes c from the subscriber list for auctionID.
@@ -145,11 +140,7 @@ func (h *Hub) Unregister(auctionID string, c Client) {
 		return
 	}
 	delete(clients, c)
-	if c.ClientType() == "websocket" {
-		h.wsCount.Add(-1)
-	} else {
-		h.sseCount.Add(-1)
-	}
+	h.wsCount.Add(-1)
 	if len(clients) == 0 {
 		delete(h.clients, auctionID)
 	}
@@ -168,7 +159,7 @@ func (h *Hub) Broadcast(auctionID string, msg []byte, bidAcceptedAt string) {
 
 	for _, c := range targets {
 		if err := c.Send(msg); err != nil {
-			log.Printf("hub: send error to %s client (auction %s): %v", c.ClientType(), auctionID, err)
+			log.Printf("hub: send error (auction %s): %v", auctionID, err)
 		}
 	}
 	h.broadcastCount.Add(1)
@@ -185,7 +176,7 @@ func (h *Hub) Broadcast(auctionID string, msg []byte, bidAcceptedAt string) {
 func (h *Hub) GetMetrics() Metrics {
 	avg, p99 := h.latency.stats()
 	return Metrics{
-		ActiveConnections:  h.wsCount.Load() + h.sseCount.Load(),
+		ActiveConnections:  h.wsCount.Load(),
 		TotalBroadcasts:    h.broadcastCount.Load(),
 		AvgDeliveryLatency: math.Round(avg*10) / 10,
 		P99DeliveryLatency: math.Round(p99*10) / 10,
