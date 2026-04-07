@@ -1,20 +1,24 @@
 import { useEffect, useRef } from 'react'
-import type { BidPlacedEvent } from '@/types'
+import type { BidPlacedEvent, AuctionClosedEvent } from '@/types'
+
+interface WebSocketCallbacks {
+  onBidPlaced?: (event: BidPlacedEvent) => void
+  onAuctionClosed?: (event: AuctionClosedEvent) => void
+}
 
 /**
  * Connects to the notification service WebSocket for a given auction.
  * Route: GET /auctions/:auctionId/subscribe
  *
- * Calls onMessage for every valid bid_placed event received.
- * Silently no-ops if the server is unavailable (mock simulation handles the UI).
+ * Calls the appropriate callback for bid_placed and auction_closed events.
+ * Silently no-ops if the server is unavailable.
  */
 export function useAuctionWebSocket(
   auctionId: string,
-  onMessage: (event: BidPlacedEvent) => void,
+  callbacks: WebSocketCallbacks,
 ): void {
-  // Keep a stable ref to the callback so we don't reconnect on every render
-  const onMessageRef = useRef(onMessage)
-  useEffect(() => { onMessageRef.current = onMessage })
+  const cbRef = useRef(callbacks)
+  useEffect(() => { cbRef.current = callbacks })
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -22,8 +26,13 @@ export function useAuctionWebSocket(
 
     ws.onmessage = (e: MessageEvent<string>) => {
       try {
-        const msg = JSON.parse(e.data) as BidPlacedEvent
-        if (msg.type === 'bid_placed') onMessageRef.current(msg)
+        const msg = JSON.parse(e.data)
+        if (msg.type === 'bid_placed' && cbRef.current.onBidPlaced) {
+          cbRef.current.onBidPlaced(msg as BidPlacedEvent)
+        }
+        if (msg.type === 'auction_closed' && cbRef.current.onAuctionClosed) {
+          cbRef.current.onAuctionClosed(msg as AuctionClosedEvent)
+        }
       } catch {
         // Ignore malformed messages
       }

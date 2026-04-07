@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -8,6 +9,32 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// VerifyJWT parses and validates a JWT string, returning the user_id (sub claim).
+// Usable outside of Gin (e.g. in net/http handlers).
+func VerifyJWT(tokenStr string) (string, error) {
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return jwtSecret(), nil
+	})
+	if err != nil || !token.Valid {
+		return "", fmt.Errorf("invalid or expired token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("invalid token claims")
+	}
+
+	userID, ok := claims["sub"].(string)
+	if !ok || userID == "" {
+		return "", fmt.Errorf("invalid token subject")
+	}
+
+	return userID, nil
+}
 
 // Auth is a Gin middleware that validates Bearer JWT tokens.
 // On success, it sets "user_id" in the context.
@@ -20,32 +47,23 @@ func Auth() gin.HandlerFunc {
 		}
 
 		tokenStr := strings.TrimPrefix(header, "Bearer ")
-		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
-			}
-			return jwtSecret(), nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
-			return
-		}
-
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
-			return
-		}
-
-		userID, ok := claims["sub"].(string)
-		if !ok || userID == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token subject"})
+		userID, err := VerifyJWT(tokenStr)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
 
 		c.Set("user_id", userID)
-		if role, ok := claims["role"].(string); ok {
-			c.Set("role", role)
+
+		// Also extract role if present
+		if token, _ := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+			return jwtSecret(), nil
+		}); token != nil {
+			if claims, ok := token.Claims.(jwt.MapClaims); ok {
+				if role, ok := claims["role"].(string); ok {
+					c.Set("role", role)
+				}
+			}
 		}
 		c.Next()
 	}

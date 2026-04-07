@@ -15,7 +15,9 @@
 | Automatic auction expiry | **Basic version done** (closer.go polls every 1s, closes OPEN auctions past end_time) |
 | Payment service Redis Streams migration | **Complete** |
 | Auction/notification Redis Streams migration | **Not started** (still on Pub/Sub) |
-| Bid service WON status on close | **Not started** |
+| Bid service WON status on close | **Done** (consumer subscribes to auction_closed, marks winner bid as WON) |
+| Per-auction WebSocket notifications | **Done** (broadcasts all bids + auction_closed, frontend WON/CLOSED banners) |
+| Global notification system | **Done** (persistent Redis store, per-user WebSocket, bell + toast UI, capped at 20 with dedup) |
 | Cache reliability (ensureRedisCached) | **Not started** |
 
 ---
@@ -61,10 +63,8 @@ RecordBid now calls MarkUserPreviousBids before creating the new bid, marking th
 #### 6. ~~Bid enrichment missing on My Bids page~~ **Fixed**
 Bid model now stores `item_title` and `shop_name`. BidPlacedEvent carries `shop_name`. Consumer passes both fields at write time. Frontend `toUserBid` reads them from the response.
 
-#### 7. WebSocket notifications incomplete
-The notification service broadcasts `bid_placed` events. Missing:
-- "You've been outbid" push to the previous highest bidder
-- Auction close notification to winner and losing bidders
+#### 7. ~~WebSocket notifications incomplete~~ **Fixed**
+Notification hub now broadcasts all bid_placed events (not just outbids) and subscribes to auction_closed channel. Frontend handles both event types with appropriate banners (WON/CLOSED). Global per-user WebSocket added for cross-page notifications with persistent Redis storage, bell dropdown, and toast popups.
 
 #### 8. ~~Bid WON status never set~~ **Fixed**
 Bid service consumer now subscribes to `auction_closed` Pub/Sub channel. On close, marks the winner's ACCEPTED bid as WON via `MarkWon()`. Frontend maps WON status correctly.

@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from '@/context/AuthContext'
+import { NotificationProvider } from '@/context/NotificationContext'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Navbar } from '@/components/layout'
+import { NotificationToast } from '@/components/ui/Toast'
 import HomePage          from '@/pages/HomePage'
 import AuctionDetailPage from '@/pages/AuctionDetailPage'
 import AuthPage          from '@/pages/AuthPage'
@@ -21,8 +23,10 @@ export default function App() {
     <ErrorBoundary>
     <AuthProvider>
       <BrowserRouter>
+        <NotificationProvider>
         <div className="min-h-screen flex flex-col font-sans selection:bg-brand/20">
           <Navbar />
+          <NotificationToast />
           <main className="flex-1">
             <Routes>
               <Route path="/"                          element={<HomePage />} />
@@ -43,6 +47,7 @@ export default function App() {
             </Routes>
           </main>
         </div>
+        </NotificationProvider>
       </BrowserRouter>
     </AuthProvider>
     </ErrorBoundary>

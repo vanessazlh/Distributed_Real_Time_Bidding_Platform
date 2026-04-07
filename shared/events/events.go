@@ -24,6 +24,7 @@ type AuctionClosedEvent struct {
 	WinnerID   string `json:"winner_id"`    // who to charge; "" if no bids placed
 	WinningBid int64  `json:"winning_bid"`  // cents; equals start bid if no bids
 	ItemID     string `json:"item_id"`
+	ItemTitle  string `json:"item_title"`
 	ShopID     string `json:"shop_id"`      // seller — for payment routing
 	ClosedAt   string `json:"closed_at"`
 }
