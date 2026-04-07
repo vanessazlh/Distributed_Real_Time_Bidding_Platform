@@ -32,20 +32,24 @@ interface BackendBid {
   bid_id:     string
   auction_id: string
   user_id:    string
+  item_title: string
+  shop_name:  string
   amount:     number
   timestamp:  string  // RFC3339
-  status:     string  // ACCEPTED | OUTBID
+  status:     string  // ACCEPTED | OUTBID | WON
 }
 
 function toUserBid(b: BackendBid): UserBid {
   return {
     bid_id:     b.bid_id,
     auction_id: b.auction_id,
-    item_title: '',
-    shop_name:  '',
+    item_title: b.item_title ?? '',
+    shop_name:  b.shop_name  ?? '',
     amount:     b.amount,
     timestamp:  new Date(b.timestamp).getTime(),
-    status:     b.status === 'ACCEPTED' ? 'WINNING' : 'OUTBID',
+    status:     b.status === 'ACCEPTED' ? 'WINNING'
+              : b.status === 'WON'      ? 'WON'
+              : 'OUTBID',
   }
 }
 
