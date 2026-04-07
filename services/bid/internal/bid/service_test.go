@@ -62,6 +62,19 @@ func (m *mockRepo) GetByUser(_ context.Context, userID string) ([]*bid.Bid, erro
 	return result, nil
 }
 
+func (m *mockRepo) MarkWon(_ context.Context, auctionID string, winnerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ids := m.auction[auctionID]
+	for _, id := range ids {
+		if b, ok := m.bids[id]; ok && b.UserID == winnerID && b.Status == "ACCEPTED" {
+			b.Status = "WON"
+			return nil
+		}
+	}
+	return nil
+}
+
 func (m *mockRepo) MarkUserPreviousBids(_ context.Context, auctionID string, userID string, excludeBidID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

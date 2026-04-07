@@ -8,6 +8,7 @@ type BidPlacedEvent struct {
 	BidID           string `json:"bid_id"`
 	ItemID          string `json:"item_id"`
 	ItemTitle       string `json:"item_title"`
+	ShopName        string `json:"shop_name"`
 	UserID          string `json:"user_id"`          // new highest bidder
 	Amount          int64  `json:"amount"`            // cents
 	PreviousHighest int64  `json:"previous_highest"`  // cents

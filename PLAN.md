@@ -58,29 +58,21 @@ RecordBid now calls MarkUserPreviousBids before creating the new bid, marking th
 
 ### Medium
 
-#### 6. Bid enrichment missing on My Bids page
-`GET /users/:id/bids` returns bid records with no `item_title` or `shop_name`. The bid service stores `auction_id` but not the item title at write time. My Bids page shows blank titles and shop names.
-
-Options:
-- Store `item_title` in the bid record at write time (same denormalization as auctions)
-- Enrich in the user service proxy before returning to the client
+#### 6. ~~Bid enrichment missing on My Bids page~~ **Fixed**
+Bid model now stores `item_title` and `shop_name`. BidPlacedEvent carries `shop_name`. Consumer passes both fields at write time. Frontend `toUserBid` reads them from the response.
 
 #### 7. WebSocket notifications incomplete
 The notification service broadcasts `bid_placed` events. Missing:
 - "You've been outbid" push to the previous highest bidder
 - Auction close notification to winner and losing bidders
 
-#### 8. Bid WON status never set
-The bid service has no consumer for `auction:closed` stream. After an auction closes, winning bids remain in `ACTIVE` status forever — the `WON` state is never written.
-
-Fix: add `AuctionClosedConsumer` in bid service that consumes `auction:closed` stream and marks the winner's bid as `WON`.
+#### 8. ~~Bid WON status never set~~ **Fixed**
+Bid service consumer now subscribes to `auction_closed` Pub/Sub channel. On close, marks the winner's ACCEPTED bid as WON via `MarkWon()`. Frontend maps WON status correctly.
 
 ### Low
 
-#### 9. `POST /auctions/:id/close` missing ownership check
-The handler calls `callerID()` but does not verify the caller owns the shop the auction belongs to. Any authenticated user can close any auction.
-
-Fix: read `seller_id` from the auction Redis hash and compare to `callerID(c)` before proceeding.
+#### 9. ~~`POST /auctions/:id/close` missing ownership check~~ **Fixed**
+CloseAuction handler now compares `auction.SellerID` to `callerID(c)` and returns 403 on mismatch.
 
 #### 10. Auction creation missing input validation
 No validation on `startTime < endTime`, `endTime` in the future, or `maxPrice > startingBid`.

@@ -16,6 +16,7 @@ type Repo interface {
 	GetByUser(ctx context.Context, userID string) ([]*Bid, error)
 	MarkOutbid(ctx context.Context, auctionID string, excludeBidID string) error
 	MarkUserPreviousBids(ctx context.Context, auctionID string, userID string, excludeBidID string) error
+	MarkWon(ctx context.Context, auctionID string, winnerID string) error
 }
 
 // Service contains business logic for the bid domain.
@@ -39,6 +40,14 @@ func (s *Service) RecordBid(ctx context.Context, b *Bid) error {
 	}
 	if err := s.repo.MarkOutbid(ctx, b.AuctionID, b.BidID); err != nil {
 		return fmt.Errorf("mark outbid: %w", err)
+	}
+	return nil
+}
+
+// MarkWinnerBid marks the winning bid for an auction as WON.
+func (s *Service) MarkWinnerBid(ctx context.Context, auctionID string, winnerID string) error {
+	if err := s.repo.MarkWon(ctx, auctionID, winnerID); err != nil {
+		return fmt.Errorf("mark winner bid: %w", err)
 	}
 	return nil
 }

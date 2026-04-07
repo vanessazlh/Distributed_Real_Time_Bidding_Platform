@@ -90,6 +90,32 @@ func (r *Repository) getBidsByKey(ctx context.Context, key string) ([]*Bid, erro
 	return bids, nil
 }
 
+// MarkWon marks the winning user's ACCEPTED bid for an auction as WON.
+func (r *Repository) MarkWon(ctx context.Context, auctionID string, winnerID string) error {
+	ids, err := r.rdb.ZRange(ctx, auctionBidsKey(auctionID), 0, -1).Result()
+	if err != nil {
+		return fmt.Errorf("get bid ids for won: %w", err)
+	}
+
+	for _, id := range ids {
+		raw, err := r.rdb.Get(ctx, bidDetailKey(id)).Result()
+		if err != nil {
+			continue
+		}
+		var b Bid
+		if err := json.Unmarshal([]byte(raw), &b); err != nil {
+			continue
+		}
+		if b.UserID == winnerID && b.Status == "ACCEPTED" {
+			b.Status = "WON"
+			data, _ := json.Marshal(b)
+			r.rdb.Set(ctx, bidDetailKey(id), data, 0)
+			return nil
+		}
+	}
+	return nil
+}
+
 // MarkUserPreviousBids marks all ACCEPTED bids by a specific user for an auction as OUTBID.
 func (r *Repository) MarkUserPreviousBids(ctx context.Context, auctionID string, userID string, excludeBidID string) error {
 	ids, err := r.rdb.ZRange(ctx, auctionBidsKey(auctionID), 0, -1).Result()

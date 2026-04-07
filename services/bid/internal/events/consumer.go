@@ -27,9 +27,10 @@ func NewConsumer(rdb *redis.Client, bidSvc *bid.Service) *Consumer {
 	}
 }
 
-// Start begins listening for bid_placed events.
+// Start begins listening for bid_placed and auction_closed events.
 func (c *Consumer) Start() {
-	go c.subscribe()
+	go c.subscribeBidPlaced()
+	go c.subscribeAuctionClosed()
 	log.Println("bid event consumer started")
 }
 
@@ -39,7 +40,7 @@ func (c *Consumer) Stop() {
 	log.Println("bid event consumer stopped")
 }
 
-func (c *Consumer) subscribe() {
+func (c *Consumer) subscribeBidPlaced() {
 	sub := c.rdb.Subscribe(context.Background(), "bid_placed")
 	defer sub.Close()
 
@@ -51,6 +52,24 @@ func (c *Consumer) subscribe() {
 				return
 			}
 			c.handleBidPlaced(msg.Payload)
+		case <-c.done:
+			return
+		}
+	}
+}
+
+func (c *Consumer) subscribeAuctionClosed() {
+	sub := c.rdb.Subscribe(context.Background(), "auction_closed")
+	defer sub.Close()
+
+	ch := sub.Channel()
+	for {
+		select {
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			c.handleAuctionClosed(msg.Payload)
 		case <-c.done:
 			return
 		}
@@ -73,6 +92,8 @@ func (c *Consumer) handleBidPlaced(payload string) {
 		BidID:     event.BidID,
 		AuctionID: event.AuctionID,
 		UserID:    event.UserID,
+		ItemTitle: event.ItemTitle,
+		ShopName:  event.ShopName,
 		Amount:    event.Amount,
 		Timestamp: ts,
 		Status:    "ACCEPTED",
@@ -81,5 +102,25 @@ func (c *Consumer) handleBidPlaced(payload string) {
 	ctx := context.Background()
 	if err := c.bidSvc.RecordBid(ctx, b); err != nil {
 		log.Printf("failed to record bid from event: %v", err)
+	}
+}
+
+func (c *Consumer) handleAuctionClosed(payload string) {
+	var event events.AuctionClosedEvent
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		log.Printf("failed to unmarshal auction_closed event: %v", err)
+		return
+	}
+
+	if event.WinnerID == "" {
+		log.Printf("auction %s closed with no winner", event.AuctionID)
+		return
+	}
+
+	ctx := context.Background()
+	if err := c.bidSvc.MarkWinnerBid(ctx, event.AuctionID, event.WinnerID); err != nil {
+		log.Printf("failed to mark winner bid for auction %s: %v", event.AuctionID, err)
+	} else {
+		log.Printf("marked winning bid for auction %s, winner %s", event.AuctionID, event.WinnerID)
 	}
 }
