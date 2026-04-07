@@ -35,13 +35,17 @@ func (h *Handler) Register(c *gin.Context) {
 		switch {
 		case errors.Is(err, ErrEmailTaken):
 			c.JSON(http.StatusConflict, gin.H{"error": "email already registered"})
+		case errors.Is(err, ErrAlreadySeller):
+			c.JSON(http.StatusConflict, gin.H{"error": "account is already a seller"})
+		case errors.Is(err, ErrInvalidCredentials):
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect password for existing account"})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		}
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"user_id": userID})
+	c.JSON(http.StatusCreated, gin.H{"user_id": userID, "role": req.Role})
 }
 
 // Login godoc

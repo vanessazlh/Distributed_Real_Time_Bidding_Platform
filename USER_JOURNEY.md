@@ -10,7 +10,7 @@ SurpriseAuction is a real-time surplus auction platform where local stores list 
 A buyer lands on the homepage and sees a live feed of active auctions, filterable by category (Bakery, Sushi, and more). Each card shows the item photo, the shop it comes from, the current highest bid, and a live countdown to closing. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
 
 ### 2. Account
-The buyer registers at `/login` with a username, email, and password — or logs in if they already have an account. Authentication is JWT-based; no session state is stored server-side. The buyer's `role` is stamped into the token as `buyer`.
+The buyer registers at `/login` with a username, email, and password — or logs in if they already have an account. Authentication is JWT-based; no session state is stored server-side. The account's `role` is stamped into the JWT along with `username` and `email`. The platform uses a **single-account model**: one email = one account. A buyer can later upgrade to a seller (see Seller Journey below) without creating a second account.
 
 ### 3. Entering an Auction
 The buyer clicks into an auction and sees:
@@ -58,7 +58,11 @@ Payment is processed automatically — no action required from the buyer. The bu
 ## Seller Journey
 
 ### 1. Seller Account
-The seller registers or logs in at `/shop/login` — a separate entry point from the buyer login page. Both hit the same `POST /auth/login` endpoint, but the seller's `role: seller` is encoded in the JWT, unlocking seller-only routes.
+The platform uses a **single-account model** — one email maps to one account. A seller registers at `/shop/register`:
+- **New user**: creates an account with the `seller` role directly
+- **Existing buyer**: entering the same email and password upgrades the existing account to `seller`. The `seller` role is a superset of `buyer` — a seller can still browse and bid on other shops' auctions
+
+The seller logs in at `/shop/login`. If the account's role is not `seller`, the login page shows an error prompting the user to register as a seller first. The JWT carries `role: seller`, unlocking seller-only routes.
 
 ### 2. Seller Dashboard
 After login the seller lands on `/seller/dashboard`. The dashboard shows:
