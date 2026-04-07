@@ -75,7 +75,10 @@ CloseAuction handler now compares `auction.SellerID` to `callerID(c)` and return
 #### 10. ~~Auction creation missing input validation~~ **Fixed**
 CreateAuction now validates: `start_bid >= 0`, `duration_minutes` between 1–10080, `scheduled_start` must be valid RFC3339 and in the future. Returns 400 with descriptive error messages.
 
-#### 11. ~~Same email cannot register as both buyer and seller~~ **Fixed**
+#### 11. ~~Payment page 404~~ **Fixed**
+nginx routed `/auctions/:id/payment` and `/users/:id/payments` to the auction/user services instead of the payment service. Added explicit regex routes for both paths before the generic prefix blocks. Removed the unused `/payments` prefix block.
+
+#### 12. ~~Same email cannot register as both buyer and seller~~ **Fixed**
 Replaced dual-account model with single-account model: one email = one account. Registering as seller with an existing buyer email upgrades the role (after password verification) instead of creating a duplicate. JWT now includes `username` and `email` claims. Login no longer takes a role parameter — role is determined by the account state.
 
 ---
@@ -132,12 +135,11 @@ Items have no category field, blocking real filtering on the buyer home page.
 - Update `CreateItemPage` with a category selector
 - Update `HomePage` tabs to filter by real category data
 
-### 3. Profile update endpoints
-Users and sellers can register and log in but cannot update their details.
+### 3. ~~Profile update endpoints~~ **Partially done**
+`PUT /users/:user_id` implemented with username editing and ownership check. Unified profile page at `/profile` with sidebar tabs (Account, My Bids, Payments). Remaining:
 
-- `PUT /users/:user_id` — update username, email, password (ownership check required)
 - `PUT /shops/:shop_id` — edit shop name, location, logo URL (ownership check required)
-- Frontend: "Edit Profile" page for buyers; "Edit Shop" button on the seller dashboard
+- Frontend: "Edit Shop" button on the seller dashboard
 
 ### 10. Redis Pub/Sub → Redis Streams
 The auction, notification, and payment services all use Redis Pub/Sub, which is fire-and-forget.

@@ -7,7 +7,6 @@ import { NotificationToast } from '@/components/ui/Toast'
 import HomePage          from '@/pages/HomePage'
 import AuctionDetailPage from '@/pages/AuctionDetailPage'
 import AuthPage          from '@/pages/AuthPage'
-import MyBidsPage        from '@/pages/MyBidsPage'
 import ShopDetailPage    from '@/pages/ShopDetailPage'
 import CreateShopPage    from '@/pages/CreateShopPage'
 import CreateItemPage    from '@/pages/CreateItemPage'
@@ -16,7 +15,7 @@ import ShopAuthPage           from '@/pages/ShopAuthPage'
 import SellerDashboardPage    from '@/pages/SellerDashboardPage'
 import SellerAuctionPage     from '@/pages/SellerAuctionPage'
 import PaymentPage            from '@/pages/PaymentPage'
-import MyPaymentsPage         from '@/pages/MyPaymentsPage'
+import ProfilePage            from '@/pages/ProfilePage'
 
 export default function App() {
   return (
@@ -33,7 +32,8 @@ export default function App() {
               <Route path="/auction/:id"               element={<AuctionDetailPage />} />
               <Route path="/login"                     element={<AuthPage type="login" />} />
               <Route path="/register"                  element={<AuthPage type="register" />} />
-              <Route path="/my-bids"                   element={<MyBidsPage />} />
+              <Route path="/profile"                    element={<ProfilePage />} />
+              <Route path="/profile/:tab"               element={<ProfilePage />} />
               <Route path="/shop/:id"                  element={<ShopDetailPage />} />
               <Route path="/shops/new"                 element={<CreateShopPage />} />
               <Route path="/shops/:shopId/items/new"   element={<CreateItemPage />} />
@@ -42,7 +42,6 @@ export default function App() {
               <Route path="/shop/register"            element={<ShopAuthPage type="register" />} />
               <Route path="/seller/dashboard"              element={<SellerDashboardPage />} />
               <Route path="/seller/shops/:shopId/auctions" element={<SellerAuctionPage />} />
-              <Route path="/my-payments"                  element={<MyPaymentsPage />} />
               <Route path="/payment/auction/:auctionId"   element={<PaymentPage />} />
             </Routes>
           </main>

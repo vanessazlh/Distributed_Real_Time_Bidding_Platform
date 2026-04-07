@@ -71,6 +71,35 @@ func (h *Handler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
+// UpdateProfile godoc
+// PUT /users/:user_id
+func (h *Handler) UpdateProfile(c *gin.Context) {
+	userID := c.Param("user_id")
+	callerID, _ := c.Get("user_id")
+	if userID != callerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "cannot update another user's profile"})
+		return
+	}
+
+	var req UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.UpdateProfile(c.Request.Context(), userID, req); err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // GetProfile godoc
 // GET /users/:user_id
 func (h *Handler) GetProfile(c *gin.Context) {
