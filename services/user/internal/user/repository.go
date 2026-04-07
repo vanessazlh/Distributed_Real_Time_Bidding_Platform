@@ -81,3 +81,21 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*User, erro
 	}
 	return &u, nil
 }
+
+// UpdateRole updates the role of an existing user (e.g. buyer → seller upgrade).
+func (r *Repository) UpdateRole(ctx context.Context, userID, role string) error {
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]types.AttributeValue{
+			"user_id": &types.AttributeValueMemberS{Value: userID},
+		},
+		UpdateExpression: aws.String("SET #r = :role"),
+		ExpressionAttributeNames: map[string]string{
+			"#r": "role",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":role": &types.AttributeValueMemberS{Value: role},
+		},
+	})
+	return err
+}
