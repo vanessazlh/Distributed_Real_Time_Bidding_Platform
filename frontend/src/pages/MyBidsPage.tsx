@@ -65,7 +65,7 @@ export default function MyBidsPage() {
     <PageContainer narrow>
       <Link
         to="/"
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
         <ChevronLeftIcon /> All Auctions
       </Link>
@@ -89,9 +89,9 @@ export default function MyBidsPage() {
               className={`p-6 flex items-center justify-between ${i !== 0 ? 'border-t border-border' : ''}`}
             >
               <div>
-                <p className="text-brand text-xs font-semibold mb-1">{bid.shop_name}</p>
+                <p className="text-brand text-sm font-semibold mb-1">{bid.shop_name}</p>
                 <p className="font-sans font-medium text-lg text-text-primary mb-1">{bid.item_title}</p>
-                <p className="text-text-secondary text-sm">{timeAgo(bid.timestamp)}</p>
+                <p className="text-text-secondary text-base">{timeAgo(bid.timestamp)}</p>
               </div>
               <div className="flex flex-col items-end gap-2">
                 <p className="font-display text-2xl text-text-primary">{formatCurrency(bid.amount)}</p>
@@ -99,7 +99,7 @@ export default function MyBidsPage() {
                 {bid.status === 'OUTBID' && (
                   <Link
                     to={`/auction/${bid.auction_id}`}
-                    className="text-brand text-xs font-medium hover:underline"
+                    className="text-brand text-sm font-medium hover:underline"
                   >
                     Bid Again →
                   </Link>
@@ -107,7 +107,7 @@ export default function MyBidsPage() {
                 {bid.status === 'WON' && (
                   <Link
                     to={`/payment/auction/${bid.auction_id}`}
-                    className="text-brand text-xs font-medium hover:underline"
+                    className="text-brand text-sm font-medium hover:underline"
                   >
                     View Payment →
                   </Link>

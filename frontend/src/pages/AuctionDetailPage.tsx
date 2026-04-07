@@ -128,7 +128,7 @@ export default function AuctionDetailPage() {
       {/* Back */}
       <Link
         to="/"
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
         <ChevronLeftIcon /> All Auctions
       </Link>

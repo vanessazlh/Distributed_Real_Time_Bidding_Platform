@@ -136,10 +136,32 @@ Items have no category field, blocking real filtering on the buyer home page.
 - Update `HomePage` tabs to filter by real category data
 
 ### 3. ~~Profile update endpoints~~ **Partially done**
-`PUT /users/:user_id` implemented with username editing and ownership check. Unified profile page at `/profile` with sidebar tabs (Account, My Bids, Payments). Remaining:
+`PUT /users/:user_id` implemented with username/avatar editing and ownership check. Unified profile page at `/profile` with sidebar tabs (Account for all users, My Bids for buyers only). Sellers see a "Seller Dashboard →" shortcut in the sidebar. Remaining:
 
 - `PUT /shops/:shop_id` — edit shop name, location, logo URL (ownership check required)
-- Frontend: "Edit Shop" button on the seller dashboard
+- Frontend: "Edit Shop" button on the seller shop management page
+
+### 13. Per-shop management page
+
+**Problem:** There is no unified page for a seller to manage a single shop. The seller dashboard shows all shops at a glance, but drilling into one shop only exposes auction management (`/seller/shops/:shopId/auctions`). There is no seller-facing items view — sellers can add items but cannot see their inventory.
+
+**Design:**
+
+```
+/seller/dashboard               ← overview of all shops, aggregate stats, "Manage →" per shop
+/seller/shops/:shopId           ← per-shop management (new page, tabbed)
+    Tab: Items                  ← inventory list + Add Item button
+    Tab: Auctions               ← what SellerAuctionPage does today
+```
+
+**Changes required:**
+
+- New page `SellerShopPage` at `/seller/shops/:shopId` with two tabs
+  - **Items tab:** calls `GET /shops/:shopId/items`, lists all items with title, description, retail value, image; includes "+ Add Item" button
+  - **Auctions tab:** moves the content from `SellerAuctionPage` here (active/closed lists, close button, stats)
+- `SellerDashboardPage` shop cards simplified — remove inline auction preview and per-card action buttons, replace with a single "Manage →" button linking to `/seller/shops/:shopId`
+- `SellerAuctionPage` can be removed or kept as a redirect once the new page is in place
+- Add route `/seller/shops/:shopId` to `App.tsx`
 
 ### 10. Redis Pub/Sub → Redis Streams
 The auction, notification, and payment services all use Redis Pub/Sub, which is fire-and-forget.
@@ -165,3 +187,11 @@ Plan:
 - Replace the URL text inputs on `CreateItemPage` and `CreateShopPage` with a file picker that calls this endpoint
 - In production, serve images via CloudFront in front of S3 for low-latency delivery
 
+
+### 13. Seller sees buyer-facing auction detail page (Bug)
+
+In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`AuctionDetailPage`), which is the buyer-facing real-time bidding view. Sellers clicking an auction in their management page were dropped into the buyer experience — live countdown, bid input, WebSocket feed — with no seller controls.
+
+**Fix applied (partial):** Removed the `<Link to="/auction/:id">` from auction rows in `SellerAuctionPage` so sellers can no longer accidentally navigate there from their management page.
+
+**Remaining work:** Sellers still have no drill-down view for a single auction. The full fix is tracked under item **9 (Shop Detail page for seller management)** — a dedicated seller auction detail view should show: bid history, current winner, a Close button, and item metadata, without exposing the buyer bidding panel.

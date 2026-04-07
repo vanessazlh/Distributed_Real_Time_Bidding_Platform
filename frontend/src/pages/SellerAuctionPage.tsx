@@ -84,7 +84,7 @@ export default function SellerAuctionPage() {
       {/* Back link */}
       <Link
         to="/seller/dashboard"
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
         <ChevronLeftIcon /> Back to Dashboard
       </Link>
@@ -92,7 +92,7 @@ export default function SellerAuctionPage() {
       {/* Shop header */}
       <div className="py-6 flex items-end justify-between border-b border-border mb-8">
         <div>
-          <p className="text-text-secondary text-sm mb-1">{shop.name}</p>
+          <p className="text-text-secondary text-base mb-1">{shop.name}</p>
           <h1 className="font-display text-3xl text-text-primary">Auction Management</h1>
         </div>
         <Button variant="primary" onClick={() => navigate(`/auctions/new?shopId=${shopId}`)}>
@@ -129,7 +129,7 @@ export default function SellerAuctionPage() {
             {open.map((a, i) => (
               <div
                 key={a.auction_id}
-                className={`p-5 flex items-center justify-between gap-4 ${i !== 0 ? 'border-t border-border' : ''}`}
+                className={`px-8 py-5 flex items-center justify-between gap-4 ${i !== 0 ? 'border-t border-border' : ''}`}
               >
                 <div className="flex items-center gap-4 min-w-0 flex-1">
                   {a.image_url && (
@@ -142,14 +142,11 @@ export default function SellerAuctionPage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <Badge status={a.status} />
-                      <Link
-                        to={`/auction/${a.auction_id}`}
-                        className="font-sans font-medium text-text-primary hover:text-brand truncate"
-                      >
+                      <span className="font-sans font-medium text-text-primary truncate">
                         {a.item.title}
-                      </Link>
+                      </span>
                     </div>
-                    <div className="flex items-center gap-3 text-text-secondary text-xs">
+                    <div className="flex items-center gap-3 text-text-secondary text-sm">
                       <span>{a.bid_count} bid{a.bid_count !== 1 ? 's' : ''}</span>
                       <CountdownTimer endTime={a.end_time} />
                     </div>
@@ -161,7 +158,7 @@ export default function SellerAuctionPage() {
                     <p className="font-serif text-lg text-text-primary">
                       {formatCurrency(a.current_highest_bid)}
                     </p>
-                    <p className="text-text-secondary text-xs">current bid</p>
+                    <p className="text-text-secondary text-sm">current bid</p>
                   </div>
                   <Button
                     size="sm"
@@ -188,7 +185,7 @@ export default function SellerAuctionPage() {
             {closed.map((a, i) => (
               <div
                 key={a.auction_id}
-                className={`p-5 flex items-center justify-between gap-4 ${i !== 0 ? 'border-t border-border' : ''}`}
+                className={`px-8 py-5 flex items-center justify-between gap-4 ${i !== 0 ? 'border-t border-border' : ''}`}
               >
                 <div className="flex items-center gap-4 min-w-0 flex-1">
                   {a.image_url && (
@@ -201,14 +198,11 @@ export default function SellerAuctionPage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <Badge status={a.status} />
-                      <Link
-                        to={`/auction/${a.auction_id}`}
-                        className="font-sans font-medium text-text-secondary hover:text-brand truncate"
-                      >
+                      <span className="font-sans font-medium text-text-secondary truncate">
                         {a.item.title}
-                      </Link>
+                      </span>
                     </div>
-                    <p className="text-text-secondary text-xs">
+                    <p className="text-text-secondary text-sm">
                       {a.bid_count} bid{a.bid_count !== 1 ? 's' : ''}
                     </p>
                   </div>

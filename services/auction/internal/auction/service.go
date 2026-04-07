@@ -136,6 +136,7 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 		ImageURL:       req.ImageURL,
 		ShopLogoURL:    req.ShopLogoURL,
 		Description:    req.Description,
+		Category:       req.Category,
 		StartTime:      startTime,
 		EndTime:        endTime,
 		CurrentHighest: req.StartBid,

@@ -7,6 +7,7 @@ type User struct {
 	PasswordHash string `dynamodbav:"password_hash" json:"-"`
 	Username     string `dynamodbav:"username" json:"username"`
 	Role         string `dynamodbav:"role" json:"role"`
+	AvatarURL    string `dynamodbav:"avatar_url" json:"avatar_url,omitempty"`
 	CreatedAt    string `dynamodbav:"created_at" json:"created_at"`
 }
 
@@ -26,5 +27,6 @@ type LoginRequest struct {
 
 // UpdateProfileRequest is the payload for PUT /users/:user_id.
 type UpdateProfileRequest struct {
-	Username string `json:"username" binding:"required,min=2"`
+	Username  string `json:"username" binding:"required,min=2"`
+	AvatarURL string `json:"avatar_url"`
 }

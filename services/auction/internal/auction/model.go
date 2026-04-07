@@ -14,6 +14,7 @@ type Auction struct {
 	ImageURL       string    `json:"image_url"`
 	ShopLogoURL    string    `json:"shop_logo_url"`
 	Description    string    `json:"description"`
+	Category       string    `json:"category,omitempty"`
 	StartTime      time.Time `json:"start_time"`
 	EndTime        time.Time `json:"end_time"`
 	CurrentHighest int64     `json:"current_highest_bid"`
@@ -33,6 +34,7 @@ type CreateAuctionRequest struct {
 	ImageURL    string `json:"image_url"`
 	ShopLogoURL string `json:"shop_logo_url"`
 	Description string `json:"description"`
+	Category       string `json:"category"`
 	Duration       int    `json:"duration_minutes" binding:"required,min=1"`
 	StartBid       int64  `json:"start_bid"`
 	ScheduledStart string `json:"scheduled_start"` // optional RFC3339; if set, auction starts as PENDING

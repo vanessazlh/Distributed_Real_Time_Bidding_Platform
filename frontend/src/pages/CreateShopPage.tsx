@@ -33,8 +33,8 @@ export default function CreateShopPage() {
     setError(null)
     setLoading(true)
     try {
-      const shop = await api.shops.create({ name, location, logo_url: logoUrl || undefined }, token!)
-      navigate(`/shop/${shop.shop_id}`)
+      await api.shops.create({ name, location, logo_url: logoUrl || undefined }, token!)
+      navigate('/seller/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
@@ -45,15 +45,15 @@ export default function CreateShopPage() {
   return (
     <PageContainer narrow>
       <Link
-        to="/"
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        to="/seller/dashboard"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
-        <ChevronLeftIcon /> All Auctions
+        <ChevronLeftIcon /> Back to Dashboard
       </Link>
 
       <Card padding="p-8">
         <h1 className="font-display text-3xl text-text-primary mb-2">Register Your Shop</h1>
-        <p className="text-text-secondary text-sm mb-8">
+        <p className="text-text-secondary text-base mb-8">
           Create a shop to start listing surplus food for auction.
         </p>
 
