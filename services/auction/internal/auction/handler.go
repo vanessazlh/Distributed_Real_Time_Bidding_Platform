@@ -33,7 +33,8 @@ func (h *Handler) CreateAuction(c *gin.Context) {
 		return
 	}
 
-	auction, err := h.svc.CreateAuction(c.Request.Context(), req)
+	sellerID := callerID(c)
+	auction, err := h.svc.CreateAuction(c.Request.Context(), req, sellerID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
@@ -67,6 +68,20 @@ func (h *Handler) ListAuctions(c *gin.Context) {
 	status := c.Query("status")
 
 	auctions, err := h.svc.ListAuctions(c.Request.Context(), status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"auctions": auctions})
+}
+
+// ListShopAuctions godoc
+// GET /shops/:shop_id/auctions
+func (h *Handler) ListShopAuctions(c *gin.Context) {
+	shopID := c.Param("shop_id")
+
+	auctions, err := h.svc.ListAuctionsByShop(c.Request.Context(), shopID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
@@ -109,8 +124,20 @@ func (h *Handler) PlaceBid(c *gin.Context) {
 // POST /auctions/:id/close
 func (h *Handler) CloseAuction(c *gin.Context) {
 	auctionID := c.Param("id")
+	userID := callerID(c)
 
-	err := h.svc.CloseAuction(c.Request.Context(), auctionID)
+	// Ownership check: only the seller who owns the shop can close the auction
+	auction, err := h.svc.GetAuction(c.Request.Context(), auctionID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "auction not found"})
+		return
+	}
+	if auction.SellerID != "" && auction.SellerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "you do not own this auction"})
+		return
+	}
+
+	err = h.svc.CloseAuction(c.Request.Context(), auctionID)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNotFound):

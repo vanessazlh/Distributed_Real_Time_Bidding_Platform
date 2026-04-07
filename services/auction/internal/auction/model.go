@@ -7,6 +7,7 @@ type Auction struct {
 	AuctionID      string    `json:"auction_id"`
 	ItemID         string    `json:"item_id"`
 	ItemTitle      string    `json:"item_title"`
+	SellerID       string    `json:"seller_id"`
 	ShopID         string    `json:"shop_id"`
 	ShopName       string    `json:"shop_name"`
 	RetailPrice    int64     `json:"retail_price"`

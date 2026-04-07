@@ -20,6 +20,7 @@ func NewRouter(auctionHandler *auction.Handler) *gin.Engine {
 		protected.POST("/auctions", auctionHandler.CreateAuction)
 		protected.POST("/auctions/:id/bid", auctionHandler.PlaceBid)
 		protected.POST("/auctions/:id/close", auctionHandler.CloseAuction)
+		protected.GET("/shops/:shop_id/auctions", auctionHandler.ListShopAuctions)
 	}
 
 	// Admin routes (for experiment support)

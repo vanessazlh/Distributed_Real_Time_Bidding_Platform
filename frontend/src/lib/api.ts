@@ -133,6 +133,19 @@ export const api = {
         headers: jsonHeaders(token),
         body: JSON.stringify({ user_id: userId, amount }),
       }),
+
+    /** GET /shops/:shopId/auctions → { auctions: Auction[] } */
+    listByShop: (shopId: string, token: string) =>
+      request<{ auctions: BackendAuction[] }>(`/shops/${shopId}/auctions`, {
+        headers: jsonHeaders(token),
+      }).then((r) => (r.auctions ?? []).map(toAuction)),
+
+    /** POST /auctions/:id/close → { message } */
+    close: (id: string, token: string) =>
+      request<{ message: string }>(`/auctions/${id}/close`, {
+        method: 'POST',
+        headers: jsonHeaders(token),
+      }),
   },
 
   users: {
