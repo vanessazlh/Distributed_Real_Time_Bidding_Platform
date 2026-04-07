@@ -24,9 +24,21 @@ func callerID(c *gin.Context) string {
 	return id
 }
 
+// callerRole extracts the authenticated user role set by the JWT middleware.
+func callerRole(c *gin.Context) string {
+	v, _ := c.Get("role")
+	role, _ := v.(string)
+	return role
+}
+
 // CreateAuction godoc
 // POST /auctions
 func (h *Handler) CreateAuction(c *gin.Context) {
+	if callerRole(c) != "seller" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only sellers can create auctions"})
+		return
+	}
+
 	var req CreateAuctionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -111,6 +123,8 @@ func (h *Handler) PlaceBid(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "auction is not open"})
 		case errors.Is(err, ErrBidTooLow):
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bid must be higher than current highest"})
+		case errors.Is(err, ErrSelfBid):
+			c.JSON(http.StatusForbidden, gin.H{"error": "sellers cannot bid on their own auction"})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		}

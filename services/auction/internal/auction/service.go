@@ -31,6 +31,9 @@ var ErrAuctionClosed = errors.New("auction is not open")
 // ErrBidTooLow is returned when the bid is not higher than the current highest.
 var ErrBidTooLow = errors.New("bid too low")
 
+// ErrSelfBid is returned when a seller tries to bid on their own auction.
+var ErrSelfBid = errors.New("sellers cannot bid on their own auction")
+
 // Repo is the interface the service depends on.
 type Repo interface {
 	Create(ctx context.Context, a *Auction) error
@@ -151,6 +154,11 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 	if err != nil {
 		s.metrics.RecordRejected()
 		return nil, ErrNotFound
+	}
+
+	if a.SellerID != "" && a.SellerID == userID {
+		s.metrics.RecordRejected()
+		return nil, ErrSelfBid
 	}
 
 	previousHighest := a.CurrentHighest
