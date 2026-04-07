@@ -36,19 +36,13 @@ export function Navbar() {
                 >
                   Sign Out
                 </button>
-                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-border shadow-sm">
+                <Link to="/profile" className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-border shadow-sm hover:border-brand transition-colors">
                   <UserIcon width={18} height={18} />
                   <span className="text-sm">{user.username}</span>
-                </div>
+                </Link>
               </>
             ) : (
               <>
-                <Link to="/my-bids" className="text-text-primary hover:text-brand transition-colors text-sm">
-                  My Bids
-                </Link>
-                <Link to="/my-payments" className="text-text-primary hover:text-brand transition-colors text-sm">
-                  Payments
-                </Link>
                 <NotificationBell />
                 <button
                   onClick={handleLogout}
@@ -56,10 +50,10 @@ export function Navbar() {
                 >
                   Sign Out
                 </button>
-                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-border shadow-sm">
+                <Link to="/profile" className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-border shadow-sm hover:border-brand transition-colors">
                   <UserIcon width={18} height={18} />
                   <span className="text-sm">{user.username}</span>
-                </div>
+                </Link>
               </>
             )
           ) : (

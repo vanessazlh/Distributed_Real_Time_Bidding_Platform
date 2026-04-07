@@ -47,11 +47,13 @@ When the countdown reaches zero (or the seller closes the auction early), the sy
 - The winner sees a **Won** banner on the auction page and receives a global notification
 - Other participants see a **Closed** banner
 
-### 7. Payment & History
-Payment is processed automatically — no action required from the buyer. The buyer can review their activity at any time:
-- **My Bids** (`/my-bids`) — full bid history across all auctions, with status (Winning / Outbid / Won / Lost), item title, shop name, and a link to the payment record for won auctions
-- **My Payments** (`/my-payments`) — all payment records with status (Completed / Failed / Pending) and total spent
-- **Payment Detail** (`/payment/auction/:id`) — status, amount, and timestamps for a specific auction's payment
+### 7. Profile & History
+The buyer's profile page (`/profile`) is a sidebar-tabbed account hub with three sections:
+- **Account** — view and edit username (inline save), see email and role badge. Buyers see an "Upgrade to Seller" CTA; sellers see a link to the Seller Dashboard.
+- **My Bids** (`/profile/bids`) — full bid history across all auctions, with status (Winning / Outbid / Won / Lost), item title, shop name, and a link to the payment record for won auctions
+- **Payments** (`/profile/payments`) — all payment records with status (Completed / Failed / Pending) and total spent
+
+The profile is accessible by clicking the username in the navbar. Individual payment details are at `/payment/auction/:id`.
 
 ---
 
@@ -137,6 +139,6 @@ Auction closes (seller closes or timer expires via closer.go)
 | Message delivery guarantee | Redis Pub/Sub is fire-and-forget — migration to Redis Streams planned |
 | Geo / location filtering | No geo-based search or proximity filtering |
 | Item categories | Items have no category field; home page filtering is heuristic-based |
-| Profile updates | Users and sellers cannot edit their profile or shop details after creation |
+| Profile updates | Users can edit their username; shop detail editing not yet implemented |
 | Image upload | No file upload — sellers must paste external image URLs manually |
 | Cache reliability | If a Redis key is evicted, bids fail with "auction not found" — DynamoDB fallback not yet implemented |

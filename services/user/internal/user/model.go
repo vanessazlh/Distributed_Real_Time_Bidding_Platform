@@ -23,3 +23,8 @@ type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
+
+// UpdateProfileRequest is the payload for PUT /users/:user_id.
+type UpdateProfileRequest struct {
+	Username string `json:"username" binding:"required,min=2"`
+}
