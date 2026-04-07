@@ -4,7 +4,7 @@ import type { UserBid, Payment } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { formatCurrency, timeAgo } from '@/lib/utils'
-import { Card, Badge, StatCard, EmptyState, Button, Spinner, FormField, TextInput, StatusBanner } from '@/components/ui'
+import { Card, Badge, StatCard, EmptyState, Button, Spinner, TextInput, StatusBanner } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
 import { UserIcon } from '@/components/icons'
 
