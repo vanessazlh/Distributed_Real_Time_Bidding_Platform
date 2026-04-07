@@ -12,7 +12,8 @@ interface AuctionCardProps {
 
 export function AuctionCard({ auction }: AuctionCardProps) {
   const navigate  = useNavigate()
-  const isClosed  = auction.status === 'CLOSED' || auction.end_time < Date.now()
+  const isPending = auction.status === 'PENDING'
+  const isClosed  = auction.status === 'CLOSED' || (!isPending && auction.end_time < Date.now())
   const detailUrl = `/auction/${auction.auction_id}`
 
   return (
@@ -20,7 +21,14 @@ export function AuctionCard({ auction }: AuctionCardProps) {
       onClick={() => navigate(detailUrl)}
       className="bg-surface-alt rounded-xl border border-border overflow-hidden cursor-pointer transition-transform hover:-translate-y-1 hover:shadow-lg relative group"
     >
-      {/* Closed overlay */}
+      {/* Status overlay */}
+      {isPending && (
+        <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center backdrop-blur-[1px]">
+          <span className="bg-brand text-white text-sm px-4 py-2 rounded-lg font-sans font-medium tracking-wide">
+            STARTING SOON
+          </span>
+        </div>
+      )}
       {isClosed && (
         <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center backdrop-blur-[1px]">
           <span className="bg-text-primary text-white text-sm px-4 py-2 rounded-lg font-sans font-medium tracking-wide">
@@ -63,12 +71,12 @@ export function AuctionCard({ auction }: AuctionCardProps) {
         </div>
 
         <Button
-          variant={isClosed ? 'ghost' : 'action'}
-          disabled={isClosed}
+          variant={isClosed || isPending ? 'ghost' : 'action'}
+          disabled={isClosed || isPending}
           fullWidth
           onClick={(e) => { e.stopPropagation(); navigate(detailUrl) }}
         >
-          {isClosed ? 'View Details' : 'Bid Now'}
+          {isClosed ? 'View Details' : isPending ? 'Starting Soon' : 'Bid Now'}
           <ArrowRightIcon />
         </Button>
       </div>

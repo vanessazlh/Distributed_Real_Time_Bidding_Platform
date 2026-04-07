@@ -19,10 +19,11 @@ export default function CreateAuctionPage() {
   const [shop,        setShop]        = useState<Shop | null>(null)
   const [loadingItems,setLoadingItems]= useState(true)
   const [itemId,      setItemId]      = useState('')
-  const [duration,    setDuration]    = useState('5')
-  const [startBid,    setStartBid]    = useState('')
-  const [loading,     setLoading]     = useState(false)
-  const [error,       setError]       = useState<string | null>(null)
+  const [duration,      setDuration]      = useState('5')
+  const [startBid,      setStartBid]     = useState('')
+  const [scheduledStart,setScheduledStart] = useState('')
+  const [loading,       setLoading]      = useState(false)
+  const [error,         setError]        = useState<string | null>(null)
 
   useEffect(() => {
     if (!shopId) { setLoadingItems(false); return }
@@ -65,21 +66,22 @@ export default function CreateAuctionPage() {
     setError(null)
     setLoading(true)
     try {
-      const auction = await api.auctions.create(
-        {
-          item_id:          selectedItem.item_id,
-          item_title:       selectedItem.title,
-          shop_id:          shopId,
-          shop_name:        shop?.name        ?? '',
-          retail_price:     selectedItem.retail_value,
-          image_url:        selectedItem.image_url  ?? '',
-          shop_logo_url:    shop?.logo_url    ?? '',
-          description:      selectedItem.description ?? '',
-          duration_minutes: parseInt(duration, 10),
-          start_bid:        Math.round(parseFloat(startBid) * 100),
-        },
-        token!,
-      )
+      const payload: Parameters<typeof api.auctions.create>[0] = {
+        item_id:          selectedItem.item_id,
+        item_title:       selectedItem.title,
+        shop_id:          shopId,
+        shop_name:        shop?.name        ?? '',
+        retail_price:     selectedItem.retail_value,
+        image_url:        selectedItem.image_url  ?? '',
+        shop_logo_url:    shop?.logo_url    ?? '',
+        description:      selectedItem.description ?? '',
+        duration_minutes: parseInt(duration, 10),
+        start_bid:        Math.round(parseFloat(startBid) * 100),
+      }
+      if (scheduledStart) {
+        payload.scheduled_start = new Date(scheduledStart).toISOString()
+      }
+      const auction = await api.auctions.create(payload, token!)
       navigate(`/auction/${auction.auction_id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -158,6 +160,18 @@ export default function CreateAuctionPage() {
                 value={startBid}
                 onChange={(e) => setStartBid(e.target.value)}
               />
+            </FormField>
+
+            <FormField label="Schedule Start (optional)">
+              <TextInput
+                type="datetime-local"
+                value={scheduledStart}
+                onChange={(e) => setScheduledStart(e.target.value)}
+                placeholder=""
+              />
+              <p className="text-xs text-text-secondary mt-1">
+                Leave empty to start immediately. Set a future time to create a scheduled (PENDING) auction.
+              </p>
             </FormField>
 
             <Button

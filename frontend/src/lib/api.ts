@@ -123,7 +123,7 @@ export const api = {
       request<BackendAuction>(`/auctions/${id}`).then(toAuction),
 
     /** POST /auctions → Auction */
-    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; image_url: string; shop_logo_url: string; description: string; duration_minutes: number; start_bid: number }, token: string) =>
+    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; image_url: string; shop_logo_url: string; description: string; duration_minutes: number; start_bid: number; scheduled_start?: string }, token: string) =>
       request<BackendAuction>('/auctions', {
         method: 'POST',
         headers: jsonHeaders(token),

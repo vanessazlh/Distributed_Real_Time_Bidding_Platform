@@ -7,6 +7,7 @@ const BADGE_CLASSES: Record<BadgeStatus, string> = {
   OUTBID:  'border-alert text-alert',
   WON:     'border-green-600 text-green-700',
   LOST:    'border-text-secondary text-text-secondary',
+  PENDING: 'border-blue-400 text-blue-600',
   OPEN:    'border-brand text-brand',
   CLOSED:  'border-text-secondary text-text-secondary',
 }

@@ -97,7 +97,8 @@ export default function AuctionDetailPage() {
     )
   }
 
-  const isClosed = auction.end_time <= Date.now() || auction.status === 'CLOSED'
+  const isPending = auction.status === 'PENDING'
+  const isClosed = auction.status === 'CLOSED' || (!isPending && auction.end_time <= Date.now())
 
   const handlePlaceBid = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -177,6 +178,7 @@ export default function AuctionDetailPage() {
               flash={flash}
               banner={banner}
               isClosed={isClosed}
+              isPending={isPending}
               user={user}
               bidInput={bidInput}
               onBidInputChange={setBidInput}
