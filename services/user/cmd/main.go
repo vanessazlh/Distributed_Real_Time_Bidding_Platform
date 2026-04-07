@@ -33,6 +33,7 @@ func main() {
 	protected := r.Group("/", middleware.Auth())
 	{
 		protected.GET("/users/:user_id", h.GetProfile)
+		protected.PUT("/users/:user_id", h.UpdateProfile)
 		protected.GET("/users/:user_id/bids", h.GetBids)
 	}
 
