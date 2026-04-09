@@ -72,6 +72,7 @@ func (o *Optimistic) tryOnce(ctx context.Context, key string, amount int64, bidd
 				"highest_bidder":  bidderID,
 				"version":         newVersion,
 			})
+			pipe.HIncrBy(ctx, key, "bid_count", 1)
 			return nil
 		})
 		return err

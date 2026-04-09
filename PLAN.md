@@ -88,8 +88,8 @@ Replaced dual-account model with single-account model: one email = one account. 
 ### 1. Auction lifecycle: maxPrice field
 Replace the unused `reservePrice` field with `maxPrice` as a bid ceiling. Lua script in pessimistic strategy handles both `maxPrice` upper bound and `startingBid` lower bound in a single atomic operation.
 
-### 2. Pessimistic strategy: Lua script atomicity
-Replace the current multi-step HSET in `PessimisticStrategy` with a single Lua script. The script handles read → validate (`startingBid`, `maxPrice`, `status`) → write atomically, eliminating the gap between reads and writes.
+### 2. ~~Pessimistic strategy: Lua script atomicity~~ **Done**
+Replaced multi-step SETNX lock + HGetAll + HSet in `PessimisticStrategy` with a single Lua script (`placeBidLua`). The script atomically reads status/current_highest/version → validates → writes current_highest/highest_bidder/version + increments bid_count. No external lock needed. Also fixed `bid_count` never being incremented in all three strategies (optimistic and queue got the same fix).
 
 ### 3. Cache reliability: ensureRedisCached() + stampede protection
 Redis is the primary store for auction state. If a key is evicted or Redis restarts, bids fail with "auction not found".

@@ -102,11 +102,14 @@ func (q *Queue) processBid(req bidRequest) (int64, error) {
 	version, _ := strconv.ParseInt(vals["version"], 10, 64)
 	newVersion := version + 1
 
-	err = q.rdb.HSet(ctx, key, map[string]interface{}{
+	pipe := q.rdb.Pipeline()
+	pipe.HSet(ctx, key, map[string]interface{}{
 		"current_highest": req.Amount,
 		"highest_bidder":  req.BidderID,
 		"version":         newVersion,
-	}).Err()
+	})
+	pipe.HIncrBy(ctx, key, "bid_count", 1)
+	_, err = pipe.Exec(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("update auction: %w", err)
 	}
