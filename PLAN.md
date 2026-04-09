@@ -11,7 +11,7 @@
 | Payment processing (simulated) | Working |
 | My Bids page | Working |
 | Auction enrichment fields | Working |
-| Seller auction management UI | **Done** (dashboard inline preview + dedicated /seller/shops/:shopId/auctions page with close) |
+| Seller auction management UI | **Done** (per-shop management page at /seller/shops/:shopId with Items + Auctions tabs; dashboard simplified to overview cards with "Manage →") |
 | Automatic auction expiry | **Basic version done** (closer.go polls every 1s, closes OPEN auctions past end_time) |
 | Payment service Redis Streams migration | **Complete** |
 | Auction/notification Redis Streams migration | **Not started** (still on Pub/Sub) |
@@ -141,27 +141,8 @@ Items have no category field, blocking real filtering on the buyer home page.
 - `PUT /shops/:shop_id` — edit shop name, location, logo URL (ownership check required)
 - Frontend: "Edit Shop" button on the seller shop management page
 
-### 13. Per-shop management page
-
-**Problem:** There is no unified page for a seller to manage a single shop. The seller dashboard shows all shops at a glance, but drilling into one shop only exposes auction management (`/seller/shops/:shopId/auctions`). There is no seller-facing items view — sellers can add items but cannot see their inventory.
-
-**Design:**
-
-```
-/seller/dashboard               ← overview of all shops, aggregate stats, "Manage →" per shop
-/seller/shops/:shopId           ← per-shop management (new page, tabbed)
-    Tab: Items                  ← inventory list + Add Item button
-    Tab: Auctions               ← what SellerAuctionPage does today
-```
-
-**Changes required:**
-
-- New page `SellerShopPage` at `/seller/shops/:shopId` with two tabs
-  - **Items tab:** calls `GET /shops/:shopId/items`, lists all items with title, description, retail value, image; includes "+ Add Item" button
-  - **Auctions tab:** moves the content from `SellerAuctionPage` here (active/closed lists, close button, stats)
-- `SellerDashboardPage` shop cards simplified — remove inline auction preview and per-card action buttons, replace with a single "Manage →" button linking to `/seller/shops/:shopId`
-- `SellerAuctionPage` can be removed or kept as a redirect once the new page is in place
-- Add route `/seller/shops/:shopId` to `App.tsx`
+### 13. ~~Per-shop management page~~ **Done**
+`SellerShopPage` at `/seller/shops/:shopId/:tab` with Items and Auctions tabs. Dashboard shop cards simplified to overview + "Manage →" link. Old `/seller/shops/:shopId/auctions` URL still works via the `:tab` param. `SellerAuctionPage` kept but no longer routed.
 
 ### 10. Redis Pub/Sub → Redis Streams
 The auction, notification, and payment services all use Redis Pub/Sub, which is fire-and-forget.
@@ -194,4 +175,4 @@ In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`Auc
 
 **Fix applied (partial):** Removed the `<Link to="/auction/:id">` from auction rows in `SellerAuctionPage` so sellers can no longer accidentally navigate there from their management page.
 
-**Remaining work:** Sellers still have no drill-down view for a single auction. The full fix is tracked under item **9 (Shop Detail page for seller management)** — a dedicated seller auction detail view should show: bid history, current winner, a Close button, and item metadata, without exposing the buyer bidding panel.
+**Remaining work:** Sellers now have a per-shop management page with an Auctions tab (`/seller/shops/:shopId/auctions`) that lists active/closed auctions with close buttons. A dedicated single-auction drill-down (bid history, current winner, item metadata) is still missing.
