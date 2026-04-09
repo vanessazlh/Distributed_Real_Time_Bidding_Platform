@@ -68,9 +68,9 @@ The seller logs in at `/shop/login`. If the account's role is not `seller`, the 
 
 ### 2. Seller Dashboard
 After login the seller lands on `/seller/dashboard`. The dashboard shows:
-- Stats: total shops, total auctions, active auctions
-- A grid of all their shops, each showing an inline preview of up to 3 recent auctions
-- "View all auctions" link per shop leading to a dedicated auction management page
+- Stats: total shops, active auctions, closed auctions, total bids
+- A grid of all their shops, each showing auction count, total bids, and active count
+- A "Manage →" link per shop leading to the per-shop management page
 
 ### 3. Create a Shop
 The seller fills in a shop name and location at `/shops/new`. The shop is saved in DynamoDB and immediately appears on the dashboard.
@@ -86,11 +86,9 @@ The seller navigates to `/auction/new?shopId=:id`. They select an item from the 
 - Input validation enforces: start_bid >= 0, duration 1–10080 minutes, scheduled_start must be in the future
 
 ### 6. Monitor & Close
-The seller can manage auctions from `/seller/shops/:shopId/auctions`, which shows:
-- Stats: total, active, and closed auction counts
-- Active auctions with live countdown timers and a close button
-- Closed auctions with final prices and winner info
-- The close button triggers `POST /auctions/:id/close` with ownership verification (only the auction's seller can close it)
+The seller manages each shop from `/seller/shops/:shopId`, a tabbed page with two sections:
+- **Items tab** — lists all items in the shop's inventory with title, description, retail value, and image. Includes an "+ Add Item" button.
+- **Auctions tab** — shows stats (active, closed, total bids, revenue), active auctions with live countdown timers and a close button, and closed auctions with final prices. The close button triggers `POST /auctions/:id/close` with ownership verification (only the auction's seller can close it).
 
 ### 7. Settlement
 When the auction closes, the payment is initiated automatically. The `shop_id` recorded at auction creation is included in the payment record. Full fund disbursement to the seller is planned for a future release.
