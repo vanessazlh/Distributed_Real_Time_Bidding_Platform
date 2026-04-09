@@ -388,20 +388,27 @@ func (h *Hub) handleAuctionClosedEvent(payload string) {
 	h.Broadcast(event.AuctionID, data, "")
 	log.Printf("hub: broadcast auction_closed for %s, winner %s", event.AuctionID, event.WinnerID)
 
-	// Store + push "won" notification to the winner's global WS.
-	if event.WinnerID != "" {
-		wonMsg := fmt.Sprintf("You won the auction! Winning bid: $%.2f", float64(event.WinningBid)/100)
+	// Store + push "won" notification to all winners.
+	// For multi-winner auctions (quantity>1), iterate over the Winners map.
+	// For single-winner, fall back to WinnerID/WinningBid (backwards compatible).
+	winners := event.Winners
+	if len(winners) == 0 && event.WinnerID != "" {
+		winners = map[string]int64{event.WinnerID: event.WinningBid}
+	}
+
+	for winnerID, winningBid := range winners {
+		wonMsg := fmt.Sprintf("You won the auction! Winning bid: $%.2f", float64(winningBid)/100)
 		if event.ItemTitle != "" {
-			wonMsg = fmt.Sprintf("You won %s! Winning bid: $%.2f", event.ItemTitle, float64(event.WinningBid)/100)
+			wonMsg = fmt.Sprintf("You won %s! Winning bid: $%.2f", event.ItemTitle, float64(winningBid)/100)
 		}
-		h.storeAndPushNotification(event.WinnerID, StoredNotification{
-			ID:        fmt.Sprintf("won:%s", event.AuctionID),
+		h.storeAndPushNotification(winnerID, StoredNotification{
+			ID:        fmt.Sprintf("won:%s:%s", event.AuctionID, winnerID),
 			Type:      "won",
 			AuctionID: event.AuctionID,
 			ItemTitle: event.ItemTitle,
 			Message:   wonMsg,
 			Link:      fmt.Sprintf("/auction/%s", event.AuctionID),
-			Amount:    event.WinningBid,
+			Amount:    winningBid,
 			CreatedAt: time.Now().UnixMilli(),
 			Read:      false,
 		})

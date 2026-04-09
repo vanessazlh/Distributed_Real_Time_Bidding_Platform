@@ -71,9 +71,21 @@ export function BiddingPanel({
         </div>
       )}
 
+      {/* Quantity badge */}
+      {auction.quantity > 1 && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="inline-flex items-center gap-1 bg-brand/10 text-brand text-sm font-semibold px-3 py-1 rounded-full">
+            {auction.quantity} winners
+          </span>
+          <span className="text-text-secondary text-sm">
+            Top {auction.quantity} bids win
+          </span>
+        </div>
+      )}
+
       {/* Current bid */}
       <p className="text-text-secondary text-sm font-medium uppercase tracking-wide mb-1">
-        Current Highest Bid
+        {auction.quantity > 1 ? 'Minimum Bid to Win' : 'Current Highest Bid'}
       </p>
       <div className="mb-6">
         <PriceDisplay

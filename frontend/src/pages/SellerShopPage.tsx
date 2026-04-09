@@ -316,6 +316,7 @@ export default function SellerShopPage() {
                         </div>
                         <div className="flex items-center gap-3 text-text-secondary text-sm">
                           <span>{a.bid_count} bid{a.bid_count !== 1 ? 's' : ''}</span>
+                          {a.quantity > 1 && <span className="text-brand font-medium">{a.quantity} winners</span>}
                           <CountdownTimer endTime={a.end_time} />
                         </div>
                       </div>

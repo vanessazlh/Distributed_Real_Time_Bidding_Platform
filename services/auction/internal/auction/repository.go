@@ -21,13 +21,19 @@ const (
 	rebuildLockTTL = 2 * time.Second
 )
 
-// closeAndReadWinnerLua atomically sets status=CLOSED and reads the winner.
+// closeAndReadWinnerLua atomically sets status=CLOSED and reads the winner(s).
 // Prevents a race where a new bid changes the winner between reading and closing.
+//
+// Supports both single-winner (quantity=1) and multi-winner (quantity>1) auctions.
+// For quantity>1, returns all winners as comma-separated "bidder:amount" pairs.
 //
 // KEYS[1] = auction:{auctionID} (hash)
 // KEYS[2] = auction:{auctionID}:bids (sorted set)
 //
-// Returns: {status_string, winner_id, winning_bid_string}
+// Returns:
+//
+//	quantity=1:  {status_string, winner_id, winning_bid_string}
+//	quantity>1: {'OK_MULTI', 'bidder1:amt1,bidder2:amt2,...', quantity_string}
 var closeAndReadWinnerLua = redis.NewScript(`
 local hashKey = KEYS[1]
 local bidsKey = KEYS[2]
@@ -42,14 +48,31 @@ end
 
 redis.call('HSET', hashKey, 'status', 'CLOSED')
 
-local top = redis.call('ZREVRANGE', bidsKey, 0, 0, 'WITHSCORES')
-if #top >= 2 then
-	return {'OK', top[1], top[2]}
+local quantity = tonumber(redis.call('HGET', hashKey, 'quantity')) or 1
+
+if quantity <= 1 then
+	-- Single-winner: original logic
+	local top = redis.call('ZREVRANGE', bidsKey, 0, 0, 'WITHSCORES')
+	if #top >= 2 then
+		return {'OK', top[1], top[2]}
+	end
+	local bidder = redis.call('HGET', hashKey, 'highest_bidder') or ''
+	local amount = redis.call('HGET', hashKey, 'current_highest') or '0'
+	return {'OK', bidder, amount}
 end
 
-local bidder = redis.call('HGET', hashKey, 'highest_bidder') or ''
-local amount = redis.call('HGET', hashKey, 'current_highest') or '0'
-return {'OK', bidder, amount}
+-- Multi-winner: return top-N from sorted set
+local top = redis.call('ZREVRANGE', bidsKey, 0, quantity - 1, 'WITHSCORES')
+if #top == 0 then
+	return {'OK_MULTI', '', tostring(quantity)}
+end
+
+local pairs = {}
+for i = 1, #top, 2 do
+	pairs[#pairs + 1] = top[i] .. ':' .. top[i + 1]
+end
+
+return {'OK_MULTI', table.concat(pairs, ','), tostring(quantity)}
 `)
 
 // rollbackCloseLua sets status back to OPEN if it is currently CLOSED.
@@ -76,6 +99,7 @@ type dynamoAuction struct {
 	ShopName       string `dynamodbav:"shop_name"`
 	RetailPrice    int64  `dynamodbav:"retail_price"`
 	MaxPrice       int64  `dynamodbav:"max_price"`
+	Quantity       int    `dynamodbav:"quantity"`
 	ImageURL       string `dynamodbav:"image_url"`
 	ShopLogoURL    string `dynamodbav:"shop_logo_url"`
 	Description    string `dynamodbav:"description"`
@@ -104,6 +128,7 @@ func toDynamo(a *Auction) dynamoAuction {
 		ShopName:       a.ShopName,
 		RetailPrice:    a.RetailPrice,
 		MaxPrice:       a.MaxPrice,
+		Quantity:       a.Quantity,
 		ImageURL:       a.ImageURL,
 		ShopLogoURL:    a.ShopLogoURL,
 		Description:    a.Description,
@@ -131,6 +156,7 @@ func fromDynamo(d dynamoAuction) *Auction {
 		ShopName:       d.ShopName,
 		RetailPrice:    d.RetailPrice,
 		MaxPrice:       d.MaxPrice,
+		Quantity:       d.Quantity,
 		ImageURL:       d.ImageURL,
 		ShopLogoURL:    d.ShopLogoURL,
 		Description:    d.Description,
@@ -375,6 +401,7 @@ func (r *Repository) Close(ctx context.Context, auctionID string) error {
 // AtomicCloseAndReadWinner atomically sets status=CLOSED and reads the winner
 // from the Redis ZSET (fallback: hash highest_bidder). Returns winnerID and
 // winningBid. If the auction is not OPEN, returns an error.
+// For single-winner auctions (quantity=1).
 func (r *Repository) AtomicCloseAndReadWinner(ctx context.Context, auctionID string) (string, int64, error) {
 	hashKey := auctionKey(auctionID)
 	bidsKey := auctionBidsKey(auctionID)
@@ -388,9 +415,85 @@ func (r *Repository) AtomicCloseAndReadWinner(ctx context.Context, auctionID str
 		return "", 0, errors.New("auction not found")
 	case "ERR_NOT_OPEN":
 		return "", 0, errors.New("auction is not open")
+	case "OK_MULTI":
+		// Multi-winner auction closed via single-winner path — parse first winner
+		winners := parseWinnerPairs(res[1])
+		for id, amt := range winners {
+			return id, amt, nil
+		}
+		return "", 0, nil
 	}
 	amount, _ := strconv.ParseInt(res[2], 10, 64)
 	return res[1], amount, nil
+}
+
+// AtomicCloseAndReadWinners atomically sets status=CLOSED and reads all winners
+// for a quantity auction. Returns a map of bidderID → bid amount.
+func (r *Repository) AtomicCloseAndReadWinners(ctx context.Context, auctionID string) (map[string]int64, error) {
+	hashKey := auctionKey(auctionID)
+	bidsKey := auctionBidsKey(auctionID)
+
+	res, err := closeAndReadWinnerLua.Run(ctx, r.rdb, []string{hashKey, bidsKey}).StringSlice()
+	if err != nil {
+		return nil, fmt.Errorf("atomic close lua: %w", err)
+	}
+	switch res[0] {
+	case "ERR_NOT_FOUND":
+		return nil, errors.New("auction not found")
+	case "ERR_NOT_OPEN":
+		return nil, errors.New("auction is not open")
+	case "OK":
+		// Single-winner result
+		winners := make(map[string]int64)
+		if res[1] != "" {
+			amount, _ := strconv.ParseInt(res[2], 10, 64)
+			winners[res[1]] = amount
+		}
+		return winners, nil
+	case "OK_MULTI":
+		return parseWinnerPairs(res[1]), nil
+	}
+	return nil, fmt.Errorf("unexpected close result: %s", res[0])
+}
+
+// parseWinnerPairs parses a comma-separated "bidder:amount" string into a map.
+func parseWinnerPairs(encoded string) map[string]int64 {
+	winners := make(map[string]int64)
+	if encoded == "" {
+		return winners
+	}
+	for _, pair := range splitString(encoded, ',') {
+		idx := lastIndexByte(pair, ':')
+		if idx < 0 {
+			continue
+		}
+		bidder := pair[:idx]
+		amount, _ := strconv.ParseInt(pair[idx+1:], 10, 64)
+		winners[bidder] = amount
+	}
+	return winners
+}
+
+func splitString(s string, sep byte) []string {
+	var parts []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == sep {
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	parts = append(parts, s[start:])
+	return parts
+}
+
+func lastIndexByte(s string, c byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }
 
 // RollbackClose sets the auction status back to OPEN. Called when event
@@ -489,6 +592,48 @@ func (r *Repository) GetDynamoWinners(ctx context.Context, auctionID string) (st
 	return d.HighestBidder, d.CurrentHighest, nil
 }
 
+// GetDynamoAllWinners returns all winners from DynamoDB's winners map.
+// Used as a fallback for multi-winner auctions when Redis data is unavailable.
+func (r *Repository) GetDynamoAllWinners(ctx context.Context, auctionID string) (map[string]int64, error) {
+	if r.db == nil {
+		return nil, errors.New("dynamo not configured")
+	}
+	out, err := r.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(auctionsTable),
+		Key: map[string]ddbTypes.AttributeValue{
+			"auction_id": &ddbTypes.AttributeValueMemberS{Value: auctionID},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("dynamo get all winners: %w", err)
+	}
+	if out.Item == nil {
+		return nil, errors.New("auction not found in dynamo")
+	}
+
+	winners := make(map[string]int64)
+	if winnersAttr, ok := out.Item["winners"]; ok {
+		if m, ok := winnersAttr.(*ddbTypes.AttributeValueMemberM); ok {
+			for bidder, amtAttr := range m.Value {
+				if n, ok := amtAttr.(*ddbTypes.AttributeValueMemberN); ok {
+					amt, _ := strconv.ParseInt(n.Value, 10, 64)
+					winners[bidder] = amt
+				}
+			}
+		}
+	}
+
+	// If winners map is empty, fall back to highest_bidder
+	if len(winners) == 0 {
+		var d dynamoAuction
+		if err := attributevalue.UnmarshalMap(out.Item, &d); err == nil && d.HighestBidder != "" {
+			winners[d.HighestBidder] = d.CurrentHighest
+		}
+	}
+
+	return winners, nil
+}
+
 // GetRedisClient returns the underlying Redis client (needed by concurrency strategies).
 func (r *Repository) GetRedisClient() *redis.Client {
 	return r.rdb
@@ -579,6 +724,7 @@ func auctionToRedisMap(a *Auction) map[string]interface{} {
 		"shop_name":       a.ShopName,
 		"retail_price":    a.RetailPrice,
 		"max_price":       a.MaxPrice,
+		"quantity":         a.Quantity,
 		"image_url":       a.ImageURL,
 		"shop_logo_url":   a.ShopLogoURL,
 		"description":     a.Description,
@@ -601,6 +747,10 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 	bidCount, _ := strconv.ParseInt(vals["bid_count"], 10, 64)
 	retailPrice, _ := strconv.ParseInt(vals["retail_price"], 10, 64)
 	maxPrice, _ := strconv.ParseInt(vals["max_price"], 10, 64)
+	quantity, _ := strconv.Atoi(vals["quantity"])
+	if quantity < 1 {
+		quantity = 1
+	}
 
 	return &Auction{
 		AuctionID:      vals["auction_id"],
@@ -611,6 +761,7 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 		ShopName:       vals["shop_name"],
 		RetailPrice:    retailPrice,
 		MaxPrice:       maxPrice,
+		Quantity:       quantity,
 		ImageURL:       vals["image_url"],
 		ShopLogoURL:    vals["shop_logo_url"],
 		Description:    vals["description"],

@@ -137,11 +137,13 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 
 The platform supports three pluggable bid-concurrency strategies, switchable at runtime without restarting:
 
-| Strategy | Mechanism | Trade-off |
-|---|---|---|
-| **Optimistic** | Redis `WATCH/MULTI/EXEC`, retry up to 3× with exponential backoff | Lowest latency; may fail under extreme contention |
-| **Pessimistic** | Lua script — atomic read/validate/write in a single Redis call | Zero-lock, zero-retry; default for production |
-| **Queue** | Go channel per auction, FIFO processing | Fully serialized; fairest ordering; highest isolation |
+| Strategy | Mechanism | Trade-off | Status |
+|---|---|---|---|
+| **Pessimistic** | Lua script — atomic read/validate/write in a single Redis call | Zero-lock, zero-retry; supports quantity auctions | **Default (production)** |
+| **Optimistic** | Redis `WATCH/MULTI/EXEC`, retry up to 3× with exponential backoff | Lowest latency; may fail under extreme contention | Experimental — does not work across multiple Redis nodes |
+| **Queue** | Go channel per auction, FIFO processing | Fully serialized; fairest ordering; highest isolation | Experimental — per-process only, does not scale horizontally |
+
+> **Note:** Optimistic and Queue strategies are in `concurrency/experimental/` and do **not** support quantity auctions (quantity > 1). They are kept for benchmarking and single-node development.
 
 Switch strategies live:
 ```bash
@@ -166,21 +168,33 @@ Auction Service → Redis Pub/Sub
 **`auction_closed`**
 ```
 Auction Service → Redis Pub/Sub
-    ├── Payment Service    (charges the winning bidder)
-    ├── Bid Service        (marks winning bid as WON)
-    └── Notification Svc   (broadcasts to auction watchers + stores/pushes "won" to winner)
+    ├── Payment Service    (charges the winning bidder(s) — one payment per winner for quantity auctions)
+    ├── Bid Service        (marks winning bid(s) as WON)
+    └── Notification Svc   (broadcasts to auction watchers + stores/pushes "won" to all winners)
 ```
 
 ### Reliable Close Sequence
 
 The close flow is designed to prevent dead states where an auction is marked CLOSED but downstream services never receive the event:
 
-1. **Atomic close + read winner** — a Lua script atomically sets `status=CLOSED` and reads the winner from a Redis Sorted Set (fallback: hash field, then DynamoDB winners map)
+1. **Atomic close + read winner(s)** — a Lua script atomically sets `status=CLOSED` and reads the winner(s) from a Redis Sorted Set (top-N for quantity auctions; fallback: hash field, then DynamoDB winners map)
 2. **Publish event** — if this fails, the status is **rolled back to OPEN** so the closer retries on the next tick
 3. **Persist to DynamoDB** — best-effort; the event has already been delivered
 4. **Cleanup Redis** — delete hash, sorted set, remove from active set
 
 Every bid also writes to a DynamoDB `winners` map asynchronously, so winner data survives a full Redis restart.
+
+### Quantity Auctions (Multiple Winners)
+
+Auctions support a `quantity` field (default 1) that determines how many buyers can win. For `quantity > 1`:
+
+- The Redis Sorted Set tracks the top-N bidders by bid amount
+- A Lua script handles slot management atomically: when all N slots are full, the lowest winner is evicted if a higher bid arrives
+- `current_highest` reflects the **floor price** (lowest winning bid, or start_bid while slots remain open)
+- On close, the top-N winners are read from the ZSET; the Payment Service creates one payment per winner
+- The Notification and Bid services notify/mark all N winners
+
+Quantity auctions require the **pessimistic** concurrency strategy (Lua script atomicity). The experimental strategies reject bids on `quantity > 1` auctions.
 
 ---
 
@@ -193,7 +207,7 @@ Every bid also writes to a DynamoDB `winners` map asynchronously, so winner data
 | `REDIS_ADDR` | `localhost:6379` | Auction, Bid, Notification, Payment |
 | `SERVER_ADDR` | `:808x` | Each service (see ports above) |
 | `BID_SERVICE_URL` | `http://bid:8084` | User (for bid proxy) |
-| `CONCURRENCY_STRATEGY` | `optimistic` | Auction |
+| `CONCURRENCY_STRATEGY` | `pessimistic` | Auction |
 
 All defaults are pre-configured in `docker-compose.yml`.
 

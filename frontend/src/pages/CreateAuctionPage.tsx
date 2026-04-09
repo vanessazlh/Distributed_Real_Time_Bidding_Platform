@@ -22,6 +22,7 @@ export default function CreateAuctionPage() {
   const [duration,      setDuration]      = useState('5')
   const [startBid,      setStartBid]     = useState('')
   const [maxPrice,      setMaxPrice]     = useState('')
+  const [quantity,      setQuantity]     = useState('1')
   const [scheduledStart,setScheduledStart] = useState('')
   const [loading,       setLoading]      = useState(false)
   const [error,         setError]        = useState<string | null>(null)
@@ -90,6 +91,7 @@ export default function CreateAuctionPage() {
         duration_minutes: parseInt(duration, 10),
         start_bid:        Math.round(parseFloat(startBid) * 100),
         max_price:        maxPrice ? Math.round(parseFloat(maxPrice) * 100) : undefined,
+        quantity:          parseInt(quantity, 10) > 1 ? parseInt(quantity, 10) : undefined,
       }
       if (scheduledStart) {
         payload.scheduled_start = new Date(scheduledStart).toISOString()
@@ -199,6 +201,20 @@ export default function CreateAuctionPage() {
               />
               <p className="text-sm text-text-secondary mt-1">
                 Bids above this amount will be rejected. Leave empty for no ceiling.
+              </p>
+            </FormField>
+
+            <FormField label="Winners / Quantity (optional)">
+              <TextInput
+                type="number"
+                min="1"
+                max="100"
+                placeholder="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+              <p className="text-sm text-text-secondary mt-1">
+                How many buyers can win. Leave at 1 for a standard single-winner auction.
               </p>
             </FormField>
 

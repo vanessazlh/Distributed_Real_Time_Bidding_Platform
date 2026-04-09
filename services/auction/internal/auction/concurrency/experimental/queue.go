@@ -1,4 +1,4 @@
-package concurrency
+package experimental
 
 import (
 	"context"
@@ -24,6 +24,15 @@ type bidResponse struct {
 }
 
 // Queue implements serialized queue-based concurrency using Go channels.
+//
+// LIMITATION: Queue uses per-process Go channels for serialization. This means
+// it only works with a SINGLE auction service instance. In a multi-instance
+// deployment, concurrent bids hitting different instances bypass the queue
+// entirely, leading to race conditions and lost updates. Use PessimisticStrategy
+// (Lua script) for production.
+//
+// Additionally, this strategy does NOT support quantity auctions (quantity > 1).
+// Bids on multi-winner auctions will be rejected.
 type Queue struct {
 	rdb      *redis.Client
 	channels sync.Map // map[string]chan bidRequest
@@ -92,6 +101,11 @@ func (q *Queue) processBid(req bidRequest) (int64, error) {
 	}
 	if vals["status"] != "OPEN" {
 		return 0, errors.New("auction is not open")
+	}
+
+	quantity, _ := strconv.ParseInt(vals["quantity"], 10, 64)
+	if quantity > 1 {
+		return 0, errors.New("queue strategy does not support quantity auctions; use pessimistic")
 	}
 
 	currentHighest, _ := strconv.ParseInt(vals["current_highest"], 10, 64)

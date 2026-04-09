@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"rtb/services/auction/internal/auction/concurrency"
+	"rtb/services/auction/internal/auction/concurrency/experimental"
 	localEvents "rtb/services/auction/internal/events"
 	"rtb/shared/events"
 )
@@ -58,10 +59,12 @@ type Repo interface {
 
 	// Reliable close sequence
 	AtomicCloseAndReadWinner(ctx context.Context, auctionID string) (winnerID string, winningBid int64, err error)
+	AtomicCloseAndReadWinners(ctx context.Context, auctionID string) (winners map[string]int64, err error)
 	RollbackClose(ctx context.Context, auctionID string) error
 	PersistClosedState(ctx context.Context, auctionID string) error
 	CleanupRedis(ctx context.Context, auctionID string) error
 	GetDynamoWinners(ctx context.Context, auctionID string) (winnerID string, winningBid int64, err error)
+	GetDynamoAllWinners(ctx context.Context, auctionID string) (winners map[string]int64, err error)
 }
 
 // Service contains business logic for the auction domain.
@@ -71,9 +74,12 @@ type Service struct {
 	metrics   *Metrics
 
 	strategy    ConcurrencyStrategy
-	optimistic  *concurrency.Optimistic
 	pessimistic *concurrency.Pessimistic
-	queue       *concurrency.Queue
+
+	// Experimental strategies — kept for benchmarking and single-node dev.
+	// See concurrency/experimental/ for deployment limitations.
+	optimistic *experimental.Optimistic
+	queue      *experimental.Queue
 }
 
 // NewService creates a new Service.
@@ -83,9 +89,9 @@ func NewService(repo Repo, publisher *localEvents.Publisher, rdb *redis.Client, 
 		publisher:   publisher,
 		metrics:     NewMetrics(),
 		strategy:    strategy,
-		optimistic:  concurrency.NewOptimistic(rdb),
 		pessimistic: concurrency.NewPessimistic(rdb),
-		queue:       concurrency.NewQueue(rdb),
+		optimistic:  experimental.NewOptimistic(rdb),
+		queue:       experimental.NewQueue(rdb),
 	}
 }
 
@@ -129,6 +135,9 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 	if req.MaxPrice > 0 && req.MaxPrice <= req.StartBid {
 		return nil, fmt.Errorf("%w: max_price must be greater than start_bid", ErrValidation)
 	}
+	if req.Quantity < 0 {
+		return nil, fmt.Errorf("%w: quantity must be >= 0", ErrValidation)
+	}
 
 	// Determine start time and status
 	startTime := now
@@ -148,6 +157,11 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 
 	endTime := startTime.Add(time.Duration(req.Duration) * time.Minute)
 
+	qty := req.Quantity
+	if qty < 1 {
+		qty = 1
+	}
+
 	a := &Auction{
 		AuctionID:      uuid.NewString(),
 		SellerID:       sellerID,
@@ -157,6 +171,7 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 		ShopName:       req.ShopName,
 		RetailPrice:    req.RetailPrice,
 		MaxPrice:       req.MaxPrice,
+		Quantity:       qty,
 		ImageURL:       req.ImageURL,
 		ShopLogoURL:    req.ShopLogoURL,
 		Description:    req.Description,
@@ -232,16 +247,26 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 	previousBidder := a.HighestBidder
 
 	// Use selected concurrency strategy to atomically update
-	var newVersion int64
+	var evictedBidder string
 	switch s.strategy {
-	case Optimistic:
-		newVersion, err = s.optimistic.TryPlaceBid(ctx, auctionID, amount, userID)
 	case Pessimistic:
-		newVersion, err = s.pessimistic.TryPlaceBid(ctx, auctionID, amount, userID)
+		placement, placeErr := s.pessimistic.TryPlaceBid(ctx, auctionID, amount, userID)
+		if placeErr != nil {
+			err = placeErr
+		} else {
+			evictedBidder = placement.EvictedBidder
+		}
+	case Optimistic:
+		_, err = s.optimistic.TryPlaceBid(ctx, auctionID, amount, userID)
 	case Queue:
-		newVersion, err = s.queue.TryPlaceBid(ctx, auctionID, amount, userID)
+		_, err = s.queue.TryPlaceBid(ctx, auctionID, amount, userID)
 	default:
-		newVersion, err = s.optimistic.TryPlaceBid(ctx, auctionID, amount, userID)
+		placement, placeErr := s.pessimistic.TryPlaceBid(ctx, auctionID, amount, userID)
+		if placeErr != nil {
+			err = placeErr
+		} else {
+			evictedBidder = placement.EvictedBidder
+		}
 	}
 
 	latency := time.Since(start)
@@ -264,6 +289,13 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 
 	s.metrics.RecordSuccessful(latency)
 
+	// For quantity>1, the evicted bidder is the "outbid" party.
+	// For quantity=1, fall back to the previous highest bidder from the hash.
+	outbidBidder := previousBidder
+	if evictedBidder != "" {
+		outbidBidder = evictedBidder
+	}
+
 	// Publish event — Bid Service consumes this to record bid history
 	bidID := uuid.NewString()
 	now := time.Now().UTC()
@@ -276,12 +308,10 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 		UserID:          userID,
 		Amount:          amount,
 		PreviousHighest: previousHighest,
-		PreviousBidder:  previousBidder,
+		PreviousBidder:  outbidBidder,
 		BidAcceptedAt:   now.Format(time.RFC3339Nano),
 		Timestamp:       now.Format(time.RFC3339Nano),
 	})
-
-	_ = newVersion // used internally by concurrency strategies
 
 	// Persist winner to DynamoDB asynchronously (fallback for Redis failure at close time)
 	if wp, ok := s.repo.(WinnerPersister); ok {
@@ -297,7 +327,7 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 }
 
 // CloseAuction closes an auction using a reliable sequence:
-// 1. Read metadata  2. Atomic close + read winner  3. DynamoDB fallback
+// 1. Read metadata  2. Atomic close + read winner(s)  3. DynamoDB fallback
 // 4. Publish event (rollback on failure)  5. Persist + cleanup
 func (s *Service) CloseAuction(ctx context.Context, auctionID string) error {
 	// Step 1: Read auction metadata (needed for event fields)
@@ -306,30 +336,68 @@ func (s *Service) CloseAuction(ctx context.Context, auctionID string) error {
 		return ErrNotFound
 	}
 
-	// Step 2: Atomically set status=CLOSED and read winner (prevents bid race)
-	winnerID, winningBid, err := s.repo.AtomicCloseAndReadWinner(ctx, auctionID)
-	if err != nil {
-		return fmt.Errorf("close auction: %w", err)
+	qty := a.Quantity
+	if qty < 1 {
+		qty = 1
 	}
 
-	// Step 3: Three-level winner fallback — if Redis ZSET/hash had no winner, try DynamoDB
-	if winnerID == "" {
-		if dynWinner, dynBid, dynErr := s.repo.GetDynamoWinners(ctx, auctionID); dynErr == nil && dynWinner != "" {
-			winnerID = dynWinner
-			winningBid = dynBid
+	var winnerID string
+	var winningBid int64
+	var allWinners map[string]int64
+
+	if qty == 1 {
+		// Step 2a: Single-winner — original path
+		winnerID, winningBid, err = s.repo.AtomicCloseAndReadWinner(ctx, auctionID)
+		if err != nil {
+			return fmt.Errorf("close auction: %w", err)
+		}
+
+		// Step 3a: DynamoDB fallback
+		if winnerID == "" {
+			if dynWinner, dynBid, dynErr := s.repo.GetDynamoWinners(ctx, auctionID); dynErr == nil && dynWinner != "" {
+				winnerID = dynWinner
+				winningBid = dynBid
+			}
+		}
+	} else {
+		// Step 2b: Multi-winner — read all N winners atomically
+		allWinners, err = s.repo.AtomicCloseAndReadWinners(ctx, auctionID)
+		if err != nil {
+			return fmt.Errorf("close auction: %w", err)
+		}
+
+		// Step 3b: DynamoDB fallback for multi-winner
+		if len(allWinners) == 0 {
+			if dynWinners, dynErr := s.repo.GetDynamoAllWinners(ctx, auctionID); dynErr == nil && len(dynWinners) > 0 {
+				allWinners = dynWinners
+			}
+		}
+
+		// Set top winner for backward compatibility
+		for id, amt := range allWinners {
+			if amt > winningBid {
+				winnerID = id
+				winningBid = amt
+			}
 		}
 	}
 
 	// Step 4: Publish event — if this fails, rollback to OPEN so closer retries
-	err = s.publisher.PublishAuctionClosed(ctx, events.AuctionClosedEvent{
+	closedEvent := events.AuctionClosedEvent{
 		AuctionID:  auctionID,
 		WinnerID:   winnerID,
 		WinningBid: winningBid,
+		Quantity:   qty,
 		ItemID:     a.ItemID,
 		ItemTitle:  a.ItemTitle,
 		ShopID:     a.ShopID,
 		ClosedAt:   time.Now().UTC().Format(time.RFC3339Nano),
-	})
+	}
+	if qty > 1 && len(allWinners) > 0 {
+		closedEvent.Winners = allWinners
+	}
+
+	err = s.publisher.PublishAuctionClosed(ctx, closedEvent)
 	if err != nil {
 		if rbErr := s.repo.RollbackClose(ctx, auctionID); rbErr != nil {
 			log.Printf("CRITICAL: rollback close failed for %s after publish failure: %v (publish err: %v)",

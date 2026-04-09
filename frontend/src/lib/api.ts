@@ -95,6 +95,7 @@ interface BackendAuction {
   shop_name:           string
   retail_price:        number
   max_price:           number
+  quantity:            number
   image_url:           string
   shop_logo_url:       string
   description:         string
@@ -116,6 +117,7 @@ function toAuction(b: BackendAuction): Auction {
     current_highest_bid: b.current_highest_bid ?? 0,
     retail_price:        b.retail_price        ?? 0,
     max_price:           b.max_price           ?? 0,
+    quantity:            b.quantity && b.quantity > 0 ? b.quantity : 1,
     end_time:            new Date(b.end_time).getTime(),
     status:              (b.status as AuctionStatus) ?? 'OPEN',
     bid_count:           b.bid_count           ?? 0,
@@ -158,7 +160,7 @@ export const api = {
       request<BackendAuction>(`/auctions/${id}`).then(toAuction),
 
     /** POST /auctions → Auction */
-    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; max_price?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string }, token: string) =>
+    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; max_price?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string }, token: string) =>
       request<BackendAuction>('/auctions', {
         method: 'POST',
         headers: jsonHeaders(token),

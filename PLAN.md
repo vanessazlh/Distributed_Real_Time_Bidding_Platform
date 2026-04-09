@@ -97,19 +97,11 @@ Added DynamoDB as a durable backing store for the auction service (opt-in via `D
 ### 4. ~~Close sequence reliability~~ **Done**
 Reordered close sequence to: atomic close + read winner (Lua script) → publish event → persist DynamoDB → cleanup Redis. If event publish fails, status rolls back to OPEN so closer retries next tick. Added three-level winner fallback: Redis ZSET (updated on every bid via ZADD in all three strategies) → DynamoDB winners map (async write-through on each bid) → DynamoDB `highestBidder` field. Two new Lua scripts (`closeAndReadWinnerLua`, `rollbackCloseLua`) ensure atomicity.
 
-### 5. Multiple winners (quantity auctions)
-Add `quantity` field to support auctions where N buyers can win.
+### 5. ~~Multiple winners (quantity auctions)~~ **Done**
+Added `quantity` field (default 1) to Auction model, CreateAuctionRequest, Redis hash, and DynamoDB. Lua script (`placeBidLua`) handles slot management: when all N slots are full, lowest winner is evicted if a higher bid arrives; `current_highest` reflects the floor winner price (or start_bid while slots remain open). `closeAndReadWinnerLua` returns top-N winners for multi-winner auctions. Payment service creates one payment per winner with per-winner idempotency. Notification and bid services updated to notify/mark all N winners. Frontend: quantity input on CreateAuctionPage, "X winners" badge on AuctionCard and BiddingPanel, "Minimum Bid to Win" label for quantity>1.
 
-- Redis Sorted Set maintains top-N winners by bid amount
-- Lua script handles slot management: when full, lowest winner is evicted if a higher bid arrives; `current_highest` always reflects current floor winner price
-- Payment service triggers N payment records on close
-
-### 6. Move optimistic and queue strategies to experimental/
-Both strategies have deployment limitations:
-- `OptimisticStrategy` (Redis WATCH) does not work correctly across multiple Redis nodes without careful sharding
-- `QueueStrategy` (Go channel) is per-process only; does not work with multiple auction service instances
-
-Move both to `concurrency/experimental/` with clear comments. `PessimisticStrategy` (upgraded with Lua) becomes the default.
+### 6. ~~Move optimistic and queue strategies to experimental/~~ **Done**
+Moved `OptimisticStrategy` and `QueueStrategy` to `concurrency/experimental/` package with clear limitation comments. Both reject quantity>1 auctions with descriptive errors. `PessimisticStrategy` (Lua script) is now the default (`CONCURRENCY_STRATEGY` env var defaults to "pessimistic"). Service struct imports experimental package for benchmarking/dev use.
 
 ### 7. Geo support (buyer + seller)
 Neither buyers nor sellers have location data. Add `lat`/`lng` or a structured address to the `Shop` model so shops can be surfaced by proximity.

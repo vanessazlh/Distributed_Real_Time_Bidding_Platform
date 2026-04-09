@@ -27,6 +27,8 @@ The buyer enters a bid amount in the bidding panel. On submission:
 - If outbid by someone else, the banner switches to **Outbid** and the new price is broadcast to all watchers
 - Sellers cannot bid on their own auctions (403 Forbidden)
 
+For **quantity auctions** (multiple winners), the bidding panel shows a "X winners" badge and the label changes to "Minimum Bid to Win" — the floor price to secure a winning slot. When all slots are full, a new bid must exceed the lowest winner's amount; the evicted bidder is notified as outbid.
+
 ### 5. Notifications
 Buyers receive real-time notifications regardless of which page they are on:
 - **Outbid** — when another buyer places a higher bid on an auction the buyer previously bid on
@@ -39,12 +41,12 @@ Notifications are delivered two ways:
 Notifications are stored in Redis (capped at 20 per user with same-auction dedup, 7-day TTL) so they persist across page refreshes and browser sessions.
 
 ### 6. Auction Close
-When the countdown reaches zero (or the seller closes the auction early), the system resolves the winner using a reliable close sequence:
-- A Lua script **atomically** marks the auction as CLOSED and reads the winner from a Redis Sorted Set (with DynamoDB fallback if Redis data is unavailable)
+When the countdown reaches zero (or the seller closes the auction early), the system resolves the winner(s) using a reliable close sequence:
+- A Lua script **atomically** marks the auction as CLOSED and reads the winner(s) from a Redis Sorted Set — top-N for quantity auctions (with DynamoDB fallback if Redis data is unavailable)
 - An `auction_closed` event is published — if publishing fails, the status is **rolled back to OPEN** and the closer retries on the next tick, preventing dead states
-- The Payment Service automatically initiates a charge to the winning bidder
-- The Bid Service marks the winner's bid as **WON**
-- The winner sees a **Won** banner on the auction page and receives a global notification
+- The Payment Service automatically initiates a charge to each winning bidder (one payment per winner for quantity auctions)
+- The Bid Service marks each winner's bid as **WON**
+- Winners see a **Won** banner on the auction page and receive a global notification
 - Other participants see a **Closed** banner
 
 ### 7. Profile & History
@@ -79,10 +81,11 @@ The seller fills in a shop name and location at `/shops/new`. The shop is saved 
 From a shop page, the seller adds a surplus item via `/shops/:id/items/new`, providing a title, description, retail value, and optional image URL. Items are saved to DynamoDB under the shop.
 
 ### 5. Publish an Auction
-The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, and optionally schedule a future start time. On submission:
+The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, optionally a max price (bid ceiling), a **quantity** (number of winners, default 1), and optionally schedule a future start time. On submission:
 - Auction enrichment data (shop name, retail price, item image, description) is captured at creation time and stored in Redis
 - If no schedule time is set, the auction immediately goes live (**OPEN**) and is visible to all buyers
 - If a future start time is set, the auction is created as **PENDING** and automatically transitions to OPEN when the scheduled time arrives
+- For **quantity > 1**, the auction becomes a multi-winner auction where the top N bidders each win a copy of the item
 - Input validation enforces: start_bid >= 0, duration 1–10080 minutes, scheduled_start must be in the future
 
 ### 6. Monitor & Close
@@ -115,15 +118,15 @@ Auction closes (seller closes or timer expires via closer.go)
       │
       ├──► Publishes auction_closed event (Redis Pub/Sub)
                 │
-                ├── Bid Service marks winner's bid as WON
+                ├── Bid Service marks winner(s)' bids as WON
                 │
-                ├── Payment Service charges the winner (simulated gateway)
+                ├── Payment Service charges each winner (one payment per winner for quantity auctions)
                 │       ├── payment_processed → records success
                 │       └── payment_failed    → records failure
                 │
                 ├── Notification Service broadcasts close to auction watchers (per-auction WebSocket)
                 │
-                └── Notification Service stores + pushes "won" to winner (per-user WebSocket)
+                └── Notification Service stores + pushes "won" to all winners (per-user WebSocket)
 ```
 
 ---

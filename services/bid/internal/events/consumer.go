@@ -112,15 +112,27 @@ func (c *Consumer) handleAuctionClosed(payload string) {
 		return
 	}
 
-	if event.WinnerID == "" {
+	// Build list of all winners (multi-winner auctions have a Winners map).
+	winners := make(map[string]struct{})
+	for winnerID := range event.Winners {
+		winners[winnerID] = struct{}{}
+	}
+	// Backwards compatible: use WinnerID if Winners map is empty.
+	if len(winners) == 0 && event.WinnerID != "" {
+		winners[event.WinnerID] = struct{}{}
+	}
+
+	if len(winners) == 0 {
 		log.Printf("auction %s closed with no winner", event.AuctionID)
 		return
 	}
 
 	ctx := context.Background()
-	if err := c.bidSvc.MarkWinnerBid(ctx, event.AuctionID, event.WinnerID); err != nil {
-		log.Printf("failed to mark winner bid for auction %s: %v", event.AuctionID, err)
-	} else {
-		log.Printf("marked winning bid for auction %s, winner %s", event.AuctionID, event.WinnerID)
+	for winnerID := range winners {
+		if err := c.bidSvc.MarkWinnerBid(ctx, event.AuctionID, winnerID); err != nil {
+			log.Printf("failed to mark winner bid for auction %s, winner %s: %v", event.AuctionID, winnerID, err)
+		} else {
+			log.Printf("marked winning bid for auction %s, winner %s", event.AuctionID, winnerID)
+		}
 	}
 }

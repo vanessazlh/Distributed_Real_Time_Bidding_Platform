@@ -27,7 +27,7 @@ func main() {
 	publisher := events.NewPublisher(rdb)
 
 	// Wire auction layer
-	strategy := auctionPkg.ConcurrencyStrategy(envOr("CONCURRENCY_STRATEGY", "optimistic"))
+	strategy := auctionPkg.ConcurrencyStrategy(envOr("CONCURRENCY_STRATEGY", "pessimistic"))
 	var auctionRepo *auctionPkg.Repository
 	if db != nil {
 		auctionRepo = auctionPkg.NewRepositoryWithDynamo(rdb, db)

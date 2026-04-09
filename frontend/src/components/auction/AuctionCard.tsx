@@ -61,8 +61,13 @@ export function AuctionCard({ auction }: AuctionCardProps) {
 
         <div className="flex justify-between items-end mb-4">
           <div>
-            <p className="text-text-secondary text-xs mb-1">Current Bid</p>
+            <p className="text-text-secondary text-xs mb-1">
+              {auction.quantity > 1 ? 'Min Bid to Win' : 'Current Bid'}
+            </p>
             <PriceDisplay amount={auction.current_highest_bid} retail={auction.retail_price} size="card" />
+            {auction.quantity > 1 && (
+              <p className="text-brand text-xs font-semibold mt-1">{auction.quantity} winners</p>
+            )}
           </div>
           <div className="text-right">
             <CountdownTimer endTime={auction.end_time} />
