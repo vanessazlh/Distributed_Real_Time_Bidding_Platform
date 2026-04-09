@@ -14,7 +14,7 @@
 | Seller auction management UI | **Done** (per-shop management page at /seller/shops/:shopId with Items + Auctions tabs; dashboard simplified to overview cards with "Manage →") |
 | Automatic auction expiry | **Basic version done** (closer.go polls every 1s, closes OPEN auctions past end_time) |
 | Payment service Redis Streams migration | **Complete** |
-| Auction/notification Redis Streams migration | **Not started** (still on Pub/Sub) |
+| Auction/notification/bid Redis Streams migration | **Complete** |
 | Bid service WON status on close | **Done** (consumer subscribes to auction_closed, marks winner bid as WON) |
 | Per-auction WebSocket notifications | **Done** (broadcasts all bids + auction_closed, frontend WON/CLOSED banners) |
 | Global notification system | **Done** (persistent Redis store, per-user WebSocket, bell + toast UI, capped at 20 with dedup) |
@@ -48,10 +48,8 @@ CreateAuction handler now checks `callerRole(c) != "seller"` and returns 403.
 #### 3. ~~Seller can bid on their own auction~~ **Fixed**
 PlaceBid now compares `a.SellerID == userID` and returns ErrSelfBid (403).
 
-#### 4. Bid service: `ensureConsumerGroup()` MKSTREAM
-Bid service currently uses Pub/Sub, not Streams. When migrated to Streams, `XGROUP CREATE` will fail on cold start if the stream key doesn't exist yet.
-
-Fix: pass `MKSTREAM=true` when creating the consumer group so the stream is created atomically. Apply this fix during the Streams migration, not before.
+#### 4. ~~Bid service: `ensureConsumerGroup()` MKSTREAM~~ **Fixed**
+All services now use `XGroupCreateMkStream` which atomically creates the stream if it doesn't exist. Applied during the Streams migration.
 
 #### 5. ~~Bid service: self-rebid produces multiple WON records~~ **Fixed**
 RecordBid now calls MarkUserPreviousBids before creating the new bid, marking the caller's own previous ACCEPTED bids as OUTBID.
@@ -119,15 +117,14 @@ Category field existed on Item model and frontend but was never saved by the sho
 ### 13. ~~Per-shop management page~~ **Done**
 `SellerShopPage` at `/seller/shops/:shopId/:tab` with Items and Auctions tabs. Dashboard shop cards simplified to overview + "Manage →" link. Old `/seller/shops/:shopId/auctions` URL still works via the `:tab` param. `SellerAuctionPage` kept but no longer routed.
 
-### 10. Redis Pub/Sub → Redis Streams
-The auction, notification, and payment services all use Redis Pub/Sub, which is fire-and-forget.
+### 10. ~~Redis Pub/Sub → Redis Streams~~ **Done**
+All services migrated from Redis Pub/Sub to Redis Streams with consumer groups.
 
-Problems:
-- Messages lost if a consumer is offline at publish time
-- No consumer group support — cannot scale horizontally without duplicate processing
-- No replay or audit trail
+**Streams:**
+- `bid:placed` — published by Auction Service, consumed by Bid Service (`bid-service` group) and Notification Service (`notification-service` group)
+- `auction:closed` — published by Auction Service, consumed by Payment Service (`payment-service` group), Bid Service (`bid-service` group), and Notification Service (`notification-service` group)
 
-Plan: migrate all three services to Redis Streams with consumer groups for durable, replayable, exactly-once delivery.
+**Features:** `XGroupCreateMkStream` for atomic stream/group creation, `XReadGroup` with blocking reads, `XAck` on successful processing, `XAutoClaim` for pending message recovery (60s timeout, 30s reclaim interval), configurable worker pools via env vars (`BID_WORKERS`, `NOTIF_WORKERS`, `PAYMENT_WORKERS`).
 
 ### 11. Real payment gateway
 Payment processing is currently simulated (90% success rate mock). Replace with Stripe or equivalent for production.

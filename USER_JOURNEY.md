@@ -43,7 +43,7 @@ Notifications are stored in Redis (capped at 20 per user with same-auction dedup
 ### 6. Auction Close
 When the countdown reaches zero (or the seller closes the auction early), the system resolves the winner(s) using a reliable close sequence:
 - A Lua script **atomically** marks the auction as CLOSED and reads the winner(s) from a Redis Sorted Set — top-N for quantity auctions (with DynamoDB fallback if Redis data is unavailable)
-- An `auction_closed` event is published — if publishing fails, the status is **rolled back to OPEN** and the closer retries on the next tick, preventing dead states
+- An `auction_closed` event is published to the Redis Stream — if publishing fails, the status is **rolled back to OPEN** and the closer retries on the next tick, preventing dead states
 - The Payment Service automatically initiates a charge to each winning bidder (one payment per winner for quantity auctions)
 - The Bid Service marks each winner's bid as **WON**
 - Winners see a **Won** banner on the auction page and receive a global notification
@@ -110,33 +110,35 @@ When the auction closes, the payment is initiated automatically. The `shop_id` r
 
 ## Real-Time Flow
 
+All inter-service events use **Redis Streams** with consumer groups. Each consumer group processes messages independently, enabling horizontal scaling and durable delivery with automatic pending-message recovery.
+
 ```
 Buyer places bid
       │
       ▼
 Auction Service validates & updates highest bid atomically (Redis + concurrency strategy)
       │
-      ├──► Publishes bid_placed event (Redis Pub/Sub)
+      ├──► XADD bid:placed (Redis Stream)
       │         │
-      │         ├── Bid Service records bid history (marks previous same-user bids as OUTBID)
+      │         ├── [bid-service group] Bid Service records bid history (marks previous same-user bids as OUTBID)
       │         │
-      │         ├── Notification Service broadcasts to all auction watchers (per-auction WebSocket)
+      │         ├── [notification-service group] Notification Service broadcasts to all auction watchers (per-auction WebSocket)
       │         │
-      │         └── Notification Service stores + pushes "outbid" to previous bidder (per-user WebSocket)
+      │         └── [notification-service group] Notification Service stores + pushes "outbid" to previous bidder (per-user WebSocket)
       │
 Auction closes (seller closes or timer expires via closer.go)
       │
-      ├──► Publishes auction_closed event (Redis Pub/Sub)
+      ├──► XADD auction:closed (Redis Stream)
                 │
-                ├── Bid Service marks winner(s)' bids as WON
+                ├── [bid-service group] Bid Service marks winner(s)' bids as WON
                 │
-                ├── Payment Service charges each winner (one payment per winner for quantity auctions)
-                │       ├── payment_processed → records success
-                │       └── payment_failed    → records failure
+                ├── [payment-service group] Payment Service charges each winner (one payment per winner for quantity auctions)
+                │       ├── payment:processed stream → records success
+                │       └── payment:failed stream    → records failure
                 │
-                ├── Notification Service broadcasts close to auction watchers (per-auction WebSocket)
+                ├── [notification-service group] Notification Service broadcasts close to auction watchers (per-auction WebSocket)
                 │
-                └── Notification Service stores + pushes "won" to all winners (per-user WebSocket)
+                └── [notification-service group] Notification Service stores + pushes "won" to all winners (per-user WebSocket)
 ```
 
 ---
@@ -147,6 +149,6 @@ Auction closes (seller closes or timer expires via closer.go)
 |---|---|
 | Payment gateway | Simulated (90% success rate mock) — no real Stripe integration yet |
 | Shop settlement | Payment records `shop_id` but does not disburse funds to the seller |
-| Message delivery guarantee | Redis Pub/Sub is fire-and-forget — migration to Redis Streams planned (close sequence has rollback-on-failure for reliability) |
+| Message delivery guarantee | Redis Streams with consumer groups — durable, replayable, with automatic pending-message recovery via XAutoClaim |
 | Geo / location filtering | No geo-based search or proximity filtering |
 | Image upload | No file upload — sellers must paste external image URLs manually |

@@ -1,8 +1,7 @@
 package events
 
-// BidPlacedEvent matches the Redis "bid_placed" channel payload
-// published by the Auction Service.
-// All services that subscribe to this channel should import this type.
+// BidPlacedEvent is published by the Auction Service to the "bid:placed" Redis Stream.
+// Consumed by Bid Service and Notification Service via consumer groups.
 type BidPlacedEvent struct {
 	AuctionID       string `json:"auction_id"`
 	BidID           string `json:"bid_id"`
@@ -17,8 +16,8 @@ type BidPlacedEvent struct {
 	Timestamp       string `json:"timestamp"`
 }
 
-// AuctionClosedEvent is published by the Auction Service when an auction ends.
-// Consumed by Payment Service and Notification Service.
+// AuctionClosedEvent is published by the Auction Service to the "auction:closed" Redis Stream.
+// Consumed by Payment Service, Bid Service, and Notification Service via consumer groups.
 //
 // For single-winner auctions (Quantity <= 1): WinnerID and WinningBid are set.
 // For multi-winner auctions: Winners contains all winning bidder→amount pairs,

@@ -19,7 +19,7 @@ Browser (React + Vite)
         ├── /shops/:id/auctions    → Auction Service    :8081  (Redis)
         ├── /auctions/:id/bids     → Bid Service        :8084  (Redis + DynamoDB)
         ├── /auctions, /bids       → Auction Service    :8081  (Redis)
-        ├── /auctions/:id/subscribe→ Notification Svc   :8080  (Redis Pub/Sub → WebSocket)
+        ├── /auctions/:id/subscribe→ Notification Svc   :8080  (Redis Streams → WebSocket)
         ├── /notifications/subscribe→ Notification Svc  :8080  (per-user WebSocket)
         ├── /notifications          → Notification Svc  :8080  (REST — list/mark-read)
         ├── /bids                  → Bid Service        :8084  (Redis + DynamoDB)
@@ -38,7 +38,7 @@ Browser (React + Vite)
 | Shop | 8083 | DynamoDB | Shop + item CRUD, seller ownership checks |
 | Auction | 8081 | Redis + DynamoDB | Auction lifecycle, bid validation, concurrency control |
 | Bid | 8084 | Redis + DynamoDB | Bid history, outbid tracking, per-user bid queries |
-| Notification | 8080 | Redis Pub/Sub + Redis | Per-auction WebSocket fan-out, per-user global WebSocket, persistent notification inbox |
+| Notification | 8080 | Redis Streams + Redis | Per-auction WebSocket fan-out, per-user global WebSocket, persistent notification inbox |
 | Payment | 8085 | DynamoDB | Winner charge processing, payment status tracking |
 | Frontend | 3000 | — | React SPA + nginx reverse proxy |
 
@@ -157,22 +157,28 @@ curl -X PUT http://localhost:3000/admin/strategy \
 
 ## Event-Driven Flow
 
-Services communicate through Redis Pub/Sub. Two domain events are published:
+Services communicate through **Redis Streams** with consumer groups for durable, replayable, exactly-once delivery. Each consuming service has its own consumer group, so messages are processed independently and can scale horizontally without duplicate processing.
 
-**`bid_placed`**
+**`bid:placed`** stream
 ```
-Auction Service → Redis Pub/Sub
-    ├── Bid Service        (records bid history)
-    └── Notification Svc   (broadcasts to auction watchers + stores/pushes "outbid" to previous bidder)
+Auction Service → XADD bid:placed
+    ├── Bid Service        [group: bid-service]        (records bid history)
+    └── Notification Svc   [group: notification-service] (broadcasts to auction watchers + stores/pushes "outbid" to previous bidder)
 ```
 
-**`auction_closed`**
+**`auction:closed`** stream
 ```
-Auction Service → Redis Pub/Sub
-    ├── Payment Service    (charges the winning bidder(s) — one payment per winner for quantity auctions)
-    ├── Bid Service        (marks winning bid(s) as WON)
-    └── Notification Svc   (broadcasts to auction watchers + stores/pushes "won" to all winners)
+Auction Service → XADD auction:closed
+    ├── Payment Service    [group: payment-service]      (charges the winning bidder(s) — one payment per winner for quantity auctions)
+    ├── Bid Service        [group: bid-service]           (marks winning bid(s) as WON)
+    └── Notification Svc   [group: notification-service]  (broadcasts to auction watchers + stores/pushes "won" to all winners)
 ```
+
+**Reliability features:**
+- `XGroupCreateMkStream` — atomic stream + consumer group creation on cold start
+- `XReadGroup` — blocking reads with configurable worker pools for concurrent processing
+- `XAck` — messages are acknowledged only after successful processing (bid/payment services); notification service uses best-effort ACK since retrying failed WebSocket pushes is unlikely to help
+- `XAutoClaim` — pending messages from dead consumer instances are automatically reclaimed (60s idle threshold, 30s reclaim interval)
 
 ### Reliable Close Sequence
 
@@ -209,6 +215,9 @@ Quantity auctions require the **pessimistic** concurrency strategy (Lua script a
 | `SERVER_ADDR` | `:808x` | Each service (see ports above) |
 | `BID_SERVICE_URL` | `http://bid:8084` | User (for bid proxy) |
 | `CONCURRENCY_STRATEGY` | `pessimistic` | Auction |
+| `BID_WORKERS` | `10` | Bid (stream consumer concurrency) |
+| `NOTIF_WORKERS` | `10` | Notification (stream consumer concurrency) |
+| `PAYMENT_WORKERS` | `10` | Payment (stream consumer concurrency) |
 
 All defaults are pre-configured in `docker-compose.yml`.
 
