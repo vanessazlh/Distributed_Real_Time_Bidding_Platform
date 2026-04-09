@@ -91,7 +91,17 @@ The seller navigates to `/auction/new?shopId=:id`. They select an item from the 
 ### 6. Monitor & Close
 The seller manages each shop from `/seller/shops/:shopId`, a tabbed page with two sections:
 - **Items tab** — lists all items in the shop's inventory with title, description, retail value, and image. Includes an "+ Add Item" button.
-- **Auctions tab** — shows stats (active, closed, total bids, revenue), active auctions with live countdown timers and a close button, and closed auctions with final prices. The close button triggers `POST /auctions/:id/close` with ownership verification (only the auction's seller can close it).
+- **Auctions tab** — shows stats (active, closed, total bids, revenue), active auctions with live countdown timers, and closed auctions with final prices. Each auction row is clickable.
+
+Clicking an auction row opens the **Seller Auction Detail** page at `/seller/auctions/:auctionId`, a dedicated drill-down with:
+- **Header** — item image, title, status badge, quantity badge (for multi-winner auctions), and a "Close Auction" button for OPEN auctions
+- **Stats row** — current bid, retail price, total bids, max price (if set), and a live countdown timer
+- **Bid history table** — every bid placed, showing masked bidder ID, amount, status (Winning / Outbid / Won), and relative time. Updates in real time via WebSocket as new bids arrive.
+- **Item details sidebar** — description, category, quantity, and bid ceiling
+- **Winners card** (closed auctions) — lists each winner with their winning bid amount
+- **Payment status card** (closed auctions) — shows payment status (Pending / Completed / Failed / Refunded) and amount
+
+This page gives sellers full visibility into individual auctions without exposing the buyer-facing bidding UI.
 
 ### 7. Settlement
 When the auction closes, the payment is initiated automatically. The `shop_id` recorded at auction creation is included in the payment record. Full fund disbursement to the seller is planned for a future release.
