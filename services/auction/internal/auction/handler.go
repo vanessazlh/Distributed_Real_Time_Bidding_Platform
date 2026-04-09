@@ -127,6 +127,8 @@ func (h *Handler) PlaceBid(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "auction is not open"})
 		case errors.Is(err, ErrBidTooLow):
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bid must be higher than current highest"})
+		case errors.Is(err, ErrBidExceedsMax):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bid exceeds the maximum price for this auction"})
 		case errors.Is(err, ErrSelfBid):
 			c.JSON(http.StatusForbidden, gin.H{"error": "sellers cannot bid on their own auction"})
 		default:

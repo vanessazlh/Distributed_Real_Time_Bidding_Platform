@@ -52,6 +52,31 @@ func (s *Service) CreateShop(ctx context.Context, req CreateShopRequest, ownerID
 	return &shop, nil
 }
 
+// UpdateShop updates an existing shop. The caller must be the owner.
+func (s *Service) UpdateShop(ctx context.Context, shopID string, req UpdateShopRequest, callerID string) (*Shop, error) {
+	shop, err := s.repo.FindShopByID(ctx, shopID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	if shop.OwnerID != callerID {
+		return nil, ErrForbidden
+	}
+
+	if req.Name != "" {
+		shop.Name = req.Name
+	}
+	if req.Location != "" {
+		shop.Location = req.Location
+	}
+	// LogoURL can be set to empty to clear it, so always apply if present in request
+	shop.LogoURL = req.LogoURL
+
+	if err := s.repo.SaveShop(ctx, *shop); err != nil {
+		return nil, fmt.Errorf("update shop: %w", err)
+	}
+	return shop, nil
+}
+
 // GetShop returns a shop by ID.
 func (s *Service) GetShop(ctx context.Context, shopID string) (*Shop, error) {
 	shop, err := s.repo.FindShopByID(ctx, shopID)
@@ -91,6 +116,7 @@ func (s *Service) CreateItem(ctx context.Context, shopID string, req CreateItemR
 		Description: req.Description,
 		RetailValue: req.RetailValue,
 		ImageURL:    req.ImageURL,
+		Category:    req.Category,
 	}
 	if err := s.repo.SaveItem(ctx, item); err != nil {
 		return nil, fmt.Errorf("save item: %w", err)

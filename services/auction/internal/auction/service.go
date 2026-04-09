@@ -31,6 +31,9 @@ var ErrAuctionClosed = errors.New("auction is not open")
 // ErrBidTooLow is returned when the bid is not higher than the current highest.
 var ErrBidTooLow = errors.New("bid too low")
 
+// ErrBidExceedsMax is returned when the bid exceeds the auction's max price.
+var ErrBidExceedsMax = errors.New("bid exceeds max price")
+
 // ErrSelfBid is returned when a seller tries to bid on their own auction.
 var ErrSelfBid = errors.New("sellers cannot bid on their own auction")
 
@@ -106,6 +109,12 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 	if req.Duration > 10080 { // 7 days max
 		return nil, fmt.Errorf("%w: duration_minutes must be <= 10080 (7 days)", ErrValidation)
 	}
+	if req.MaxPrice < 0 {
+		return nil, fmt.Errorf("%w: max_price must be >= 0", ErrValidation)
+	}
+	if req.MaxPrice > 0 && req.MaxPrice <= req.StartBid {
+		return nil, fmt.Errorf("%w: max_price must be greater than start_bid", ErrValidation)
+	}
 
 	// Determine start time and status
 	startTime := now
@@ -133,6 +142,7 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 		ShopID:         req.ShopID,
 		ShopName:       req.ShopName,
 		RetailPrice:    req.RetailPrice,
+		MaxPrice:       req.MaxPrice,
 		ImageURL:       req.ImageURL,
 		ShopLogoURL:    req.ShopLogoURL,
 		Description:    req.Description,
@@ -231,6 +241,9 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 		}
 		if contains(errMsg, "must be higher") {
 			return nil, ErrBidTooLow
+		}
+		if contains(errMsg, "exceeds max price") {
+			return nil, ErrBidExceedsMax
 		}
 		return nil, fmt.Errorf("place bid: %w", err)
 	}

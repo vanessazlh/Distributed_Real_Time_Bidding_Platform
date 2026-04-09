@@ -27,6 +27,13 @@ type CreateShopRequest struct {
 	LogoURL  string `json:"logo_url"`
 }
 
+// UpdateShopRequest is the payload for PUT /shops/:shop_id.
+type UpdateShopRequest struct {
+	Name     string `json:"name"`
+	Location string `json:"location"`
+	LogoURL  string `json:"logo_url"`
+}
+
 // CreateItemRequest is the payload for POST /shops/:shop_id/items.
 type CreateItemRequest struct {
 	Title       string `json:"title" binding:"required,min=1"`

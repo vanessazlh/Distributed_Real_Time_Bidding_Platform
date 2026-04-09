@@ -22,6 +22,7 @@ import (
 //	-1                auction not found
 //	-2                auction is not open
 //	-3                bid too low (current highest returned as second value)
+//	-4                bid exceeds max price (max_price returned as second value)
 var placeBidLua = redis.NewScript(`
 local key = KEYS[1]
 local amount = tonumber(ARGV[1])
@@ -39,6 +40,11 @@ end
 local current = tonumber(redis.call('HGET', key, 'current_highest')) or 0
 if amount <= current then
 	return {-3, current}
+end
+
+local maxPrice = tonumber(redis.call('HGET', key, 'max_price')) or 0
+if maxPrice > 0 and amount > maxPrice then
+	return {-4, maxPrice}
 end
 
 local version = tonumber(redis.call('HGET', key, 'version')) or 0
@@ -82,6 +88,9 @@ func (p *Pessimistic) TryPlaceBid(ctx context.Context, auctionID string, amount 
 		return 0, fmt.Errorf("auction is not open")
 	case -3:
 		return 0, fmt.Errorf("bid amount %d must be higher than current highest %s",
+			amount, strconv.FormatInt(res[1], 10))
+	case -4:
+		return 0, fmt.Errorf("bid amount %d exceeds max price %s",
 			amount, strconv.FormatInt(res[1], 10))
 	default:
 		return code, nil // code == newVersion

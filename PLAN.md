@@ -18,7 +18,7 @@
 | Bid service WON status on close | **Done** (consumer subscribes to auction_closed, marks winner bid as WON) |
 | Per-auction WebSocket notifications | **Done** (broadcasts all bids + auction_closed, frontend WON/CLOSED banners) |
 | Global notification system | **Done** (persistent Redis store, per-user WebSocket, bell + toast UI, capped at 20 with dedup) |
-| Cache reliability (ensureRedisCached) | **Not started** |
+| Cache reliability (ensureRedisCached) | **Done** (DynamoDB backing store, write-through on create, fallback read with stampede lock, Redis cleanup on close) |
 
 ---
 
@@ -85,19 +85,14 @@ Replaced dual-account model with single-account model: one email = one account. 
 
 ## Backlog Features
 
-### 1. Auction lifecycle: maxPrice field
-Replace the unused `reservePrice` field with `maxPrice` as a bid ceiling. Lua script in pessimistic strategy handles both `maxPrice` upper bound and `startingBid` lower bound in a single atomic operation.
+### 1. ~~Auction lifecycle: maxPrice field~~ **Done**
+Added `max_price` field (bid ceiling, 0 = no limit) to Auction model, CreateAuctionRequest, Redis hash, and DynamoDB. Lua script checks `max_price` upper bound atomically alongside `current_highest` lower bound. Frontend CreateAuctionPage has optional "Max Price" input. Backend returns 400 if bid exceeds max.
 
 ### 2. ~~Pessimistic strategy: Lua script atomicity~~ **Done**
 Replaced multi-step SETNX lock + HGetAll + HSet in `PessimisticStrategy` with a single Lua script (`placeBidLua`). The script atomically reads status/current_highest/version → validates → writes current_highest/highest_bidder/version + increments bid_count. No external lock needed. Also fixed `bid_count` never being incremented in all three strategies (optimistic and queue got the same fix).
 
-### 3. Cache reliability: ensureRedisCached() + stampede protection
-Redis is the primary store for auction state. If a key is evicted or Redis restarts, bids fail with "auction not found".
-
-- `ensureRedisCached()`: on cache miss, rebuild from DynamoDB before proceeding
-- Double-checked locking via Redisson rebuild lock: prevents thundering herd when many requests hit the same missing key simultaneously
-- `seedRedisCache()`: add `seller_id`, `quantity`, `max_price` fields to reduce per-bid DynamoDB reads
-- On auction close: explicitly delete Redis hash and ZSET to avoid memory leaks
+### 3. ~~Cache reliability: ensureRedisCached() + stampede protection~~ **Done**
+Added DynamoDB as a durable backing store for the auction service (opt-in via `DYNAMODB_ENDPOINT` env var). Write-through on Create, fallback read with double-checked locking for stampede protection, Redis hash deleted on Close to reclaim memory. All auction fields including `seller_id` and `max_price` are persisted. Backward-compatible — runs Redis-only when DynamoDB is not configured.
 
 ### 4. Close sequence reliability
 Current order risks a dead state if event publishing fails after DynamoDB write.
@@ -127,19 +122,11 @@ Neither buyers nor sellers have location data. Add `lat`/`lng` or a structured a
 - Buyer: location captured on registration or via browser geolocation
 - Likely requires a geohash GSI in DynamoDB or a dedicated geo service
 
-### 2. Item categories
-Items have no category field, blocking real filtering on the buyer home page.
+### 2. ~~Item categories~~ **Done**
+Category field existed on Item model and frontend but was never saved by the shop service's `CreateItem`. Fixed: `req.Category` now passed through to the Item struct. Frontend `CreateItemPage` already had category dropdown, `HomePage` already filters by category, `CreateAuctionPage` inherits category from the selected item.
 
-- Add `category` to the `Item` model (shop service)
-- Pass through to the `Auction` model
-- Update `CreateItemPage` with a category selector
-- Update `HomePage` tabs to filter by real category data
-
-### 3. ~~Profile update endpoints~~ **Partially done**
-`PUT /users/:user_id` implemented with username/avatar editing and ownership check. Unified profile page at `/profile` with sidebar tabs (Account for all users, My Bids for buyers only). Sellers see a "Seller Dashboard →" shortcut in the sidebar. Remaining:
-
-- `PUT /shops/:shop_id` — edit shop name, location, logo URL (ownership check required)
-- Frontend: "Edit Shop" button on the seller shop management page
+### 3. ~~Profile update endpoints~~ **Done**
+`PUT /users/:user_id` implemented with username/avatar editing. `PUT /shops/:shop_id` added with name/location/logo editing and ownership check. Frontend: "Edit Shop" button on `SellerShopPage` opens inline edit form.
 
 ### 13. ~~Per-shop management page~~ **Done**
 `SellerShopPage` at `/seller/shops/:shopId/:tab` with Items and Auctions tabs. Dashboard shop cards simplified to overview + "Manage →" link. Old `/seller/shops/:shopId/auctions` URL still works via the `:tab` param. `SellerAuctionPage` kept but no longer routed.

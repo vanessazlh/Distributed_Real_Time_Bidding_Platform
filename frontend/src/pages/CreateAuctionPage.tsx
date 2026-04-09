@@ -21,6 +21,7 @@ export default function CreateAuctionPage() {
   const [itemId,      setItemId]      = useState('')
   const [duration,      setDuration]      = useState('5')
   const [startBid,      setStartBid]     = useState('')
+  const [maxPrice,      setMaxPrice]     = useState('')
   const [scheduledStart,setScheduledStart] = useState('')
   const [loading,       setLoading]      = useState(false)
   const [error,         setError]        = useState<string | null>(null)
@@ -88,6 +89,7 @@ export default function CreateAuctionPage() {
         category:         selectedItem.category  ?? undefined,
         duration_minutes: parseInt(duration, 10),
         start_bid:        Math.round(parseFloat(startBid) * 100),
+        max_price:        maxPrice ? Math.round(parseFloat(maxPrice) * 100) : undefined,
       }
       if (scheduledStart) {
         payload.scheduled_start = new Date(scheduledStart).toISOString()
@@ -184,6 +186,20 @@ export default function CreateAuctionPage() {
                 value={startBid}
                 onChange={(e) => setStartBid(e.target.value)}
               />
+            </FormField>
+
+            <FormField label="Max Price / Bid Ceiling ($, optional)">
+              <TextInput
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="Leave empty for no limit"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+              />
+              <p className="text-sm text-text-secondary mt-1">
+                Bids above this amount will be rejected. Leave empty for no ceiling.
+              </p>
             </FormField>
 
             <FormField label="Schedule Start (optional)">

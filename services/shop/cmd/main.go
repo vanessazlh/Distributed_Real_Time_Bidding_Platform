@@ -34,6 +34,7 @@ func main() {
 	protected := r.Group("/", middleware.Auth())
 	{
 		protected.POST("/shops", h.CreateShop)
+		protected.PUT("/shops/:shop_id", h.UpdateShop)
 		protected.POST("/shops/:shop_id/items", h.CreateItem)
 		protected.GET("/sellers/:user_id/shops", h.ListSellerShops)
 	}

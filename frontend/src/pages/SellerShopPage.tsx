@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { Shop, Auction, Item } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Spinner, EmptyState, StatCard } from '@/components/ui'
+import { Card, Badge, Button, Spinner, EmptyState, StatCard, FormField, TextInput, StatusBanner } from '@/components/ui'
 import { CountdownTimer } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
@@ -25,6 +25,42 @@ export default function SellerShopPage() {
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
   const [closing,  setClosing]  = useState<string | null>(null)
+
+  // Edit shop state
+  const [editing,     setEditing]     = useState(false)
+  const [editName,    setEditName]    = useState('')
+  const [editLocation,setEditLocation]= useState('')
+  const [editLogo,    setEditLogo]    = useState('')
+  const [editSaving,  setEditSaving]  = useState(false)
+  const [editError,   setEditError]   = useState<string | null>(null)
+
+  const startEditing = () => {
+    if (!shop) return
+    setEditName(shop.name)
+    setEditLocation(shop.location)
+    setEditLogo(shop.logo_url ?? '')
+    setEditError(null)
+    setEditing(true)
+  }
+
+  const handleSaveShop = async () => {
+    if (!shop || !token) return
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      const updated = await api.shops.update(shop.shop_id, {
+        name: editName,
+        location: editLocation,
+        logo_url: editLogo,
+      }, token)
+      setShop(updated)
+      setEditing(false)
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update shop')
+    } finally {
+      setEditSaving(false)
+    }
+  }
 
   useEffect(() => {
     if (!shopId || !token) return
@@ -102,18 +138,47 @@ export default function SellerShopPage() {
       </Link>
 
       {/* Shop header */}
-      <div className="py-6 flex items-end justify-between border-b border-border mb-8">
-        <div>
-          <p className="text-text-secondary text-base mb-1">{shop.location}</p>
-          <h1 className="font-display text-3xl text-text-primary">{shop.name}</h1>
+      {editing ? (
+        <Card padding="p-6" className="mb-8">
+          <h2 className="font-sans font-semibold text-lg text-text-primary mb-4">Edit Shop</h2>
+          {editError && <div className="mb-4"><StatusBanner type="error" message={editError} /></div>}
+          <div className="flex flex-col gap-4">
+            <FormField label="Shop Name">
+              <TextInput value={editName} onChange={(e) => setEditName(e.target.value)} required />
+            </FormField>
+            <FormField label="Location">
+              <TextInput value={editLocation} onChange={(e) => setEditLocation(e.target.value)} required />
+            </FormField>
+            <FormField label="Logo URL (optional)">
+              <TextInput type="url" value={editLogo} onChange={(e) => setEditLogo(e.target.value)} placeholder="https://example.com/logo.png" />
+            </FormField>
+            <div className="flex gap-3">
+              <Button variant="primary" disabled={editSaving || !editName || !editLocation} onClick={handleSaveShop}>
+                {editSaving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button variant="outline" disabled={editSaving} onClick={() => setEditing(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <div className="py-6 flex items-end justify-between border-b border-border mb-8">
+          <div>
+            <p className="text-text-secondary text-base mb-1">{shop.location}</p>
+            <h1 className="font-display text-3xl text-text-primary">{shop.name}</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <Button variant="outline" size="sm" onClick={startEditing}>Edit Shop</Button>
+            <Link
+              to={`/shop/${shop.shop_id}`}
+              className="text-brand text-base font-medium hover:underline"
+            >
+              View public page
+            </Link>
+          </div>
         </div>
-        <Link
-          to={`/shop/${shop.shop_id}`}
-          className="text-brand text-base font-medium hover:underline"
-        >
-          View public page
-        </Link>
-      </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-border mb-8">

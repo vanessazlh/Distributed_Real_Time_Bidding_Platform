@@ -35,6 +35,7 @@ export interface Auction {
   item: AuctionItem
   current_highest_bid: number  // cents
   retail_price: number         // cents
+  max_price: number            // cents; 0 = no limit
   end_time: number             // Unix ms
   status: AuctionStatus
   bid_count: number
