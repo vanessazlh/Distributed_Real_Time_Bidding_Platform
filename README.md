@@ -17,8 +17,9 @@ Browser (React + Vite)
         ├── /auth, /users          → User Service       :8082  (DynamoDB)
         ├── /shops, /sellers       → Shop Service       :8083  (DynamoDB)
         ├── /shops/:id/auctions    → Auction Service    :8081  (Redis)
+        ├── /auctions/:id/bids     → Bid Service        :8084  (Redis + DynamoDB)
         ├── /auctions, /bids       → Auction Service    :8081  (Redis)
-        ├── /auctions/:id/subscribe→ Notification Svc   :8080  (Redis Pub/Sub → WebSocket)
+        ├── /auctions/:id/subscribe→ Notification Svc   :8080  (Redis Streams → WebSocket)
         ├── /notifications/subscribe→ Notification Svc  :8080  (per-user WebSocket)
         ├── /notifications          → Notification Svc  :8080  (REST — list/mark-read)
         ├── /bids                  → Bid Service        :8084  (Redis + DynamoDB)
@@ -35,9 +36,9 @@ Browser (React + Vite)
 |---|---|---|---|
 | User | 8082 | DynamoDB | Registration, login, JWT auth, bid proxy |
 | Shop | 8083 | DynamoDB | Shop + item CRUD, seller ownership checks |
-| Auction | 8081 | Redis | Auction lifecycle, bid validation, concurrency control |
+| Auction | 8081 | Redis + DynamoDB | Auction lifecycle, bid validation, concurrency control |
 | Bid | 8084 | Redis + DynamoDB | Bid history, outbid tracking, per-user bid queries |
-| Notification | 8080 | Redis Pub/Sub + Redis | Per-auction WebSocket fan-out, per-user global WebSocket, persistent notification inbox |
+| Notification | 8080 | Redis Streams + Redis | Per-auction WebSocket fan-out, per-user global WebSocket, persistent notification inbox |
 | Payment | 8085 | DynamoDB | Winner charge processing, payment status tracking |
 | Frontend | 3000 | — | React SPA + nginx reverse proxy |
 
@@ -57,10 +58,17 @@ On first run, the `init-tables` container automatically creates all DynamoDB tab
 
 ### Roles
 
-| Entry Point | Role |
+Both buyers and sellers use the same login page at `http://localhost:3000/login`.
+Select your role using the **Buyer / Seller toggle** before signing in.
+
+| Role | How to access |
 |---|---|
-| `http://localhost:3000/login` | Buyer |
-| `http://localhost:3000/shop/login` | Seller |
+| Buyer | Go to `/login`, select **Buyer**, sign in → lands on auction feed |
+| Seller | Go to `/login`, select **Seller**, sign in → lands on seller dashboard |
+| New buyer | Go to `/register`, select **Buyer** |
+| New seller | Go to `/register`, select **Seller** (or upgrade an existing buyer account) |
+
+A seller account can also log in as a buyer to browse and bid on other shops' auctions.
 
 ---
 
@@ -137,11 +145,13 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 
 The platform supports three pluggable bid-concurrency strategies, switchable at runtime without restarting:
 
-| Strategy | Mechanism | Trade-off |
-|---|---|---|
-| **Optimistic** | Redis `WATCH/MULTI/EXEC`, retry up to 3× with exponential backoff | Lowest latency; may fail under extreme contention |
-| **Pessimistic** | Redis `SETNX` distributed lock (500ms TTL), retry up to 10× | Prevents all conflicts; serializes writes per auction |
-| **Queue** | Go channel per auction, FIFO processing | Fully serialized; fairest ordering; highest isolation |
+| Strategy | Mechanism | Trade-off | Status |
+|---|---|---|---|
+| **Pessimistic** | Lua script — atomic read/validate/write in a single Redis call | Zero-lock, zero-retry; supports quantity auctions | **Default (production)** |
+| **Optimistic** | Redis `WATCH/MULTI/EXEC`, retry up to 3× with exponential backoff | Lowest latency; may fail under extreme contention | Experimental — does not work across multiple Redis nodes |
+| **Queue** | Go channel per auction, FIFO processing | Fully serialized; fairest ordering; highest isolation | Experimental — per-process only, does not scale horizontally |
+
+> **Note:** Optimistic and Queue strategies are in `concurrency/experimental/` and do **not** support quantity auctions (quantity > 1). They are kept for benchmarking and single-node development.
 
 Switch strategies live:
 ```bash
@@ -154,22 +164,51 @@ curl -X PUT http://localhost:3000/admin/strategy \
 
 ## Event-Driven Flow
 
-Services communicate through Redis Pub/Sub. Two domain events are published:
+Services communicate through **Redis Streams** with consumer groups for durable, replayable, exactly-once delivery. Each consuming service has its own consumer group, so messages are processed independently and can scale horizontally without duplicate processing.
 
-**`bid_placed`**
+**`bid:placed`** stream
 ```
-Auction Service → Redis Pub/Sub
-    ├── Bid Service        (records bid history)
-    └── Notification Svc   (broadcasts to auction watchers + stores/pushes "outbid" to previous bidder)
+Auction Service → XADD bid:placed
+    ├── Bid Service        [group: bid-service]        (records bid history)
+    └── Notification Svc   [group: notification-service] (broadcasts to auction watchers + stores/pushes "outbid" to previous bidder)
 ```
 
-**`auction_closed`**
+**`auction:closed`** stream
 ```
-Auction Service → Redis Pub/Sub
-    ├── Payment Service    (charges the winning bidder)
-    ├── Bid Service        (marks winning bid as WON)
-    └── Notification Svc   (broadcasts to auction watchers + stores/pushes "won" to winner)
+Auction Service → XADD auction:closed
+    ├── Payment Service    [group: payment-service]      (charges the winning bidder(s) — one payment per winner for quantity auctions)
+    ├── Bid Service        [group: bid-service]           (marks winning bid(s) as WON)
+    └── Notification Svc   [group: notification-service]  (broadcasts to auction watchers + stores/pushes "won" to all winners)
 ```
+
+**Reliability features:**
+- `XGroupCreateMkStream` — atomic stream + consumer group creation on cold start
+- `XReadGroup` — blocking reads with configurable worker pools for concurrent processing
+- `XAck` — messages are acknowledged only after successful processing (bid/payment services); notification service uses best-effort ACK since retrying failed WebSocket pushes is unlikely to help
+- `XAutoClaim` — pending messages from dead consumer instances are automatically reclaimed (60s idle threshold, 30s reclaim interval)
+
+### Reliable Close Sequence
+
+The close flow is designed to prevent dead states where an auction is marked CLOSED but downstream services never receive the event:
+
+1. **Atomic close + read winner(s)** — a Lua script atomically sets `status=CLOSED` and reads the winner(s) from a Redis Sorted Set (top-N for quantity auctions; fallback: hash field, then DynamoDB winners map)
+2. **Publish event** — if this fails, the status is **rolled back to OPEN** so the closer retries on the next tick
+3. **Persist to DynamoDB** — best-effort; the event has already been delivered
+4. **Cleanup Redis** — delete hash, sorted set, remove from active set
+
+Every bid also writes to a DynamoDB `winners` map asynchronously, so winner data survives a full Redis restart.
+
+### Quantity Auctions (Multiple Winners)
+
+Auctions support a `quantity` field (default 1) that determines how many buyers can win. For `quantity > 1`:
+
+- The Redis Sorted Set tracks the top-N bidders by bid amount
+- A Lua script handles slot management atomically: when all N slots are full, the lowest winner is evicted if a higher bid arrives
+- `current_highest` reflects the **floor price** (lowest winning bid, or start_bid while slots remain open)
+- On close, the top-N winners are read from the ZSET; the Payment Service creates one payment per winner
+- The Notification and Bid services notify/mark all N winners
+
+Quantity auctions require the **pessimistic** concurrency strategy (Lua script atomicity). The experimental strategies reject bids on `quantity > 1` auctions.
 
 ---
 
@@ -182,7 +221,10 @@ Auction Service → Redis Pub/Sub
 | `REDIS_ADDR` | `localhost:6379` | Auction, Bid, Notification, Payment |
 | `SERVER_ADDR` | `:808x` | Each service (see ports above) |
 | `BID_SERVICE_URL` | `http://bid:8084` | User (for bid proxy) |
-| `CONCURRENCY_STRATEGY` | `optimistic` | Auction |
+| `CONCURRENCY_STRATEGY` | `pessimistic` | Auction |
+| `BID_WORKERS` | `10` | Bid (stream consumer concurrency) |
+| `NOTIF_WORKERS` | `10` | Notification (stream consumer concurrency) |
+| `PAYMENT_WORKERS` | `10` | Payment (stream consumer concurrency) |
 
 All defaults are pre-configured in `docker-compose.yml`.
 

@@ -60,6 +60,7 @@ services:
       - SERVER_ADDR=:8081
       - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
       - REDIS_ADDR=redis:6379
+      - JWT_SECRET=dev-secret-change-in-production
     depends_on:
       dynamodb-local:
         condition: service_healthy
@@ -75,6 +76,8 @@ services:
     environment:
       - SERVER_ADDR=:8082
       - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - JWT_SECRET=dev-secret-change-in-production
+      - BID_SERVICE_URL=http://bid:8084
     depends_on:
       dynamodb-local:
         condition: service_healthy

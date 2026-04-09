@@ -9,6 +9,10 @@ import (
 	"syscall"
 	"time"
 
+	awsCfg "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/redis/go-redis/v9"
 	"rtb/services/auction/api"
 	auctionPkg "rtb/services/auction/internal/auction"
@@ -17,13 +21,21 @@ import (
 
 func main() {
 	rdb := newRedisClient()
+	db := newDynamoClient()
 
 	// Wire event publisher
 	publisher := events.NewPublisher(rdb)
 
 	// Wire auction layer
-	strategy := auctionPkg.ConcurrencyStrategy(envOr("CONCURRENCY_STRATEGY", "optimistic"))
-	auctionRepo := auctionPkg.NewRepository(rdb)
+	strategy := auctionPkg.ConcurrencyStrategy(envOr("CONCURRENCY_STRATEGY", "pessimistic"))
+	var auctionRepo *auctionPkg.Repository
+	if db != nil {
+		auctionRepo = auctionPkg.NewRepositoryWithDynamo(rdb, db)
+		log.Println("auction repository: Redis + DynamoDB backing store")
+	} else {
+		auctionRepo = auctionPkg.NewRepository(rdb)
+		log.Println("auction repository: Redis only (no DynamoDB)")
+	}
 	auctionSvc := auctionPkg.NewService(auctionRepo, publisher, rdb, strategy)
 	auctionHandler := auctionPkg.NewHandler(auctionSvc)
 
@@ -70,6 +82,31 @@ func newRedisClient() *redis.Client {
 	}
 	log.Printf("connected to redis at %s", addr)
 	return rdb
+}
+
+func newDynamoClient() *dynamodb.Client {
+	endpoint := os.Getenv("DYNAMODB_ENDPOINT")
+	if endpoint == "" {
+		log.Println("DYNAMODB_ENDPOINT not set — DynamoDB backing store disabled")
+		return nil
+	}
+
+	region := envOr("AWS_REGION", "us-east-1")
+	cfg, err := awsCfg.LoadDefaultConfig(context.Background(),
+		awsCfg.WithRegion(region),
+		awsCfg.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("local", "local", "")),
+		awsCfg.WithEndpointResolverWithOptions(
+			aws.EndpointResolverWithOptionsFunc(func(service, reg string, _ ...interface{}) (aws.Endpoint, error) {
+				return aws.Endpoint{URL: endpoint}, nil
+			}),
+		),
+	)
+	if err != nil {
+		log.Printf("WARN: failed to load AWS config — DynamoDB disabled: %v", err)
+		return nil
+	}
+	log.Printf("connected to DynamoDB at %s", endpoint)
+	return dynamodb.NewFromConfig(cfg)
 }
 
 func envOr(key, fallback string) string {

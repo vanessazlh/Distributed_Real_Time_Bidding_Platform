@@ -58,7 +58,7 @@ export default function CreateItemPage() {
         },
         token!,
       )
-      navigate('/seller/dashboard')
+      navigate(`/seller/shops/${shopId}/auctions`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
@@ -69,10 +69,10 @@ export default function CreateItemPage() {
   return (
     <PageContainer narrow>
       <Link
-        to="/seller/dashboard"
+        to={`/seller/shops/${shopId}/auctions`}
         className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
-        <ChevronLeftIcon /> Back to Dashboard
+        <ChevronLeftIcon /> Back to Shop
       </Link>
 
       <Card padding="p-8">

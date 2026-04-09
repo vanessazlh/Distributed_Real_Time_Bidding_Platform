@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -43,8 +44,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Start Redis subscriber in background.
-	go hub.SubscribeRedis(ctx)
+	// Start Redis Streams consumer in background.
+	numWorkers, _ := strconv.Atoi(envOr("NOTIF_WORKERS", "10"))
+	go hub.ConsumeStreams(ctx, numWorkers)
 
 	mux := http.NewServeMux()
 
@@ -80,6 +82,13 @@ func main() {
 		log.Printf("graceful shutdown error: %v", err)
 	}
 	log.Println("notification service stopped")
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 // corsMiddleware adds permissive CORS headers for local development.

@@ -3,11 +3,9 @@ import { useNavigate, Link } from 'react-router-dom'
 import type { Shop, Auction } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Spinner, EmptyState, StatCard } from '@/components/ui'
+import { Card, Button, Spinner, EmptyState, StatCard } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
-import { formatCurrency } from '@/lib/utils'
-
-const INLINE_LIMIT = 3
+import { ArrowRightIcon } from '@/components/icons'
 
 export default function SellerDashboardPage() {
   const { user, token, isSeller } = useAuth()
@@ -101,10 +99,9 @@ export default function SellerDashboardPage() {
             {shops.map((shop) => {
               const auctions = shopAuctions[shop.shop_id] ?? []
               const openCount = auctions.filter((a) => a.status === 'OPEN').length
-              const preview = auctions.slice(0, INLINE_LIMIT)
 
               return (
-                <Card key={shop.shop_id} padding="p-8" className="flex flex-col gap-6">
+                <Card key={shop.shop_id} padding="p-8" className="flex flex-col gap-5">
                   {/* Shop header */}
                   <div className="flex items-start justify-between">
                     <div>
@@ -118,71 +115,19 @@ export default function SellerDashboardPage() {
                     </span>
                   </div>
 
-                  {/* Inline auction list */}
-                  {preview.length > 0 ? (
-                    <div className="border border-border rounded-lg divide-y divide-border">
-                      {preview.map((a) => (
-                        <div key={a.auction_id} className="px-4 py-3 flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <Badge status={a.status} />
-                            <span className="font-sans text-base text-text-primary truncate">
-                              {a.item.title}
-                            </span>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="font-serif text-base text-text-primary">
-                              {formatCurrency(a.current_highest_bid)}
-                            </p>
-                            <p className="text-text-secondary text-base">
-                              {a.bid_count} bid{a.bid_count !== 1 ? 's' : ''}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg border border-dashed border-border bg-surface-secondary">
-                      <span className="text-2xl">🏷️</span>
-                      <p className="text-text-secondary text-sm font-medium">No auctions yet</p>
-                      <p className="text-text-secondary text-xs">Publish an auction to get started</p>
-                    </div>
-                  )}
-
-                  {/* Actions */}
-                  <div className="flex flex-col gap-3 mt-auto">
-                    <Button
-                      size="md"
-                      variant="primary"
-                      onClick={() => navigate(`/seller/shops/${shop.shop_id}/auctions`)}
-                      className="w-full"
-                    >
-                      Manage Auctions {auctions.length > 0 ? `(${auctions.length})` : ''}
-                    </Button>
-                    <div className="flex gap-4 justify-center">
-                      <Button
-                        size="md"
-                        variant="outline"
-                        onClick={() => navigate(`/shops/${shop.shop_id}/items/new`)}
-                      >
-                        + Add Item
-                      </Button>
-                      <Button
-                        size="md"
-                        variant="outline"
-                        onClick={() => navigate(`/auctions/new?shopId=${shop.shop_id}`)}
-                      >
-                        + Publish Auction
-                      </Button>
-                    </div>
-                    <div className="flex justify-center pt-1">
-                      <Link
-                        to={`/shop/${shop.shop_id}`}
-                        className="text-brand text-base font-medium hover:underline"
-                      >
-                        View public page
-                      </Link>
-                    </div>
+                  {/* Quick stats */}
+                  <div className="flex gap-6 text-sm text-text-secondary">
+                    <span>{auctions.length} auction{auctions.length !== 1 ? 's' : ''}</span>
+                    <span>{auctions.reduce((s, a) => s + a.bid_count, 0)} total bids</span>
                   </div>
+
+                  {/* Manage link */}
+                  <Link
+                    to={`/seller/shops/${shop.shop_id}/items`}
+                    className="mt-auto inline-flex items-center gap-2 font-sans font-semibold text-brand hover:text-brand-dark transition-colors text-base"
+                  >
+                    Manage <ArrowRightIcon />
+                  </Link>
                 </Card>
               )
             })}

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { Auction } from '@/types'
 import { CATEGORIES } from '@/types'
 import { api } from '@/lib/api'
+import { useAuth } from '@/context/AuthContext'
 import { AuctionCard } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
 import { Spinner, EmptyState } from '@/components/ui'
@@ -10,17 +12,20 @@ const TABS = ['All', ...CATEGORIES] as const
 type TabFilter = typeof TABS[number]
 
 export default function HomePage() {
+  const { isSeller } = useAuth()
+  const navigate = useNavigate()
   const [auctions, setAuctions] = useState<Auction[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
   const [filter,   setFilter]   = useState<TabFilter>('All')
 
   useEffect(() => {
+    if (isSeller) { navigate('/seller/dashboard', { replace: true }); return }
     api.auctions.list()
       .then(setAuctions)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load auctions'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [isSeller, navigate])
 
   const visible = filter === 'All'
     ? auctions

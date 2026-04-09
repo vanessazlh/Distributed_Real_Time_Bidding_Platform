@@ -1,4 +1,7 @@
-package concurrency
+// Package experimental contains concurrency strategies with known deployment
+// limitations. They are kept for benchmarking and single-node development but
+// should NOT be used in production multi-instance deployments.
+package experimental
 
 import (
 	"context"
@@ -12,6 +15,14 @@ import (
 )
 
 // Optimistic implements optimistic locking using Redis WATCH/MULTI/EXEC.
+//
+// LIMITATION: WATCH does not work correctly across multiple Redis nodes without
+// careful sharding. In a clustered Redis deployment, transactions may silently
+// succeed even when a concurrent write occurred on a different node, leading to
+// lost updates. Use PessimisticStrategy (Lua script) for production.
+//
+// Additionally, this strategy does NOT support quantity auctions (quantity > 1).
+// Bids on multi-winner auctions will be rejected.
 type Optimistic struct {
 	rdb *redis.Client
 }
@@ -58,6 +69,11 @@ func (o *Optimistic) tryOnce(ctx context.Context, key string, amount int64, bidd
 			return errors.New("auction is not open")
 		}
 
+		quantity, _ := strconv.ParseInt(vals["quantity"], 10, 64)
+		if quantity > 1 {
+			return errors.New("optimistic strategy does not support quantity auctions; use pessimistic")
+		}
+
 		currentHighest, _ := strconv.ParseInt(vals["current_highest"], 10, 64)
 		if amount <= currentHighest {
 			return fmt.Errorf("bid amount %d must be higher than current highest %d", amount, currentHighest)
@@ -72,6 +88,8 @@ func (o *Optimistic) tryOnce(ctx context.Context, key string, amount int64, bidd
 				"highest_bidder":  bidderID,
 				"version":         newVersion,
 			})
+			pipe.HIncrBy(ctx, key, "bid_count", 1)
+			pipe.ZAdd(ctx, key+":bids", redis.Z{Score: float64(amount), Member: bidderID})
 			return nil
 		})
 		return err

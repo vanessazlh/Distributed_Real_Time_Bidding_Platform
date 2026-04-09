@@ -35,6 +35,8 @@ export interface Auction {
   item: AuctionItem
   current_highest_bid: number  // cents
   retail_price: number         // cents
+  max_price: number            // cents; 0 = no limit
+  quantity: number             // number of winners; 1 = standard auction
   end_time: number             // Unix ms
   status: AuctionStatus
   bid_count: number
@@ -61,6 +63,15 @@ export interface UserBid {
   amount: number    // cents
   timestamp: number // Unix ms
   status: BidStatus
+}
+
+/** A bid record shown on the seller auction detail page (includes bidder identity) */
+export interface AuctionBid {
+  bid_id:    string
+  user_id:   string
+  amount:    number    // cents
+  timestamp: number    // Unix ms
+  status:    BidStatus
 }
 
 /** A single entry in the live bid history feed on the Auction Detail page */

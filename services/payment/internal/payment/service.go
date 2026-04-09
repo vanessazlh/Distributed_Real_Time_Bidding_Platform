@@ -23,44 +23,84 @@ func NewService(repo *Repository, publisher *events.Publisher) *Service {
 	return &Service{repo: repo, publisher: publisher}
 }
 
-// InitiatePayment creates a pending payment for the winning bidder and processes it.
+// InitiatePayment creates a pending payment for the winning bidder(s) and processes them.
 // Implements events.PaymentInitiator — called by the event consumer.
+//
+// For single-winner auctions: creates one payment using WinnerID/WinningBid.
+// For multi-winner auctions (Quantity > 1): creates one payment per entry in Winners map.
 func (s *Service) InitiatePayment(ctx context.Context, event events.AuctionClosedEvent) error {
-	if event.WinnerID == "" {
+	// Build the list of winners to process
+	winners := make(map[string]int64)
+	if len(event.Winners) > 0 {
+		// Multi-winner auction
+		for bidder, amount := range event.Winners {
+			winners[bidder] = amount
+		}
+	} else if event.WinnerID != "" {
+		// Single-winner (backwards compatible)
+		winners[event.WinnerID] = event.WinningBid
+	}
+
+	if len(winners) == 0 {
 		log.Printf("payment: auction %s has no winner, skipping", event.AuctionID)
 		return nil
 	}
 
-	// Idempotency: skip if a payment already exists for this auction.
-	existing, err := s.repo.GetByAuctionID(ctx, event.AuctionID)
+	// Idempotency: check which winners already have a payment.
+	// For multi-winner auctions this prevents partial-failure retries from
+	// duplicating payments that were already created successfully.
+	alreadyPaid, err := s.repo.GetAllByAuctionID(ctx, event.AuctionID)
 	if err != nil && !errors.Is(err, ErrNotFound) {
-		return fmt.Errorf("check existing payment: %w", err)
+		return fmt.Errorf("check existing payments: %w", err)
 	}
-	if existing != nil {
-		log.Printf("payment: auction %s already has payment %s, skipping", event.AuctionID, existing.PaymentID)
+
+	// Filter out winners who already have a payment
+	pending := make(map[string]int64, len(winners))
+	for bidder, amount := range winners {
+		if !alreadyPaid[bidder] {
+			pending[bidder] = amount
+		}
+	}
+	if len(pending) == 0 {
+		log.Printf("payment: auction %s — all %d winner(s) already have payments, skipping", event.AuctionID, len(winners))
 		return nil
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	p := &Payment{
-		PaymentID: uuid.New().String(),
-		AuctionID: event.AuctionID,
-		UserID:    event.WinnerID,
-		ItemID:    event.ItemID,
-		ShopID:    event.ShopID,
-		Amount:    event.WinningBid,
-		Status:    StatusPending,
-		CreatedAt: now,
-		UpdatedAt: now,
+	var firstErr error
+
+	for bidderID, amount := range pending {
+		p := &Payment{
+			PaymentID: uuid.New().String(),
+			AuctionID: event.AuctionID,
+			UserID:    bidderID,
+			ItemID:    event.ItemID,
+			ShopID:    event.ShopID,
+			Amount:    amount,
+			Status:    StatusPending,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+
+		if err := s.repo.Create(ctx, p); err != nil {
+			log.Printf("payment: create payment for bidder %s on auction %s failed: %v", bidderID, event.AuctionID, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("create payment record: %w", err)
+			}
+			continue
+		}
+		log.Printf("payment: created payment %s for auction %s bidder %s (amount=%d)", p.PaymentID, event.AuctionID, bidderID, p.Amount)
+
+		// Immediately attempt to process each payment
+		if err := s.ProcessPayment(ctx, p.PaymentID); err != nil {
+			log.Printf("payment: process payment %s failed: %v", p.PaymentID, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 
-	if err := s.repo.Create(ctx, p); err != nil {
-		return fmt.Errorf("create payment record: %w", err)
-	}
-	log.Printf("payment: created payment %s for auction %s (amount=%d)", p.PaymentID, p.AuctionID, p.Amount)
-
-	// Immediately attempt to process.
-	return s.ProcessPayment(ctx, p.PaymentID)
+	return firstErr
 }
 
 // ProcessPayment transitions a pending payment to completed or failed.

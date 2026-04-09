@@ -1,4 +1,4 @@
-package concurrency
+package experimental
 
 import (
 	"context"
@@ -24,6 +24,15 @@ type bidResponse struct {
 }
 
 // Queue implements serialized queue-based concurrency using Go channels.
+//
+// LIMITATION: Queue uses per-process Go channels for serialization. This means
+// it only works with a SINGLE auction service instance. In a multi-instance
+// deployment, concurrent bids hitting different instances bypass the queue
+// entirely, leading to race conditions and lost updates. Use PessimisticStrategy
+// (Lua script) for production.
+//
+// Additionally, this strategy does NOT support quantity auctions (quantity > 1).
+// Bids on multi-winner auctions will be rejected.
 type Queue struct {
 	rdb      *redis.Client
 	channels sync.Map // map[string]chan bidRequest
@@ -94,6 +103,11 @@ func (q *Queue) processBid(req bidRequest) (int64, error) {
 		return 0, errors.New("auction is not open")
 	}
 
+	quantity, _ := strconv.ParseInt(vals["quantity"], 10, 64)
+	if quantity > 1 {
+		return 0, errors.New("queue strategy does not support quantity auctions; use pessimistic")
+	}
+
 	currentHighest, _ := strconv.ParseInt(vals["current_highest"], 10, 64)
 	if req.Amount <= currentHighest {
 		return 0, fmt.Errorf("bid amount %d must be higher than current highest %d", req.Amount, currentHighest)
@@ -102,11 +116,15 @@ func (q *Queue) processBid(req bidRequest) (int64, error) {
 	version, _ := strconv.ParseInt(vals["version"], 10, 64)
 	newVersion := version + 1
 
-	err = q.rdb.HSet(ctx, key, map[string]interface{}{
+	pipe := q.rdb.Pipeline()
+	pipe.HSet(ctx, key, map[string]interface{}{
 		"current_highest": req.Amount,
 		"highest_bidder":  req.BidderID,
 		"version":         newVersion,
-	}).Err()
+	})
+	pipe.HIncrBy(ctx, key, "bid_count", 1)
+	pipe.ZAdd(ctx, key+":bids", redis.Z{Score: float64(req.Amount), Member: req.BidderID})
+	_, err = pipe.Exec(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("update auction: %w", err)
 	}

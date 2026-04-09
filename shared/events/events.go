@@ -1,8 +1,7 @@
 package events
 
-// BidPlacedEvent matches the Redis "bid_placed" channel payload
-// published by the Auction Service.
-// All services that subscribe to this channel should import this type.
+// BidPlacedEvent is published by the Auction Service to the "bid:placed" Redis Stream.
+// Consumed by Bid Service and Notification Service via consumer groups.
 type BidPlacedEvent struct {
 	AuctionID       string `json:"auction_id"`
 	BidID           string `json:"bid_id"`
@@ -17,16 +16,22 @@ type BidPlacedEvent struct {
 	Timestamp       string `json:"timestamp"`
 }
 
-// AuctionClosedEvent is published by the Auction Service when an auction ends.
-// Consumed by Payment Service and Notification Service.
+// AuctionClosedEvent is published by the Auction Service to the "auction:closed" Redis Stream.
+// Consumed by Payment Service, Bid Service, and Notification Service via consumer groups.
+//
+// For single-winner auctions (Quantity <= 1): WinnerID and WinningBid are set.
+// For multi-winner auctions: Winners contains all winning bidder→amount pairs,
+// and WinnerID/WinningBid point to the top bidder (backwards compatible).
 type AuctionClosedEvent struct {
-	AuctionID  string `json:"auction_id"`
-	WinnerID   string `json:"winner_id"`    // who to charge; "" if no bids placed
-	WinningBid int64  `json:"winning_bid"`  // cents; equals start bid if no bids
-	ItemID     string `json:"item_id"`
-	ItemTitle  string `json:"item_title"`
-	ShopID     string `json:"shop_id"`      // seller — for payment routing
-	ClosedAt   string `json:"closed_at"`
+	AuctionID  string           `json:"auction_id"`
+	WinnerID   string           `json:"winner_id"`    // top winner; "" if no bids placed
+	WinningBid int64            `json:"winning_bid"`  // top winner's bid in cents
+	Winners    map[string]int64 `json:"winners,omitempty"` // all winners: bidderID → amount (quantity>1)
+	Quantity   int              `json:"quantity"`     // number of winning slots
+	ItemID     string           `json:"item_id"`
+	ItemTitle  string           `json:"item_title"`
+	ShopID     string           `json:"shop_id"`      // seller — for payment routing
+	ClosedAt   string           `json:"closed_at"`
 }
 
 // PaymentProcessedEvent is published by the Payment Service on successful payment.

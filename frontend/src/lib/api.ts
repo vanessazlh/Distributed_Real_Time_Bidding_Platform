@@ -1,4 +1,4 @@
-import type { Auction, AuctionStatus, Category, User, UserBid, Item, Shop, Payment, StoredNotification } from '@/types'
+import type { Auction, AuctionBid, AuctionStatus, Category, User, UserBid, Item, Shop, Payment, StoredNotification } from '@/types'
 
 // ── Error type ───────────────────────────────────────────────────────────────
 
@@ -14,6 +14,12 @@ export class ApiError extends Error {
 // Translates gin/backend validation messages into plain English.
 // Applied centrally in request() so every page benefits automatically.
 function friendlyError(raw: string): string {
+  // Backend registration conflict messages
+  if (raw === 'email already registered')
+    return 'You already have an account. Try signing in instead.'
+  if (raw === 'account is already a seller')
+    return 'You already have an account with this email. Sign in and select Buyer — your seller account can also be used to browse and bid.'
+
   const m = raw.match(/Field validation for '(\w+)' failed on the '(\w+)' tag/)
   if (m) {
     const field = m[1]
@@ -94,6 +100,8 @@ interface BackendAuction {
   shop_id:             string
   shop_name:           string
   retail_price:        number
+  max_price:           number
+  quantity:            number
   image_url:           string
   shop_logo_url:       string
   description:         string
@@ -114,6 +122,8 @@ function toAuction(b: BackendAuction): Auction {
     },
     current_highest_bid: b.current_highest_bid ?? 0,
     retail_price:        b.retail_price        ?? 0,
+    max_price:           b.max_price           ?? 0,
+    quantity:            b.quantity && b.quantity > 0 ? b.quantity : 1,
     end_time:            new Date(b.end_time).getTime(),
     status:              (b.status as AuctionStatus) ?? 'OPEN',
     bid_count:           b.bid_count           ?? 0,
@@ -156,16 +166,16 @@ export const api = {
       request<BackendAuction>(`/auctions/${id}`).then(toAuction),
 
     /** POST /auctions → Auction */
-    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string }, token: string) =>
+    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; max_price?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string }, token: string) =>
       request<BackendAuction>('/auctions', {
         method: 'POST',
         headers: jsonHeaders(token),
         body: JSON.stringify(payload),
       }).then(toAuction),
 
-    /** POST /auctions/:id/bid → { success, new_highest_bid } */
+    /** POST /auctions/:id/bid → { bid_id, amount, new_highest_bid, status } */
     placeBid: (id: string, userId: string, amount: number, token: string) =>
-      request<{ success: boolean; new_highest_bid: number }>(`/auctions/${id}/bid`, {
+      request<{ bid_id: string; amount: number; new_highest_bid: number; status: string }>(`/auctions/${id}/bid`, {
         method: 'POST',
         headers: jsonHeaders(token),
         body: JSON.stringify({ user_id: userId, amount }),
@@ -176,6 +186,19 @@ export const api = {
       request<{ auctions: BackendAuction[] }>(`/shops/${shopId}/auctions`, {
         headers: jsonHeaders(token),
       }).then((r) => (r.auctions ?? []).map(toAuction)),
+
+    /** GET /auctions/:id/bids → { bids: AuctionBid[] } */
+    bids: (id: string) =>
+      request<{ bids: BackendBid[] }>(`/auctions/${id}/bids`)
+        .then((r) => (r.bids ?? []).map((b): AuctionBid => ({
+          bid_id:    b.bid_id,
+          user_id:   b.user_id,
+          amount:    b.amount,
+          timestamp: new Date(b.timestamp).getTime(),
+          status:    b.status === 'ACCEPTED' ? 'WINNING'
+                   : b.status === 'WON'      ? 'WON'
+                   : 'OUTBID',
+        }))),
 
     /** POST /auctions/:id/close → { message } */
     close: (id: string, token: string) =>
@@ -221,6 +244,14 @@ export const api = {
     create: (payload: { name: string; location: string; logo_url?: string }, token: string) =>
       request<Shop>('/shops', {
         method: 'POST',
+        headers: jsonHeaders(token),
+        body: JSON.stringify(payload),
+      }),
+
+    /** PUT /shops/:shopId → Shop */
+    update: (shopId: string, payload: { name?: string; location?: string; logo_url?: string }, token: string) =>
+      request<Shop>(`/shops/${shopId}`, {
+        method: 'PUT',
         headers: jsonHeaders(token),
         body: JSON.stringify(payload),
       }),

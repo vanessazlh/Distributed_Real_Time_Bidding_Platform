@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -13,7 +14,16 @@ import (
 
 	"rtb/shared/events"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+)
+
+const (
+	streamBidPlaced     = "bid:placed"
+	streamAuctionClosed = "auction:closed"
+	notifConsumerGroup  = "notification-service"
+	notifPendingTimeout = 60 * time.Second
+	notifReclaimInterval = 30 * time.Second
 )
 
 // Client is implemented by WebSocket clients.
@@ -275,32 +285,138 @@ func (h *Hub) GetMetrics() Metrics {
 	}
 }
 
-// SubscribeRedis blocks and listens to the "bid_placed" and "auction_closed" Redis channels.
-// For each event it calls the appropriate handler; returns when ctx is cancelled.
-func (h *Hub) SubscribeRedis(ctx context.Context) {
-	sub := h.rdb.Subscribe(ctx, "bid_placed", "auction_closed")
-	defer sub.Close()
+// ConsumeStreams reads from the bid:placed and auction:closed Redis Streams
+// using a consumer group. It blocks until ctx is cancelled. numWorkers controls
+// the concurrency of message processing; pass 0 for a default of 10.
+func (h *Hub) ConsumeStreams(ctx context.Context, numWorkers int) {
+	if numWorkers <= 0 {
+		numWorkers = 10
+	}
+	consumerID := uuid.New().String()
 
-	log.Println("hub: subscribed to Redis channels 'bid_placed', 'auction_closed'")
-	ch := sub.Channel()
-	for {
-		select {
-		case <-ctx.Done():
-			log.Println("hub: Redis subscriber shutting down")
-			return
-		case msg, ok := <-ch:
-			if !ok {
-				log.Println("hub: Redis subscription channel closed")
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		h.consumeStream(ctx, streamBidPlaced, consumerID, numWorkers, h.handleBidEvent)
+	}()
+	go func() {
+		defer wg.Done()
+		h.consumeStream(ctx, streamAuctionClosed, consumerID, numWorkers, h.handleAuctionClosedEvent)
+	}()
+	wg.Wait()
+}
+
+// consumeStream runs the read loop for a single stream.
+// Notification delivery is best-effort: messages are always ACKed after the
+// handler runs, because retrying a failed WebSocket push is unlikely to help.
+func (h *Hub) consumeStream(ctx context.Context, stream, consumerID string, numWorkers int, handler func(string)) {
+	if err := h.rdb.XGroupCreateMkStream(ctx, stream, notifConsumerGroup, "$").Err(); err != nil {
+		if !isGroupExistsErr(err) {
+			log.Fatalf("hub: create consumer group for %s: %v", stream, err)
+		}
+	}
+
+	log.Printf("hub: consuming stream=%q group=%q consumer=%q workers=%d",
+		stream, notifConsumerGroup, consumerID, numWorkers)
+
+	sem := make(chan struct{}, numWorkers)
+	var wg sync.WaitGroup
+
+	// Periodically reclaim messages stuck in pending (dead consumer instances).
+	go func() {
+		ticker := time.NewTicker(notifReclaimInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
 				return
+			case <-ticker.C:
+				h.reclaimPending(ctx, stream, consumerID, numWorkers, handler, sem, &wg)
 			}
-			switch msg.Channel {
-			case "bid_placed":
-				h.handleBidEvent(msg.Payload)
-			case "auction_closed":
-				h.handleAuctionClosedEvent(msg.Payload)
+		}
+	}()
+
+	for {
+		msgs, err := h.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    notifConsumerGroup,
+			Consumer: consumerID,
+			Streams:  []string{stream, ">"},
+			Count:    int64(numWorkers),
+			Block:    2 * time.Second,
+		}).Result()
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				break
+			}
+			if errors.Is(err, redis.Nil) {
+				continue
+			}
+			log.Printf("hub: read error on %s: %v", stream, err)
+			time.Sleep(time.Second)
+			continue
+		}
+		for _, s := range msgs {
+			for _, msg := range s.Messages {
+				h.dispatchNotif(ctx, stream, msg, consumerID, handler, sem, &wg)
 			}
 		}
 	}
+
+	wg.Wait()
+	log.Printf("hub: stream %s consumer stopped", stream)
+}
+
+func (h *Hub) dispatchNotif(ctx context.Context, stream string, msg redis.XMessage, consumerID string, handler func(string), sem chan struct{}, wg *sync.WaitGroup) {
+	payload, ok := msg.Values["payload"].(string)
+	if !ok {
+		log.Printf("hub: missing payload in message %s on %s, discarding", msg.ID, stream)
+		h.rdb.XAck(ctx, stream, notifConsumerGroup, msg.ID)
+		return
+	}
+
+	select {
+	case sem <- struct{}{}:
+	case <-ctx.Done():
+		return
+	}
+	wg.Add(1)
+	go func() {
+		defer func() {
+			<-sem
+			wg.Done()
+		}()
+		handler(payload)
+		// Always ACK — notification delivery is best-effort.
+		if err := h.rdb.XAck(ctx, stream, notifConsumerGroup, msg.ID).Err(); err != nil {
+			log.Printf("hub: ack error for message %s on %s: %v", msg.ID, stream, err)
+		}
+	}()
+}
+
+func (h *Hub) reclaimPending(ctx context.Context, stream, consumerID string, numWorkers int, handler func(string), sem chan struct{}, wg *sync.WaitGroup) {
+	msgs, _, err := h.rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+		Stream:   stream,
+		Group:    notifConsumerGroup,
+		Consumer: consumerID,
+		MinIdle:  notifPendingTimeout,
+		Start:    "0-0",
+		Count:    int64(numWorkers),
+	}).Result()
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			log.Printf("hub: autoclaim error on %s: %v", stream, err)
+		}
+		return
+	}
+	for _, msg := range msgs {
+		log.Printf("hub: reclaiming pending message %s on %s", msg.ID, stream)
+		h.dispatchNotif(ctx, stream, msg, consumerID, handler, sem, wg)
+	}
+}
+
+func isGroupExistsErr(err error) bool {
+	return err != nil && err.Error() == "BUSYGROUP Consumer Group name already exists"
 }
 
 // handleBidEvent parses a raw bid_placed payload and broadcasts a notification
@@ -388,20 +504,27 @@ func (h *Hub) handleAuctionClosedEvent(payload string) {
 	h.Broadcast(event.AuctionID, data, "")
 	log.Printf("hub: broadcast auction_closed for %s, winner %s", event.AuctionID, event.WinnerID)
 
-	// Store + push "won" notification to the winner's global WS.
-	if event.WinnerID != "" {
-		wonMsg := fmt.Sprintf("You won the auction! Winning bid: $%.2f", float64(event.WinningBid)/100)
+	// Store + push "won" notification to all winners.
+	// For multi-winner auctions (quantity>1), iterate over the Winners map.
+	// For single-winner, fall back to WinnerID/WinningBid (backwards compatible).
+	winners := event.Winners
+	if len(winners) == 0 && event.WinnerID != "" {
+		winners = map[string]int64{event.WinnerID: event.WinningBid}
+	}
+
+	for winnerID, winningBid := range winners {
+		wonMsg := fmt.Sprintf("You won the auction! Winning bid: $%.2f", float64(winningBid)/100)
 		if event.ItemTitle != "" {
-			wonMsg = fmt.Sprintf("You won %s! Winning bid: $%.2f", event.ItemTitle, float64(event.WinningBid)/100)
+			wonMsg = fmt.Sprintf("You won %s! Winning bid: $%.2f", event.ItemTitle, float64(winningBid)/100)
 		}
-		h.storeAndPushNotification(event.WinnerID, StoredNotification{
-			ID:        fmt.Sprintf("won:%s", event.AuctionID),
+		h.storeAndPushNotification(winnerID, StoredNotification{
+			ID:        fmt.Sprintf("won:%s:%s", event.AuctionID, winnerID),
 			Type:      "won",
 			AuctionID: event.AuctionID,
 			ItemTitle: event.ItemTitle,
 			Message:   wonMsg,
 			Link:      fmt.Sprintf("/auction/%s", event.AuctionID),
-			Amount:    event.WinningBid,
+			Amount:    winningBid,
 			CreatedAt: time.Now().UnixMilli(),
 			Read:      false,
 		})

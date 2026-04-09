@@ -11,6 +11,8 @@ type Auction struct {
 	ShopID         string    `json:"shop_id"`
 	ShopName       string    `json:"shop_name"`
 	RetailPrice    int64     `json:"retail_price"`
+	MaxPrice       int64     `json:"max_price,omitempty"` // bid ceiling; 0 = no limit
+	Quantity       int       `json:"quantity"`            // number of winners; 1 = standard auction
 	ImageURL       string    `json:"image_url"`
 	ShopLogoURL    string    `json:"shop_logo_url"`
 	Description    string    `json:"description"`
@@ -19,9 +21,10 @@ type Auction struct {
 	EndTime        time.Time `json:"end_time"`
 	CurrentHighest int64     `json:"current_highest_bid"`
 	BidCount       int64     `json:"bid_count"`
-	HighestBidder  string    `json:"highest_bidder"`
-	Status         string    `json:"status"`  // PENDING, OPEN, CLOSED
-	Version        int64     `json:"version"` // for optimistic locking
+	HighestBidder  string           `json:"highest_bidder"`
+	Status         string           `json:"status"`  // PENDING, OPEN, CLOSED
+	Version        int64            `json:"version"` // for optimistic locking
+	Winners        map[string]int64 `json:"-"`        // DynamoDB-only; bidderID → amount
 }
 
 // CreateAuctionRequest is the payload for POST /auctions.
@@ -31,6 +34,8 @@ type CreateAuctionRequest struct {
 	ShopID      string `json:"shop_id" binding:"required"`
 	ShopName    string `json:"shop_name"`
 	RetailPrice int64  `json:"retail_price"`
+	MaxPrice    int64  `json:"max_price"`      // bid ceiling; 0 = no limit
+	Quantity    int    `json:"quantity"`       // number of winners; default 1
 	ImageURL    string `json:"image_url"`
 	ShopLogoURL string `json:"shop_logo_url"`
 	Description string `json:"description"`
@@ -47,8 +52,9 @@ type PlaceBidRequest struct {
 
 // BidResult is the response for a successful bid.
 type BidResult struct {
-	BidID     string `json:"bid_id"`
-	AuctionID string `json:"auction_id"`
-	Amount    int64  `json:"amount"`
-	Status    string `json:"status"`
+	BidID          string `json:"bid_id"`
+	AuctionID      string `json:"auction_id"`
+	Amount         int64  `json:"amount"`
+	NewHighestBid  int64  `json:"new_highest_bid"`
+	Status         string `json:"status"`
 }

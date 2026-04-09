@@ -10,7 +10,7 @@ SurpriseAuction is a real-time surplus auction platform where local stores list 
 A buyer lands on the homepage and sees a live feed of active auctions, filterable by category (Bakery, Sushi, and more). Each card shows the item photo, the shop it comes from, the current highest bid, and a live countdown to closing. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
 
 ### 2. Account
-The buyer registers at `/login` with a username, email, and password — or logs in if they already have an account. Authentication is JWT-based; no session state is stored server-side. The account's `role` is stamped into the JWT along with `username` and `email`. The platform uses a **single-account model**: one email = one account. A buyer can later upgrade to a seller (see Seller Journey below) without creating a second account.
+The buyer registers or logs in at `/login` — the single entry point for all users. A **Buyer / Seller toggle** at the top of the page determines the session role; buyers leave it on **Buyer**. Authentication is JWT-based; no session state is stored server-side. The platform uses a **single-account model**: one email = one account. A buyer can later upgrade to a seller (see Seller Journey, step 1) without creating a second account — they simply re-register with the same email and Seller selected.
 
 ### 3. Entering an Auction
 The buyer clicks into an auction and sees:
@@ -27,6 +27,8 @@ The buyer enters a bid amount in the bidding panel. On submission:
 - If outbid by someone else, the banner switches to **Outbid** and the new price is broadcast to all watchers
 - Sellers cannot bid on their own auctions (403 Forbidden)
 
+For **quantity auctions** (multiple winners), the bidding panel shows a "X winners" badge and the label changes to "Minimum Bid to Win" — the floor price to secure a winning slot. When all slots are full, a new bid must exceed the lowest winner's amount; the evicted bidder is notified as outbid.
+
 ### 5. Notifications
 Buyers receive real-time notifications regardless of which page they are on:
 - **Outbid** — when another buyer places a higher bid on an auction the buyer previously bid on
@@ -39,12 +41,12 @@ Notifications are delivered two ways:
 Notifications are stored in Redis (capped at 20 per user with same-auction dedup, 7-day TTL) so they persist across page refreshes and browser sessions.
 
 ### 6. Auction Close
-When the countdown reaches zero (or the seller closes the auction early), the system resolves the winner:
-- The auction is marked **Closed**
-- An `auction_closed` event is published internally
-- The Payment Service automatically initiates a charge to the winning bidder
-- The Bid Service marks the winner's bid as **WON**
-- The winner sees a **Won** banner on the auction page and receives a global notification
+When the countdown reaches zero (or the seller closes the auction early), the system resolves the winner(s) using a reliable close sequence:
+- A Lua script **atomically** marks the auction as CLOSED and reads the winner(s) from a Redis Sorted Set — top-N for quantity auctions (with DynamoDB fallback if Redis data is unavailable)
+- An `auction_closed` event is published to the Redis Stream — if publishing fails, the status is **rolled back to OPEN** and the closer retries on the next tick, preventing dead states
+- The Payment Service automatically initiates a charge to each winning bidder (one payment per winner for quantity auctions)
+- The Bid Service marks each winner's bid as **WON**
+- Winners see a **Won** banner on the auction page and receive a global notification
 - Other participants see a **Closed** banner
 
 ### 7. Profile & History
@@ -60,17 +62,19 @@ The profile is accessible by clicking the username in the navbar. Individual pay
 ## Seller Journey
 
 ### 1. Seller Account
-The platform uses a **single-account model** — one email maps to one account. A seller registers at `/shop/register`:
-- **New user**: creates an account with the `seller` role directly
-- **Existing buyer**: entering the same email and password upgrades the existing account to `seller`. The `seller` role is a superset of `buyer` — a seller can still browse and bid on other shops' auctions
+The platform uses a **single-account model** — one email maps to one account, and one login page serves everyone. On the login and register pages, a **Buyer / Seller toggle** determines the session role:
 
-The seller logs in at `/shop/login`. If the account's role is not `seller`, the login page shows an error prompting the user to register as a seller first. The JWT carries `role: seller`, unlocking seller-only routes.
+- **New seller**: go to `/register`, select **Seller**, fill in username, email, and password
+- **Existing buyer upgrading to seller**: go to `/register`, select **Seller**, enter the same email and password — the account is upgraded automatically. The `seller` role is a superset of `buyer`, so a seller can still log in as a buyer to browse and bid on other shops' auctions
+- **Logging in**: go to `/login`, select **Seller** in the toggle. If the account has never been upgraded to seller, an error prompts the user to register as seller first
+
+The session role is determined by the toggle at login time, not by the JWT alone. A seller-account holder who selects **Buyer** at login gets a full buyer session — they can browse and bid with no seller dashboard access.
 
 ### 2. Seller Dashboard
 After login the seller lands on `/seller/dashboard`. The dashboard shows:
-- Stats: total shops, total auctions, active auctions
-- A grid of all their shops, each showing an inline preview of up to 3 recent auctions
-- "View all auctions" link per shop leading to a dedicated auction management page
+- Stats: total shops, active auctions, closed auctions, total bids
+- A grid of all their shops, each showing auction count, total bids, and active count
+- A "Manage →" link per shop leading to the per-shop management page
 
 ### 3. Create a Shop
 The seller fills in a shop name and location at `/shops/new`. The shop is saved in DynamoDB and immediately appears on the dashboard.
@@ -79,18 +83,27 @@ The seller fills in a shop name and location at `/shops/new`. The shop is saved 
 From a shop page, the seller adds a surplus item via `/shops/:id/items/new`, providing a title, description, retail value, and optional image URL. Items are saved to DynamoDB under the shop.
 
 ### 5. Publish an Auction
-The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, and optionally schedule a future start time. On submission:
+The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, optionally a max price (bid ceiling), a **quantity** (number of winners, default 1), and optionally schedule a future start time. On submission:
 - Auction enrichment data (shop name, retail price, item image, description) is captured at creation time and stored in Redis
 - If no schedule time is set, the auction immediately goes live (**OPEN**) and is visible to all buyers
 - If a future start time is set, the auction is created as **PENDING** and automatically transitions to OPEN when the scheduled time arrives
+- For **quantity > 1**, the auction becomes a multi-winner auction where the top N bidders each win a copy of the item
 - Input validation enforces: start_bid >= 0, duration 1–10080 minutes, scheduled_start must be in the future
 
 ### 6. Monitor & Close
-The seller can manage auctions from `/seller/shops/:shopId/auctions`, which shows:
-- Stats: total, active, and closed auction counts
-- Active auctions with live countdown timers and a close button
-- Closed auctions with final prices and winner info
-- The close button triggers `POST /auctions/:id/close` with ownership verification (only the auction's seller can close it)
+The seller manages each shop from `/seller/shops/:shopId`, a tabbed page with two sections:
+- **Items tab** — lists all items in the shop's inventory with title, description, retail value, and image. Includes an "+ Add Item" button.
+- **Auctions tab** — shows stats (active, closed, total bids, revenue), active auctions with live countdown timers, and closed auctions with final prices. Each auction row is clickable.
+
+Clicking an auction row opens the **Seller Auction Detail** page at `/seller/auctions/:auctionId`, a dedicated drill-down with:
+- **Header** — item image, title, status badge, quantity badge (for multi-winner auctions), and a "Close Auction" button for OPEN auctions
+- **Stats row** — current bid, retail price, total bids, max price (if set), and a live countdown timer
+- **Bid history table** — every bid placed, showing masked bidder ID, amount, status (Winning / Outbid / Won), and relative time. Updates in real time via WebSocket as new bids arrive.
+- **Item details sidebar** — description, category, quantity, and bid ceiling
+- **Winners card** (closed auctions) — lists each winner with their winning bid amount
+- **Payment status card** (closed auctions) — shows payment status (Pending / Completed / Failed / Refunded) and amount
+
+This page gives sellers full visibility into individual auctions without exposing the buyer-facing bidding UI.
 
 ### 7. Settlement
 When the auction closes, the payment is initiated automatically. The `shop_id` recorded at auction creation is included in the payment record. Full fund disbursement to the seller is planned for a future release.
@@ -99,33 +112,35 @@ When the auction closes, the payment is initiated automatically. The `shop_id` r
 
 ## Real-Time Flow
 
+All inter-service events use **Redis Streams** with consumer groups. Each consumer group processes messages independently, enabling horizontal scaling and durable delivery with automatic pending-message recovery.
+
 ```
 Buyer places bid
       │
       ▼
 Auction Service validates & updates highest bid atomically (Redis + concurrency strategy)
       │
-      ├──► Publishes bid_placed event (Redis Pub/Sub)
+      ├──► XADD bid:placed (Redis Stream)
       │         │
-      │         ├── Bid Service records bid history (marks previous same-user bids as OUTBID)
+      │         ├── [bid-service group] Bid Service records bid history (marks previous same-user bids as OUTBID)
       │         │
-      │         ├── Notification Service broadcasts to all auction watchers (per-auction WebSocket)
+      │         ├── [notification-service group] Notification Service broadcasts to all auction watchers (per-auction WebSocket)
       │         │
-      │         └── Notification Service stores + pushes "outbid" to previous bidder (per-user WebSocket)
+      │         └── [notification-service group] Notification Service stores + pushes "outbid" to previous bidder (per-user WebSocket)
       │
 Auction closes (seller closes or timer expires via closer.go)
       │
-      ├──► Publishes auction_closed event (Redis Pub/Sub)
+      ├──► XADD auction:closed (Redis Stream)
                 │
-                ├── Bid Service marks winner's bid as WON
+                ├── [bid-service group] Bid Service marks winner(s)' bids as WON
                 │
-                ├── Payment Service charges the winner (simulated gateway)
-                │       ├── payment_processed → records success
-                │       └── payment_failed    → records failure
+                ├── [payment-service group] Payment Service charges each winner (one payment per winner for quantity auctions)
+                │       ├── payment:processed stream → records success
+                │       └── payment:failed stream    → records failure
                 │
-                ├── Notification Service broadcasts close to auction watchers (per-auction WebSocket)
+                ├── [notification-service group] Notification Service broadcasts close to auction watchers (per-auction WebSocket)
                 │
-                └── Notification Service stores + pushes "won" to winner (per-user WebSocket)
+                └── [notification-service group] Notification Service stores + pushes "won" to all winners (per-user WebSocket)
 ```
 
 ---
@@ -136,9 +151,6 @@ Auction closes (seller closes or timer expires via closer.go)
 |---|---|
 | Payment gateway | Simulated (90% success rate mock) — no real Stripe integration yet |
 | Shop settlement | Payment records `shop_id` but does not disburse funds to the seller |
-| Message delivery guarantee | Redis Pub/Sub is fire-and-forget — migration to Redis Streams planned |
+| Message delivery guarantee | Redis Streams with consumer groups — durable, replayable, with automatic pending-message recovery via XAutoClaim |
 | Geo / location filtering | No geo-based search or proximity filtering |
-| Item categories | Items have no category field; home page filtering is heuristic-based |
-| Profile updates | Users can edit their username; shop detail editing not yet implemented |
 | Image upload | No file upload — sellers must paste external image URLs manually |
-| Cache reliability | If a Redis key is evicted, bids fail with "auction not found" — DynamoDB fallback not yet implemented |

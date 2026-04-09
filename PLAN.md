@@ -11,14 +11,14 @@
 | Payment processing (simulated) | Working |
 | My Bids page | Working |
 | Auction enrichment fields | Working |
-| Seller auction management UI | **Done** (dashboard inline preview + dedicated /seller/shops/:shopId/auctions page with close) |
+| Seller auction management UI | **Done** (per-shop management page at /seller/shops/:shopId with Items + Auctions tabs; dashboard simplified to overview cards with "Manage →") |
 | Automatic auction expiry | **Basic version done** (closer.go polls every 1s, closes OPEN auctions past end_time) |
 | Payment service Redis Streams migration | **Complete** |
-| Auction/notification Redis Streams migration | **Not started** (still on Pub/Sub) |
+| Auction/notification/bid Redis Streams migration | **Complete** |
 | Bid service WON status on close | **Done** (consumer subscribes to auction_closed, marks winner bid as WON) |
 | Per-auction WebSocket notifications | **Done** (broadcasts all bids + auction_closed, frontend WON/CLOSED banners) |
 | Global notification system | **Done** (persistent Redis store, per-user WebSocket, bell + toast UI, capped at 20 with dedup) |
-| Cache reliability (ensureRedisCached) | **Not started** |
+| Cache reliability (ensureRedisCached) | **Done** (DynamoDB backing store, write-through on create, fallback read with stampede lock, Redis cleanup on close) |
 
 ---
 
@@ -48,10 +48,8 @@ CreateAuction handler now checks `callerRole(c) != "seller"` and returns 403.
 #### 3. ~~Seller can bid on their own auction~~ **Fixed**
 PlaceBid now compares `a.SellerID == userID` and returns ErrSelfBid (403).
 
-#### 4. Bid service: `ensureConsumerGroup()` MKSTREAM
-Bid service currently uses Pub/Sub, not Streams. When migrated to Streams, `XGROUP CREATE` will fail on cold start if the stream key doesn't exist yet.
-
-Fix: pass `MKSTREAM=true` when creating the consumer group so the stream is created atomically. Apply this fix during the Streams migration, not before.
+#### 4. ~~Bid service: `ensureConsumerGroup()` MKSTREAM~~ **Fixed**
+All services now use `XGroupCreateMkStream` which atomically creates the stream if it doesn't exist. Applied during the Streams migration.
 
 #### 5. ~~Bid service: self-rebid produces multiple WON records~~ **Fixed**
 RecordBid now calls MarkUserPreviousBids before creating the new bid, marking the caller's own previous ACCEPTED bids as OUTBID.
@@ -85,40 +83,23 @@ Replaced dual-account model with single-account model: one email = one account. 
 
 ## Backlog Features
 
-### 1. Auction lifecycle: maxPrice field
-Replace the unused `reservePrice` field with `maxPrice` as a bid ceiling. Lua script in pessimistic strategy handles both `maxPrice` upper bound and `startingBid` lower bound in a single atomic operation.
+### 1. ~~Auction lifecycle: maxPrice field~~ **Done**
+Added `max_price` field (bid ceiling, 0 = no limit) to Auction model, CreateAuctionRequest, Redis hash, and DynamoDB. Lua script checks `max_price` upper bound atomically alongside `current_highest` lower bound. Frontend CreateAuctionPage has optional "Max Price" input. Backend returns 400 if bid exceeds max.
 
-### 2. Pessimistic strategy: Lua script atomicity
-Replace the current multi-step HSET in `PessimisticStrategy` with a single Lua script. The script handles read → validate (`startingBid`, `maxPrice`, `status`) → write atomically, eliminating the gap between reads and writes.
+### 2. ~~Pessimistic strategy: Lua script atomicity~~ **Done**
+Replaced multi-step SETNX lock + HGetAll + HSet in `PessimisticStrategy` with a single Lua script (`placeBidLua`). The script atomically reads status/current_highest/version → validates → writes current_highest/highest_bidder/version + increments bid_count. No external lock needed. Also fixed `bid_count` never being incremented in all three strategies (optimistic and queue got the same fix).
 
-### 3. Cache reliability: ensureRedisCached() + stampede protection
-Redis is the primary store for auction state. If a key is evicted or Redis restarts, bids fail with "auction not found".
+### 3. ~~Cache reliability: ensureRedisCached() + stampede protection~~ **Done**
+Added DynamoDB as a durable backing store for the auction service (opt-in via `DYNAMODB_ENDPOINT` env var). Write-through on Create, fallback read with double-checked locking for stampede protection, Redis hash deleted on Close to reclaim memory. All auction fields including `seller_id` and `max_price` are persisted. Backward-compatible — runs Redis-only when DynamoDB is not configured.
 
-- `ensureRedisCached()`: on cache miss, rebuild from DynamoDB before proceeding
-- Double-checked locking via Redisson rebuild lock: prevents thundering herd when many requests hit the same missing key simultaneously
-- `seedRedisCache()`: add `seller_id`, `quantity`, `max_price` fields to reduce per-bid DynamoDB reads
-- On auction close: explicitly delete Redis hash and ZSET to avoid memory leaks
+### 4. ~~Close sequence reliability~~ **Done**
+Reordered close sequence to: atomic close + read winner (Lua script) → publish event → persist DynamoDB → cleanup Redis. If event publish fails, status rolls back to OPEN so closer retries next tick. Added three-level winner fallback: Redis ZSET (updated on every bid via ZADD in all three strategies) → DynamoDB winners map (async write-through on each bid) → DynamoDB `highestBidder` field. Two new Lua scripts (`closeAndReadWinnerLua`, `rollbackCloseLua`) ensure atomicity.
 
-### 4. Close sequence reliability
-Current order risks a dead state if event publishing fails after DynamoDB write.
+### 5. ~~Multiple winners (quantity auctions)~~ **Done**
+Added `quantity` field (default 1) to Auction model, CreateAuctionRequest, Redis hash, and DynamoDB. Lua script (`placeBidLua`) handles slot management: when all N slots are full, lowest winner is evicted if a higher bid arrives; `current_highest` reflects the floor winner price (or start_bid while slots remain open). `closeAndReadWinnerLua` returns top-N winners for multi-winner auctions. Payment service creates one payment per winner with per-winner idempotency. Notification and bid services updated to notify/mark all N winners. Frontend: quantity input on CreateAuctionPage, "X winners" badge on AuctionCard and BiddingPanel, "Minimum Bid to Win" label for quantity>1.
 
-New order: read winners → publish `auction:closed` event → write CLOSED to DynamoDB → delete Redis keys. If event publish fails, auction stays OPEN and close can be retried.
-
-Also add three-level fallback for winner resolution: Redis ZSET → DynamoDB winners map → DynamoDB `highestBidder`. Write full winners map to DynamoDB on each successful bid so recovery is possible after Redis restart.
-
-### 5. Multiple winners (quantity auctions)
-Add `quantity` field to support auctions where N buyers can win.
-
-- Redis Sorted Set maintains top-N winners by bid amount
-- Lua script handles slot management: when full, lowest winner is evicted if a higher bid arrives; `current_highest` always reflects current floor winner price
-- Payment service triggers N payment records on close
-
-### 6. Move optimistic and queue strategies to experimental/
-Both strategies have deployment limitations:
-- `OptimisticStrategy` (Redis WATCH) does not work correctly across multiple Redis nodes without careful sharding
-- `QueueStrategy` (Go channel) is per-process only; does not work with multiple auction service instances
-
-Move both to `concurrency/experimental/` with clear comments. `PessimisticStrategy` (upgraded with Lua) becomes the default.
+### 6. ~~Move optimistic and queue strategies to experimental/~~ **Done**
+Moved `OptimisticStrategy` and `QueueStrategy` to `concurrency/experimental/` package with clear limitation comments. Both reject quantity>1 auctions with descriptive errors. `PessimisticStrategy` (Lua script) is now the default (`CONCURRENCY_STRATEGY` env var defaults to "pessimistic"). Service struct imports experimental package for benchmarking/dev use.
 
 ### 7. Geo support (buyer + seller)
 Neither buyers nor sellers have location data. Add `lat`/`lng` or a structured address to the `Shop` model so shops can be surfaced by proximity.
@@ -127,51 +108,23 @@ Neither buyers nor sellers have location data. Add `lat`/`lng` or a structured a
 - Buyer: location captured on registration or via browser geolocation
 - Likely requires a geohash GSI in DynamoDB or a dedicated geo service
 
-### 2. Item categories
-Items have no category field, blocking real filtering on the buyer home page.
+### 2. ~~Item categories~~ **Done**
+Category field existed on Item model and frontend but was never saved by the shop service's `CreateItem`. Fixed: `req.Category` now passed through to the Item struct. Frontend `CreateItemPage` already had category dropdown, `HomePage` already filters by category, `CreateAuctionPage` inherits category from the selected item.
 
-- Add `category` to the `Item` model (shop service)
-- Pass through to the `Auction` model
-- Update `CreateItemPage` with a category selector
-- Update `HomePage` tabs to filter by real category data
+### 3. ~~Profile update endpoints~~ **Done**
+`PUT /users/:user_id` implemented with username/avatar editing. `PUT /shops/:shop_id` added with name/location/logo editing and ownership check. Frontend: "Edit Shop" button on `SellerShopPage` opens inline edit form.
 
-### 3. ~~Profile update endpoints~~ **Partially done**
-`PUT /users/:user_id` implemented with username/avatar editing and ownership check. Unified profile page at `/profile` with sidebar tabs (Account for all users, My Bids for buyers only). Sellers see a "Seller Dashboard →" shortcut in the sidebar. Remaining:
+### 13. ~~Per-shop management page~~ **Done**
+`SellerShopPage` at `/seller/shops/:shopId/:tab` with Items and Auctions tabs. Dashboard shop cards simplified to overview + "Manage →" link. Old `/seller/shops/:shopId/auctions` URL still works via the `:tab` param. `SellerAuctionPage` kept but no longer routed.
 
-- `PUT /shops/:shop_id` — edit shop name, location, logo URL (ownership check required)
-- Frontend: "Edit Shop" button on the seller shop management page
+### 10. ~~Redis Pub/Sub → Redis Streams~~ **Done**
+All services migrated from Redis Pub/Sub to Redis Streams with consumer groups.
 
-### 13. Per-shop management page
+**Streams:**
+- `bid:placed` — published by Auction Service, consumed by Bid Service (`bid-service` group) and Notification Service (`notification-service` group)
+- `auction:closed` — published by Auction Service, consumed by Payment Service (`payment-service` group), Bid Service (`bid-service` group), and Notification Service (`notification-service` group)
 
-**Problem:** There is no unified page for a seller to manage a single shop. The seller dashboard shows all shops at a glance, but drilling into one shop only exposes auction management (`/seller/shops/:shopId/auctions`). There is no seller-facing items view — sellers can add items but cannot see their inventory.
-
-**Design:**
-
-```
-/seller/dashboard               ← overview of all shops, aggregate stats, "Manage →" per shop
-/seller/shops/:shopId           ← per-shop management (new page, tabbed)
-    Tab: Items                  ← inventory list + Add Item button
-    Tab: Auctions               ← what SellerAuctionPage does today
-```
-
-**Changes required:**
-
-- New page `SellerShopPage` at `/seller/shops/:shopId` with two tabs
-  - **Items tab:** calls `GET /shops/:shopId/items`, lists all items with title, description, retail value, image; includes "+ Add Item" button
-  - **Auctions tab:** moves the content from `SellerAuctionPage` here (active/closed lists, close button, stats)
-- `SellerDashboardPage` shop cards simplified — remove inline auction preview and per-card action buttons, replace with a single "Manage →" button linking to `/seller/shops/:shopId`
-- `SellerAuctionPage` can be removed or kept as a redirect once the new page is in place
-- Add route `/seller/shops/:shopId` to `App.tsx`
-
-### 10. Redis Pub/Sub → Redis Streams
-The auction, notification, and payment services all use Redis Pub/Sub, which is fire-and-forget.
-
-Problems:
-- Messages lost if a consumer is offline at publish time
-- No consumer group support — cannot scale horizontally without duplicate processing
-- No replay or audit trail
-
-Plan: migrate all three services to Redis Streams with consumer groups for durable, replayable, exactly-once delivery.
+**Features:** `XGroupCreateMkStream` for atomic stream/group creation, `XReadGroup` with blocking reads, `XAck` on successful processing, `XAutoClaim` for pending message recovery (60s timeout, 30s reclaim interval), configurable worker pools via env vars (`BID_WORKERS`, `NOTIF_WORKERS`, `PAYMENT_WORKERS`).
 
 ### 11. Real payment gateway
 Payment processing is currently simulated (90% success rate mock). Replace with Stripe or equivalent for production.
@@ -188,10 +141,31 @@ Plan:
 - In production, serve images via CloudFront in front of S3 for low-latency delivery
 
 
-### 13. Seller sees buyer-facing auction detail page (Bug)
+### 13. ~~Seller sees buyer-facing auction detail page~~ **Done**
 
-In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`AuctionDetailPage`), which is the buyer-facing real-time bidding view. Sellers clicking an auction in their management page were dropped into the buyer experience — live countdown, bid input, WebSocket feed — with no seller controls.
+In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`AuctionDetailPage`), which is the buyer-facing real-time bidding view. Sellers clicking an auction in their management page were dropped into the buyer experience.
 
-**Fix applied (partial):** Removed the `<Link to="/auction/:id">` from auction rows in `SellerAuctionPage` so sellers can no longer accidentally navigate there from their management page.
+**Fix:** Added `SellerAuctionDetailPage` at `/seller/auctions/:auctionId` — a dedicated seller drill-down page with: auction metadata header (image, title, status badge, quantity badge), stats row (current bid, retail price, total bids, max price, time left), full bid history table (bidder, amount, status, time) with real-time WebSocket updates, item details sidebar, winners card for closed auctions, and payment status card. Auction rows in `SellerShopPage` (both active and closed) now link to this page. Close Auction button available for OPEN auctions. Nginx route added for `GET /auctions/:id/bids` → bid service.
 
-**Remaining work:** Sellers still have no drill-down view for a single auction. The full fix is tracked under item **9 (Shop Detail page for seller management)** — a dedicated seller auction detail view should show: bid history, current winner, a Close button, and item metadata, without exposing the buyer bidding panel.
+### 14. Pickup time window on auctions + buyer filter
+
+Buyers need to know when they can physically collect their won item. A pickup window on the auction (not the item — items are reusable catalog entries, pickup is per-auction-event) solves this and enables time-based filtering on the homepage.
+
+#### Backend — Auction Service
+
+- Add `pickup_start` and `pickup_end` (RFC3339 strings) to the `Auction` model in Redis
+- Accept both fields in `POST /auctions` request body (optional; no pickup window = seller arranges separately)
+- Return both fields in `GET /auctions` and `GET /auctions/:id` responses
+
+#### Frontend
+
+- **`types.ts`** — add `pickup_start?: number` and `pickup_end?: number` (epoch ms) to the `Auction` type; add to `BackendAuction` interface and `toAuction()` transform in `api.ts`
+- **`CreateAuctionPage`** — add two `<input type="time">` fields for pickup start/end (date derived from auction end date); include in `api.auctions.create()` payload
+- **`AuctionCard`** — show pickup window as a small line below the countdown if present (e.g. "Pickup 5:00–6:00 pm")
+- **`AuctionDetailPage`** — display pickup window prominently in the item info section
+- **`HomePage`** — add a second filter row below the category tabs for pickup time slots: All / Morning (before 12pm) / Afternoon (12–5pm) / Evening (after 5pm). Client-side filter against `pickup_start`; no new API call needed.
+
+#### Open questions
+- Should pickup window be required when creating an auction, or optional?
+- Should auctions with no pickup window be hidden or shown at the bottom of filtered views?
+

@@ -57,9 +57,11 @@ export default function AuctionDetailPage() {
   // Real-time updates via WebSocket
   const handleBidPlaced = useCallback((event: BidPlacedEvent) => {
     applyNewBid(event.amount, event.user_id)
-    if (user && event.previous_bidder === user.user_id) {
+    if (user && event.previous_bidder === user.user_id && event.user_id !== user.user_id) {
+      // Someone else outbid us
       setBanner('OUTBID')
     } else if (user && event.user_id === user.user_id) {
+      // We placed the winning bid (including outbidding ourselves)
       setBanner('WINNING')
     }
   }, [applyNewBid, user])
@@ -109,13 +111,15 @@ export default function AuctionDetailPage() {
       return
     }
     try {
-      const result = await api.auctions.placeBid(
+      await api.auctions.placeBid(
         auction.auction_id,
         user?.user_id ?? '',
         cents,
         token ?? '',
       )
-      applyNewBid(result.new_highest_bid, user?.username ?? 'you')
+      // Don't update state here — the WebSocket bid_placed event will fire
+      // for all connected clients (including us) and is the single source of truth.
+      // Updating here too would double-count bid_count and flash the price twice.
       setBanner('WINNING')
       setBidInput('')
     } catch (err) {

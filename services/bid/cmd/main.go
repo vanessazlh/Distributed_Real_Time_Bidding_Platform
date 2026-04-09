@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -23,8 +24,9 @@ func main() {
 	bidSvc := bidPkg.NewService(bidRepo)
 	bidHandler := bidPkg.NewHandler(bidSvc)
 
-	// Start event consumer — listens for bid_placed events from Auction Service
-	consumer := events.NewConsumer(rdb, bidSvc)
+	// Start event consumer — listens for bid:placed and auction:closed streams
+	numWorkers, _ := strconv.Atoi(envOr("BID_WORKERS", "10"))
+	consumer := events.NewConsumer(rdb, bidSvc, numWorkers)
 	consumer.Start()
 
 	router := api.NewRouter(bidHandler)
