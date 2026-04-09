@@ -65,6 +65,15 @@ export interface UserBid {
   status: BidStatus
 }
 
+/** A bid record shown on the seller auction detail page (includes bidder identity) */
+export interface AuctionBid {
+  bid_id:    string
+  user_id:   string
+  amount:    number    // cents
+  timestamp: number    // Unix ms
+  status:    BidStatus
+}
+
 /** A single entry in the live bid history feed on the Auction Detail page */
 export interface BidHistoryEntry {
   id: number

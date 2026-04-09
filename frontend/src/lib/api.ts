@@ -1,4 +1,4 @@
-import type { Auction, AuctionStatus, Category, User, UserBid, Item, Shop, Payment, StoredNotification } from '@/types'
+import type { Auction, AuctionBid, AuctionStatus, Category, User, UserBid, Item, Shop, Payment, StoredNotification } from '@/types'
 
 // ── Error type ───────────────────────────────────────────────────────────────
 
@@ -180,6 +180,19 @@ export const api = {
       request<{ auctions: BackendAuction[] }>(`/shops/${shopId}/auctions`, {
         headers: jsonHeaders(token),
       }).then((r) => (r.auctions ?? []).map(toAuction)),
+
+    /** GET /auctions/:id/bids → { bids: AuctionBid[] } */
+    bids: (id: string) =>
+      request<{ bids: BackendBid[] }>(`/auctions/${id}/bids`)
+        .then((r) => (r.bids ?? []).map((b): AuctionBid => ({
+          bid_id:    b.bid_id,
+          user_id:   b.user_id,
+          amount:    b.amount,
+          timestamp: new Date(b.timestamp).getTime(),
+          status:    b.status === 'ACCEPTED' ? 'WINNING'
+                   : b.status === 'WON'      ? 'WON'
+                   : 'OUTBID',
+        }))),
 
     /** POST /auctions/:id/close → { message } */
     close: (id: string, token: string) =>

@@ -295,9 +295,10 @@ export default function SellerShopPage() {
               </h3>
               <Card>
                 {open.map((a, i) => (
-                  <div
+                  <Link
                     key={a.auction_id}
-                    className={`px-8 py-5 flex items-center justify-between gap-4 ${i !== 0 ? 'border-t border-border' : ''}`}
+                    to={`/seller/auctions/${a.auction_id}`}
+                    className={`px-8 py-5 flex items-center justify-between gap-4 hover:bg-surface transition-colors ${i !== 0 ? 'border-t border-border' : ''}`}
                   >
                     <div className="flex items-center gap-4 min-w-0 flex-1">
                       {a.image_url && (
@@ -333,12 +334,12 @@ export default function SellerShopPage() {
                         size="sm"
                         variant="outline"
                         disabled={closing === a.auction_id}
-                        onClick={() => handleClose(a.auction_id)}
+                        onClick={(e) => { e.preventDefault(); handleClose(a.auction_id) }}
                       >
                         {closing === a.auction_id ? 'Closing...' : 'Close'}
                       </Button>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </Card>
             </section>
@@ -352,9 +353,10 @@ export default function SellerShopPage() {
               </h3>
               <Card>
                 {closed.map((a, i) => (
-                  <div
+                  <Link
                     key={a.auction_id}
-                    className={`px-8 py-5 flex items-center justify-between gap-4 ${i !== 0 ? 'border-t border-border' : ''}`}
+                    to={`/seller/auctions/${a.auction_id}`}
+                    className={`px-8 py-5 flex items-center justify-between gap-4 hover:bg-surface transition-colors ${i !== 0 ? 'border-t border-border' : ''}`}
                   >
                     <div className="flex items-center gap-4 min-w-0 flex-1">
                       {a.image_url && (
@@ -385,7 +387,7 @@ export default function SellerShopPage() {
                         {formatCurrency(a.current_highest_bid)}
                       </p>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </Card>
             </section>

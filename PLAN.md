@@ -144,10 +144,8 @@ Plan:
 - In production, serve images via CloudFront in front of S3 for low-latency delivery
 
 
-### 13. Seller sees buyer-facing auction detail page (Bug)
+### 13. ~~Seller sees buyer-facing auction detail page~~ **Done**
 
-In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`AuctionDetailPage`), which is the buyer-facing real-time bidding view. Sellers clicking an auction in their management page were dropped into the buyer experience — live countdown, bid input, WebSocket feed — with no seller controls.
+In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`AuctionDetailPage`), which is the buyer-facing real-time bidding view. Sellers clicking an auction in their management page were dropped into the buyer experience.
 
-**Fix applied (partial):** Removed the `<Link to="/auction/:id">` from auction rows in `SellerAuctionPage` so sellers can no longer accidentally navigate there from their management page.
-
-**Remaining work:** Sellers now have a per-shop management page with an Auctions tab (`/seller/shops/:shopId/auctions`) that lists active/closed auctions with close buttons. A dedicated single-auction drill-down (bid history, current winner, item metadata) is still missing.
+**Fix:** Added `SellerAuctionDetailPage` at `/seller/auctions/:auctionId` — a dedicated seller drill-down page with: auction metadata header (image, title, status badge, quantity badge), stats row (current bid, retail price, total bids, max price, time left), full bid history table (bidder, amount, status, time) with real-time WebSocket updates, item details sidebar, winners card for closed auctions, and payment status card. Auction rows in `SellerShopPage` (both active and closed) now link to this page. Close Auction button available for OPEN auctions. Nginx route added for `GET /auctions/:id/bids` → bid service.
