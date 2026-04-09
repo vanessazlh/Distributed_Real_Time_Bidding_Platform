@@ -21,6 +21,51 @@ const (
 	rebuildLockTTL = 2 * time.Second
 )
 
+// closeAndReadWinnerLua atomically sets status=CLOSED and reads the winner.
+// Prevents a race where a new bid changes the winner between reading and closing.
+//
+// KEYS[1] = auction:{auctionID} (hash)
+// KEYS[2] = auction:{auctionID}:bids (sorted set)
+//
+// Returns: {status_string, winner_id, winning_bid_string}
+var closeAndReadWinnerLua = redis.NewScript(`
+local hashKey = KEYS[1]
+local bidsKey = KEYS[2]
+
+local status = redis.call('HGET', hashKey, 'status')
+if status == false then
+	return {'ERR_NOT_FOUND', '', '0'}
+end
+if status ~= 'OPEN' then
+	return {'ERR_NOT_OPEN', '', '0'}
+end
+
+redis.call('HSET', hashKey, 'status', 'CLOSED')
+
+local top = redis.call('ZREVRANGE', bidsKey, 0, 0, 'WITHSCORES')
+if #top >= 2 then
+	return {'OK', top[1], top[2]}
+end
+
+local bidder = redis.call('HGET', hashKey, 'highest_bidder') or ''
+local amount = redis.call('HGET', hashKey, 'current_highest') or '0'
+return {'OK', bidder, amount}
+`)
+
+// rollbackCloseLua sets status back to OPEN if it is currently CLOSED.
+// Used when event publishing fails and the close must be retried.
+//
+// KEYS[1] = auction:{auctionID}
+var rollbackCloseLua = redis.NewScript(`
+local hashKey = KEYS[1]
+local status = redis.call('HGET', hashKey, 'status')
+if status == 'CLOSED' then
+	redis.call('HSET', hashKey, 'status', 'OPEN')
+	return 1
+end
+return 0
+`)
+
 // dynamoAuction is the DynamoDB-friendly representation of an Auction.
 type dynamoAuction struct {
 	AuctionID      string `dynamodbav:"auction_id"`
@@ -40,11 +85,16 @@ type dynamoAuction struct {
 	CurrentHighest int64  `dynamodbav:"current_highest"`
 	BidCount       int64  `dynamodbav:"bid_count"`
 	HighestBidder  string `dynamodbav:"highest_bidder"`
-	Status         string `dynamodbav:"status"`
-	Version        int64  `dynamodbav:"version"`
+	Status         string           `dynamodbav:"status"`
+	Version        int64            `dynamodbav:"version"`
+	Winners        map[string]int64 `dynamodbav:"winners"`
 }
 
 func toDynamo(a *Auction) dynamoAuction {
+	winners := a.Winners
+	if winners == nil {
+		winners = map[string]int64{}
+	}
 	return dynamoAuction{
 		AuctionID:      a.AuctionID,
 		SellerID:       a.SellerID,
@@ -65,6 +115,7 @@ func toDynamo(a *Auction) dynamoAuction {
 		HighestBidder:  a.HighestBidder,
 		Status:         a.Status,
 		Version:        a.Version,
+		Winners:        winners,
 	}
 }
 
@@ -91,6 +142,7 @@ func fromDynamo(d dynamoAuction) *Auction {
 		HighestBidder:  d.HighestBidder,
 		Status:         d.Status,
 		Version:        d.Version,
+		Winners:        d.Winners,
 	}
 }
 
@@ -112,6 +164,7 @@ func NewRepositoryWithDynamo(rdb *redis.Client, db *dynamodb.Client) *Repository
 }
 
 func auctionKey(id string) string         { return "auction:" + id }
+func auctionBidsKey(id string) string      { return "auction:" + id + ":bids" }
 func shopAuctionsKey(shopID string) string { return "shop:" + shopID + ":auctions" }
 func rebuildLockKey(id string) string      { return "rebuild:auction:" + id }
 
@@ -319,6 +372,123 @@ func (r *Repository) Close(ctx context.Context, auctionID string) error {
 	return nil
 }
 
+// AtomicCloseAndReadWinner atomically sets status=CLOSED and reads the winner
+// from the Redis ZSET (fallback: hash highest_bidder). Returns winnerID and
+// winningBid. If the auction is not OPEN, returns an error.
+func (r *Repository) AtomicCloseAndReadWinner(ctx context.Context, auctionID string) (string, int64, error) {
+	hashKey := auctionKey(auctionID)
+	bidsKey := auctionBidsKey(auctionID)
+
+	res, err := closeAndReadWinnerLua.Run(ctx, r.rdb, []string{hashKey, bidsKey}).StringSlice()
+	if err != nil {
+		return "", 0, fmt.Errorf("atomic close lua: %w", err)
+	}
+	switch res[0] {
+	case "ERR_NOT_FOUND":
+		return "", 0, errors.New("auction not found")
+	case "ERR_NOT_OPEN":
+		return "", 0, errors.New("auction is not open")
+	}
+	amount, _ := strconv.ParseInt(res[2], 10, 64)
+	return res[1], amount, nil
+}
+
+// RollbackClose sets the auction status back to OPEN. Called when event
+// publishing fails so the closer can retry on the next tick.
+func (r *Repository) RollbackClose(ctx context.Context, auctionID string) error {
+	_, err := rollbackCloseLua.Run(ctx, r.rdb, []string{auctionKey(auctionID)}).Result()
+	if err != nil {
+		return fmt.Errorf("rollback close: %w", err)
+	}
+	return nil
+}
+
+// PersistClosedState writes the final CLOSED state to DynamoDB.
+// Called after the event has been published successfully.
+func (r *Repository) PersistClosedState(ctx context.Context, auctionID string) error {
+	if r.db == nil {
+		return nil
+	}
+	vals, err := r.rdb.HGetAll(ctx, auctionKey(auctionID)).Result()
+	if err == nil && len(vals) > 0 {
+		a, _ := parseAuction(vals)
+		a.Status = "CLOSED"
+		return r.saveToDynamo(ctx, a)
+	}
+	// Redis data unavailable — update just the status in DynamoDB
+	_, err = r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(auctionsTable),
+		Key: map[string]ddbTypes.AttributeValue{
+			"auction_id": &ddbTypes.AttributeValueMemberS{Value: auctionID},
+		},
+		UpdateExpression:         aws.String("SET #s = :s"),
+		ExpressionAttributeNames: map[string]string{"#s": "status"},
+		ExpressionAttributeValues: map[string]ddbTypes.AttributeValue{
+			":s": &ddbTypes.AttributeValueMemberS{Value: "CLOSED"},
+		},
+	})
+	return err
+}
+
+// CleanupRedis removes the auction from the active set and deletes the
+// Redis hash and bids ZSET to reclaim memory.
+func (r *Repository) CleanupRedis(ctx context.Context, auctionID string) error {
+	pipe := r.rdb.Pipeline()
+	pipe.SRem(ctx, activeSetKey, auctionID)
+	pipe.Del(ctx, auctionKey(auctionID))
+	pipe.Del(ctx, auctionBidsKey(auctionID))
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+// GetDynamoWinners resolves the winner from DynamoDB using a two-level fallback:
+// 1. winners map (most accurate — updated on every bid)
+// 2. highestBidder field (last-resort)
+func (r *Repository) GetDynamoWinners(ctx context.Context, auctionID string) (string, int64, error) {
+	if r.db == nil {
+		return "", 0, errors.New("dynamo not configured")
+	}
+	out, err := r.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(auctionsTable),
+		Key: map[string]ddbTypes.AttributeValue{
+			"auction_id": &ddbTypes.AttributeValueMemberS{Value: auctionID},
+		},
+	})
+	if err != nil {
+		return "", 0, fmt.Errorf("dynamo get winners: %w", err)
+	}
+	if out.Item == nil {
+		return "", 0, errors.New("auction not found in dynamo")
+	}
+
+	// Level 1: winners map
+	if winnersAttr, ok := out.Item["winners"]; ok {
+		if m, ok := winnersAttr.(*ddbTypes.AttributeValueMemberM); ok && len(m.Value) > 0 {
+			var topBidder string
+			var topAmount int64
+			for bidder, amtAttr := range m.Value {
+				if n, ok := amtAttr.(*ddbTypes.AttributeValueMemberN); ok {
+					amt, _ := strconv.ParseInt(n.Value, 10, 64)
+					if amt > topAmount {
+						topAmount = amt
+						topBidder = bidder
+					}
+				}
+			}
+			if topBidder != "" {
+				return topBidder, topAmount, nil
+			}
+		}
+	}
+
+	// Level 2: highestBidder field
+	var d dynamoAuction
+	if err := attributevalue.UnmarshalMap(out.Item, &d); err != nil {
+		return "", 0, fmt.Errorf("unmarshal auction: %w", err)
+	}
+	return d.HighestBidder, d.CurrentHighest, nil
+}
+
 // GetRedisClient returns the underlying Redis client (needed by concurrency strategies).
 func (r *Repository) GetRedisClient() *redis.Client {
 	return r.rdb
@@ -336,6 +506,45 @@ func (r *Repository) saveToDynamo(ctx context.Context, a *Auction) error {
 		Item:      item,
 	})
 	return err
+}
+
+// UpdateDynamoWinner updates the winners map in DynamoDB for a given auction.
+// Called asynchronously after each successful bid. Non-fatal on failure.
+func (r *Repository) UpdateDynamoWinner(ctx context.Context, auctionID string, bidderID string, amount int64) {
+	if r.db == nil {
+		return
+	}
+	amountStr := strconv.FormatInt(amount, 10)
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(auctionsTable),
+		Key: map[string]ddbTypes.AttributeValue{
+			"auction_id": &ddbTypes.AttributeValueMemberS{Value: auctionID},
+		},
+		UpdateExpression:         aws.String("SET winners.#bidder = :amount"),
+		ExpressionAttributeNames: map[string]string{"#bidder": bidderID},
+		ExpressionAttributeValues: map[string]ddbTypes.AttributeValue{
+			":amount": &ddbTypes.AttributeValueMemberN{Value: amountStr},
+		},
+	})
+	if err != nil {
+		// winners map may not exist for legacy auctions — initialize it
+		initMap := map[string]ddbTypes.AttributeValue{
+			bidderID: &ddbTypes.AttributeValueMemberN{Value: amountStr},
+		}
+		_, err2 := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+			TableName: aws.String(auctionsTable),
+			Key: map[string]ddbTypes.AttributeValue{
+				"auction_id": &ddbTypes.AttributeValueMemberS{Value: auctionID},
+			},
+			UpdateExpression: aws.String("SET winners = :w"),
+			ExpressionAttributeValues: map[string]ddbTypes.AttributeValue{
+				":w": &ddbTypes.AttributeValueMemberM{Value: initMap},
+			},
+		})
+		if err2 != nil {
+			log.Printf("WARN: update dynamo winner for %s failed: %v", auctionID, err2)
+		}
+	}
 }
 
 func (r *Repository) getFromDynamo(ctx context.Context, auctionID string) (*Auction, error) {

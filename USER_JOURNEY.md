@@ -39,9 +39,9 @@ Notifications are delivered two ways:
 Notifications are stored in Redis (capped at 20 per user with same-auction dedup, 7-day TTL) so they persist across page refreshes and browser sessions.
 
 ### 6. Auction Close
-When the countdown reaches zero (or the seller closes the auction early), the system resolves the winner:
-- The auction is marked **Closed**
-- An `auction_closed` event is published internally
+When the countdown reaches zero (or the seller closes the auction early), the system resolves the winner using a reliable close sequence:
+- A Lua script **atomically** marks the auction as CLOSED and reads the winner from a Redis Sorted Set (with DynamoDB fallback if Redis data is unavailable)
+- An `auction_closed` event is published — if publishing fails, the status is **rolled back to OPEN** and the closer retries on the next tick, preventing dead states
 - The Payment Service automatically initiates a charge to the winning bidder
 - The Bid Service marks the winner's bid as **WON**
 - The winner sees a **Won** banner on the auction page and receives a global notification
@@ -134,9 +134,6 @@ Auction closes (seller closes or timer expires via closer.go)
 |---|---|
 | Payment gateway | Simulated (90% success rate mock) — no real Stripe integration yet |
 | Shop settlement | Payment records `shop_id` but does not disburse funds to the seller |
-| Message delivery guarantee | Redis Pub/Sub is fire-and-forget — migration to Redis Streams planned |
+| Message delivery guarantee | Redis Pub/Sub is fire-and-forget — migration to Redis Streams planned (close sequence has rollback-on-failure for reliability) |
 | Geo / location filtering | No geo-based search or proximity filtering |
-| Item categories | Items have no category field; home page filtering is heuristic-based |
-| Profile updates | Users can edit their username; shop detail editing not yet implemented |
 | Image upload | No file upload — sellers must paste external image URLs manually |
-| Cache reliability | If a Redis key is evicted, bids fail with "auction not found" — DynamoDB fallback not yet implemented |

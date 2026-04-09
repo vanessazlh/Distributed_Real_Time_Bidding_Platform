@@ -94,12 +94,8 @@ Replaced multi-step SETNX lock + HGetAll + HSet in `PessimisticStrategy` with a 
 ### 3. ~~Cache reliability: ensureRedisCached() + stampede protection~~ **Done**
 Added DynamoDB as a durable backing store for the auction service (opt-in via `DYNAMODB_ENDPOINT` env var). Write-through on Create, fallback read with double-checked locking for stampede protection, Redis hash deleted on Close to reclaim memory. All auction fields including `seller_id` and `max_price` are persisted. Backward-compatible — runs Redis-only when DynamoDB is not configured.
 
-### 4. Close sequence reliability
-Current order risks a dead state if event publishing fails after DynamoDB write.
-
-New order: read winners → publish `auction:closed` event → write CLOSED to DynamoDB → delete Redis keys. If event publish fails, auction stays OPEN and close can be retried.
-
-Also add three-level fallback for winner resolution: Redis ZSET → DynamoDB winners map → DynamoDB `highestBidder`. Write full winners map to DynamoDB on each successful bid so recovery is possible after Redis restart.
+### 4. ~~Close sequence reliability~~ **Done**
+Reordered close sequence to: atomic close + read winner (Lua script) → publish event → persist DynamoDB → cleanup Redis. If event publish fails, status rolls back to OPEN so closer retries next tick. Added three-level winner fallback: Redis ZSET (updated on every bid via ZADD in all three strategies) → DynamoDB winners map (async write-through on each bid) → DynamoDB `highestBidder` field. Two new Lua scripts (`closeAndReadWinnerLua`, `rollbackCloseLua`) ensure atomicity.
 
 ### 5. Multiple winners (quantity auctions)
 Add `quantity` field to support auctions where N buyers can win.

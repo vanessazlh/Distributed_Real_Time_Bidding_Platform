@@ -13,6 +13,7 @@ import (
 // lock is needed.
 //
 // KEYS[1] = auction:{auctionID}
+// KEYS[2] = auction:{auctionID}:bids  (sorted set for winner tracking)
 // ARGV[1] = bid amount (int64)
 // ARGV[2] = bidder ID (string)
 //
@@ -55,6 +56,7 @@ redis.call('HSET', key,
 	'highest_bidder',  bidder,
 	'version',         newVersion)
 redis.call('HINCRBY', key, 'bid_count', 1)
+redis.call('ZADD', KEYS[2], amount, bidder)
 
 return {newVersion, 0}
 `)
@@ -72,8 +74,9 @@ func NewPessimistic(rdb *redis.Client) *Pessimistic {
 // TryPlaceBid atomically validates and places a bid via a Lua script.
 func (p *Pessimistic) TryPlaceBid(ctx context.Context, auctionID string, amount int64, bidderID string) (int64, error) {
 	key := "auction:" + auctionID
+	bidsKey := key + ":bids"
 
-	res, err := placeBidLua.Run(ctx, p.rdb, []string{key},
+	res, err := placeBidLua.Run(ctx, p.rdb, []string{key, bidsKey},
 		amount, bidderID,
 	).Int64Slice()
 	if err != nil {

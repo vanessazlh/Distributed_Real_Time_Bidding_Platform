@@ -73,6 +73,7 @@ func (o *Optimistic) tryOnce(ctx context.Context, key string, amount int64, bidd
 				"version":         newVersion,
 			})
 			pipe.HIncrBy(ctx, key, "bid_count", 1)
+			pipe.ZAdd(ctx, key+":bids", redis.Z{Score: float64(amount), Member: bidderID})
 			return nil
 		})
 		return err

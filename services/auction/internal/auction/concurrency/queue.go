@@ -109,6 +109,7 @@ func (q *Queue) processBid(req bidRequest) (int64, error) {
 		"version":         newVersion,
 	})
 	pipe.HIncrBy(ctx, key, "bid_count", 1)
+	pipe.ZAdd(ctx, key+":bids", redis.Z{Score: float64(req.Amount), Member: req.BidderID})
 	_, err = pipe.Exec(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("update auction: %w", err)

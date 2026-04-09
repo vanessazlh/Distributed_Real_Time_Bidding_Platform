@@ -90,6 +90,35 @@ func (m *mockAuctionRepo) Close(_ context.Context, auctionID string) error {
 	return nil
 }
 
+func (m *mockAuctionRepo) AtomicCloseAndReadWinner(_ context.Context, auctionID string) (string, int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.auctions[auctionID]
+	if !ok {
+		return "", 0, errors.New("auction not found")
+	}
+	if a.Status != "OPEN" {
+		return "", 0, errors.New("auction is not open")
+	}
+	a.Status = "CLOSED"
+	return a.HighestBidder, a.CurrentHighest, nil
+}
+
+func (m *mockAuctionRepo) RollbackClose(_ context.Context, auctionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if a, ok := m.auctions[auctionID]; ok && a.Status == "CLOSED" {
+		a.Status = "OPEN"
+	}
+	return nil
+}
+
+func (m *mockAuctionRepo) PersistClosedState(_ context.Context, _ string) error { return nil }
+func (m *mockAuctionRepo) CleanupRedis(_ context.Context, _ string) error       { return nil }
+func (m *mockAuctionRepo) GetDynamoWinners(_ context.Context, _ string) (string, int64, error) {
+	return "", 0, errors.New("not configured")
+}
+
 // --- tests ---
 
 func TestCreateAuction_Success(t *testing.T) {

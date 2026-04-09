@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,6 +41,12 @@ var ErrSelfBid = errors.New("sellers cannot bid on their own auction")
 // ErrValidation is returned when auction creation input is invalid.
 var ErrValidation = errors.New("validation error")
 
+// WinnerPersister is an optional interface for persisting winner data to DynamoDB.
+// Implemented by *Repository when DynamoDB is configured.
+type WinnerPersister interface {
+	UpdateDynamoWinner(ctx context.Context, auctionID, bidderID string, amount int64)
+}
+
 // Repo is the interface the service depends on.
 type Repo interface {
 	Create(ctx context.Context, a *Auction) error
@@ -47,7 +54,14 @@ type Repo interface {
 	List(ctx context.Context, status string) ([]*Auction, error)
 	ListByShop(ctx context.Context, shopID string) ([]*Auction, error)
 	Open(ctx context.Context, auctionID string) error
-	Close(ctx context.Context, auctionID string) error
+	Close(ctx context.Context, auctionID string) error // Deprecated: use the atomic close methods below
+
+	// Reliable close sequence
+	AtomicCloseAndReadWinner(ctx context.Context, auctionID string) (winnerID string, winningBid int64, err error)
+	RollbackClose(ctx context.Context, auctionID string) error
+	PersistClosedState(ctx context.Context, auctionID string) error
+	CleanupRedis(ctx context.Context, auctionID string) error
+	GetDynamoWinners(ctx context.Context, auctionID string) (winnerID string, winningBid int64, err error)
 }
 
 // Service contains business logic for the auction domain.
@@ -269,6 +283,11 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 
 	_ = newVersion // used internally by concurrency strategies
 
+	// Persist winner to DynamoDB asynchronously (fallback for Redis failure at close time)
+	if wp, ok := s.repo.(WinnerPersister); ok {
+		go wp.UpdateDynamoWinner(context.Background(), auctionID, userID, amount)
+	}
+
 	return &BidResult{
 		BidID:     bidID,
 		AuctionID: auctionID,
@@ -277,30 +296,60 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 	}, nil
 }
 
-// CloseAuction closes an auction.
+// CloseAuction closes an auction using a reliable sequence:
+// 1. Read metadata  2. Atomic close + read winner  3. DynamoDB fallback
+// 4. Publish event (rollback on failure)  5. Persist + cleanup
 func (s *Service) CloseAuction(ctx context.Context, auctionID string) error {
+	// Step 1: Read auction metadata (needed for event fields)
 	a, err := s.repo.GetByID(ctx, auctionID)
 	if err != nil {
 		return ErrNotFound
 	}
 
-	if err := s.repo.Close(ctx, auctionID); err != nil {
+	// Step 2: Atomically set status=CLOSED and read winner (prevents bid race)
+	winnerID, winningBid, err := s.repo.AtomicCloseAndReadWinner(ctx, auctionID)
+	if err != nil {
 		return fmt.Errorf("close auction: %w", err)
 	}
 
-	// Stop the queue processor if using queue strategy
-	s.queue.Stop(auctionID)
+	// Step 3: Three-level winner fallback — if Redis ZSET/hash had no winner, try DynamoDB
+	if winnerID == "" {
+		if dynWinner, dynBid, dynErr := s.repo.GetDynamoWinners(ctx, auctionID); dynErr == nil && dynWinner != "" {
+			winnerID = dynWinner
+			winningBid = dynBid
+		}
+	}
 
-	// Publish event
-	_ = s.publisher.PublishAuctionClosed(ctx, events.AuctionClosedEvent{
+	// Step 4: Publish event — if this fails, rollback to OPEN so closer retries
+	err = s.publisher.PublishAuctionClosed(ctx, events.AuctionClosedEvent{
 		AuctionID:  auctionID,
-		WinnerID:   a.HighestBidder,
-		WinningBid: a.CurrentHighest,
+		WinnerID:   winnerID,
+		WinningBid: winningBid,
 		ItemID:     a.ItemID,
 		ItemTitle:  a.ItemTitle,
 		ShopID:     a.ShopID,
 		ClosedAt:   time.Now().UTC().Format(time.RFC3339Nano),
 	})
+	if err != nil {
+		if rbErr := s.repo.RollbackClose(ctx, auctionID); rbErr != nil {
+			log.Printf("CRITICAL: rollback close failed for %s after publish failure: %v (publish err: %v)",
+				auctionID, rbErr, err)
+		}
+		return fmt.Errorf("close auction: publish event failed: %w", err)
+	}
+
+	// Step 5: Stop the queue processor
+	s.queue.Stop(auctionID)
+
+	// Step 6: Persist final CLOSED state to DynamoDB (best-effort; event already sent)
+	if err := s.repo.PersistClosedState(ctx, auctionID); err != nil {
+		log.Printf("WARN: persist closed state failed for %s: %v", auctionID, err)
+	}
+
+	// Step 7: Cleanup Redis keys (best-effort)
+	if err := s.repo.CleanupRedis(ctx, auctionID); err != nil {
+		log.Printf("WARN: redis cleanup failed for %s: %v", auctionID, err)
+	}
 
 	return nil
 }

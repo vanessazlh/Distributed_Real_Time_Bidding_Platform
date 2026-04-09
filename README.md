@@ -35,7 +35,7 @@ Browser (React + Vite)
 |---|---|---|---|
 | User | 8082 | DynamoDB | Registration, login, JWT auth, bid proxy |
 | Shop | 8083 | DynamoDB | Shop + item CRUD, seller ownership checks |
-| Auction | 8081 | Redis | Auction lifecycle, bid validation, concurrency control |
+| Auction | 8081 | Redis + DynamoDB | Auction lifecycle, bid validation, concurrency control |
 | Bid | 8084 | Redis + DynamoDB | Bid history, outbid tracking, per-user bid queries |
 | Notification | 8080 | Redis Pub/Sub + Redis | Per-auction WebSocket fan-out, per-user global WebSocket, persistent notification inbox |
 | Payment | 8085 | DynamoDB | Winner charge processing, payment status tracking |
@@ -140,7 +140,7 @@ The platform supports three pluggable bid-concurrency strategies, switchable at 
 | Strategy | Mechanism | Trade-off |
 |---|---|---|
 | **Optimistic** | Redis `WATCH/MULTI/EXEC`, retry up to 3× with exponential backoff | Lowest latency; may fail under extreme contention |
-| **Pessimistic** | Redis `SETNX` distributed lock (500ms TTL), retry up to 10× | Prevents all conflicts; serializes writes per auction |
+| **Pessimistic** | Lua script — atomic read/validate/write in a single Redis call | Zero-lock, zero-retry; default for production |
 | **Queue** | Go channel per auction, FIFO processing | Fully serialized; fairest ordering; highest isolation |
 
 Switch strategies live:
@@ -170,6 +170,17 @@ Auction Service → Redis Pub/Sub
     ├── Bid Service        (marks winning bid as WON)
     └── Notification Svc   (broadcasts to auction watchers + stores/pushes "won" to winner)
 ```
+
+### Reliable Close Sequence
+
+The close flow is designed to prevent dead states where an auction is marked CLOSED but downstream services never receive the event:
+
+1. **Atomic close + read winner** — a Lua script atomically sets `status=CLOSED` and reads the winner from a Redis Sorted Set (fallback: hash field, then DynamoDB winners map)
+2. **Publish event** — if this fails, the status is **rolled back to OPEN** so the closer retries on the next tick
+3. **Persist to DynamoDB** — best-effort; the event has already been delivered
+4. **Cleanup Redis** — delete hash, sorted set, remove from active set
+
+Every bid also writes to a DynamoDB `winners` map asynchronously, so winner data survives a full Redis restart.
 
 ---
 

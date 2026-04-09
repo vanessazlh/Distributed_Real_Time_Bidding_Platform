@@ -20,9 +20,10 @@ type Auction struct {
 	EndTime        time.Time `json:"end_time"`
 	CurrentHighest int64     `json:"current_highest_bid"`
 	BidCount       int64     `json:"bid_count"`
-	HighestBidder  string    `json:"highest_bidder"`
-	Status         string    `json:"status"`  // PENDING, OPEN, CLOSED
-	Version        int64     `json:"version"` // for optimistic locking
+	HighestBidder  string           `json:"highest_bidder"`
+	Status         string           `json:"status"`  // PENDING, OPEN, CLOSED
+	Version        int64            `json:"version"` // for optimistic locking
+	Winners        map[string]int64 `json:"-"`        // DynamoDB-only; bidderID → amount
 }
 
 // CreateAuctionRequest is the payload for POST /auctions.
