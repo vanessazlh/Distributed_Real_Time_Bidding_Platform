@@ -62,7 +62,8 @@ export default function HomePage() {
       </div>
 
       {/* Category tabs + secondary filters */}
-      <div className="flex items-end justify-between border-b border-border mb-8">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-end border-b border-border mb-8">
+        <div />
         <div className="flex gap-8">
           {TABS.map((tab) => (
             <button
@@ -80,7 +81,7 @@ export default function HomePage() {
           ))}
         </div>
 
-        <div className="flex items-center gap-2 pb-2.5">
+        <div className="flex items-center justify-end gap-2 pb-2.5">
           <FilterDropdown
             label="Pickup"
             options={[...PICKUP_OPTIONS]}
