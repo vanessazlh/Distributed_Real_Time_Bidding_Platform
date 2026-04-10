@@ -3,7 +3,11 @@ import type { Auction, AuctionBid, AuctionStatus, Category, User, UserBid, Item,
 // ── Error type ───────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly details?: Record<string, unknown>,
+  ) {
     super(message)
     this.name = 'ApiError'
   }
@@ -17,6 +21,8 @@ function friendlyError(raw: string): string {
   // Backend registration conflict messages
   if (raw === 'email already registered')
     return 'You already have an account. Try signing in instead.'
+  if (raw === 'incorrect password for existing account')
+    return 'You already have a buyer account with this email. Please enter your existing password to upgrade to seller.'
   if (raw === 'account is already a seller')
     return 'You already have an account with this email. Sign in and select Buyer — your seller account can also be used to browse and bid.'
 
@@ -46,13 +52,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, options)
   if (!res.ok) {
     let message = `HTTP ${res.status}`
+    let details: Record<string, unknown> | undefined
     try {
       const body = await res.json() as Record<string, unknown>
       message = (body.error ?? body.message ?? message) as string
+      details = body
     } catch {
       message = await res.text().catch(() => message)
     }
-    throw new ApiError(res.status, friendlyError(message))
+    throw new ApiError(res.status, friendlyError(message), details)
   }
   return res.json() as Promise<T>
 }
@@ -106,6 +114,8 @@ interface BackendAuction {
   shop_logo_url:       string
   description:         string
   category?:           string
+  pickup_start?:       string   // RFC3339
+  pickup_end?:         string   // RFC3339
   end_time:            string   // RFC3339
   current_highest_bid: number
   bid_count:           number
@@ -131,6 +141,8 @@ function toAuction(b: BackendAuction): Auction {
     shop_logo_url:       b.shop_logo_url       ?? '',
     description:         b.description         ?? '',
     category:            (b.category as Category) || undefined,
+    pickup_start:        b.pickup_start ? new Date(b.pickup_start).getTime() : undefined,
+    pickup_end:          b.pickup_end   ? new Date(b.pickup_end).getTime()   : undefined,
   }
 }
 
@@ -147,11 +159,11 @@ export const api = {
       }),
 
     /** POST /users → User */
-    register: (username: string, email: string, password: string, role: 'buyer' | 'seller' = 'buyer') =>
+    register: (username: string, email: string, password: string, role: 'buyer' | 'seller' = 'buyer', confirmUpgrade = false) =>
       request<User>('/users', {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify({ username, email, password, role }),
+        body: JSON.stringify({ username, email, password, role, confirm_upgrade: confirmUpgrade || undefined }),
       }),
   },
 
@@ -166,7 +178,7 @@ export const api = {
       request<BackendAuction>(`/auctions/${id}`).then(toAuction),
 
     /** POST /auctions → Auction */
-    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; max_price?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string }, token: string) =>
+    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; max_price?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string; pickup_start?: string; pickup_end?: string }, token: string) =>
       request<BackendAuction>('/auctions', {
         method: 'POST',
         headers: jsonHeaders(token),
@@ -282,6 +294,34 @@ export const api = {
         method: 'POST',
         headers: jsonHeaders(token),
       }),
+  },
+
+  uploads: {
+    /** POST /uploads (multipart) → url string */
+    image: async (file: File, token: string): Promise<string> => {
+      const form = new FormData()
+      form.append('file', file)
+
+      const res = await fetch('/uploads', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      })
+
+      if (!res.ok) {
+        let message = `HTTP ${res.status}`
+        try {
+          const body = await res.json() as Record<string, unknown>
+          message = (body.error ?? body.message ?? message) as string
+        } catch {
+          message = await res.text().catch(() => message)
+        }
+        throw new ApiError(res.status, friendlyError(message))
+      }
+
+      const data = await res.json() as { url: string }
+      return data.url
+    },
   },
 
   payments: {

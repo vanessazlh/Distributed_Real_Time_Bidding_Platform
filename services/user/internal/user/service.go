@@ -24,6 +24,14 @@ var ErrEmailTaken = errors.New("email already taken")
 // ErrAlreadySeller is returned when a seller tries to register again.
 var ErrAlreadySeller = errors.New("account is already a seller")
 
+// UsernameMismatchError is returned when a buyer→seller upgrade is attempted
+// with a different username, requiring user confirmation.
+type UsernameMismatchError struct {
+	ExistingUsername string
+}
+
+func (e *UsernameMismatchError) Error() string { return "username_mismatch" }
+
 // Repo is the interface the service depends on (enables unit-testing with mocks).
 type Repo interface {
 	Save(ctx context.Context, u User) error
@@ -63,8 +71,17 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (string, er
 			if err := bcrypt.CompareHashAndPassword([]byte(existing.PasswordHash), []byte(req.Password)); err != nil {
 				return "", ErrInvalidCredentials
 			}
+			// Username differs — require explicit confirmation before upgrading.
+			if req.Username != existing.Username && !req.ConfirmUpgrade {
+				return "", &UsernameMismatchError{ExistingUsername: existing.Username}
+			}
 			if err := s.repo.UpdateRole(ctx, existing.UserID, "seller"); err != nil {
 				return "", fmt.Errorf("upgrade role: %w", err)
+			}
+			if req.Username != existing.Username {
+				if err := s.repo.UpdateProfile(ctx, existing.UserID, req.Username, ""); err != nil {
+					return "", fmt.Errorf("update username: %w", err)
+				}
 			}
 			return existing.UserID, nil
 		}

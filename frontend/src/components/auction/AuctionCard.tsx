@@ -5,6 +5,7 @@ import { Avatar } from '@/components/ui'
 import { ArrowRightIcon } from '@/components/icons'
 import { CountdownTimer } from './CountdownTimer'
 import { PriceDisplay } from './PriceDisplay'
+import { formatPickupWindow } from '@/lib/utils'
 
 interface AuctionCardProps {
   auction: Auction
@@ -74,6 +75,13 @@ export function AuctionCard({ auction }: AuctionCardProps) {
             <p className="text-text-secondary text-xs mt-1">{auction.bid_count} bids</p>
           </div>
         </div>
+
+        {auction.pickup_start && auction.pickup_end && (
+          <p className="text-text-secondary text-xs mb-3">
+            <span className="font-medium text-text-primary">Pickup</span>{' '}
+            {formatPickupWindow(auction.pickup_start, auction.pickup_end)}
+          </p>
+        )}
 
         <Button
           variant={isClosed || isPending ? 'ghost' : 'action'}

@@ -13,10 +13,11 @@ type User struct {
 
 // RegisterRequest is the payload for POST /users.
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
-	Username string `json:"username" binding:"required,min=2"`
-	Role     string `json:"role"`
+	Email          string `json:"email" binding:"required,email"`
+	Password       string `json:"password" binding:"required,min=6"`
+	Username       string `json:"username" binding:"required,min=2"`
+	Role           string `json:"role"`
+	ConfirmUpgrade bool   `json:"confirm_upgrade"`
 }
 
 // LoginRequest is the payload for POST /auth/login.

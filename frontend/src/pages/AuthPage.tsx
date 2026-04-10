@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { api, decodeToken } from '@/lib/api'
+import { api, ApiError, decodeToken } from '@/lib/api'
 import { Card, Button, FormField, TextInput, StatusBanner } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
 
@@ -21,6 +21,7 @@ export default function AuthPage({ type }: AuthPageProps) {
   const [password, setPassword] = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
+  const [upgradePrompt, setUpgradePrompt] = useState<{ existingUsername: string } | null>(null)
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -54,9 +55,27 @@ export default function AuthPage({ type }: AuthPageProps) {
         navigate('/login')
       }
     } catch (err) {
+      if (err instanceof ApiError && err.details?.error === 'username_mismatch') {
+        setUpgradePrompt({ existingUsername: err.details.existing_username as string })
+      } else {
+        setError(err instanceof Error ? err.message : 'Something went wrong')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpgradeConfirm = async (chosenUsername: string) => {
+    setError(null)
+    setLoading(true)
+    try {
+      await api.auth.register(chosenUsername, email, password, 'seller', true)
+      navigate('/login')
+    } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setLoading(false)
+      setUpgradePrompt(null)
     }
   }
 
@@ -93,6 +112,45 @@ export default function AuthPage({ type }: AuthPageProps) {
             </div>
           )}
 
+          {upgradePrompt ? (
+            <div className="flex flex-col gap-4">
+              <p className="text-text-secondary text-sm">
+                You already have a buyer account as{' '}
+                <span className="font-semibold text-text-primary">{upgradePrompt.existingUsername}</span>.
+                You entered{' '}
+                <span className="font-semibold text-text-primary">{username}</span>.
+                Which username would you like to use?
+              </p>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  fullWidth
+                  disabled={loading}
+                  onClick={() => handleUpgradeConfirm(upgradePrompt.existingUsername)}
+                >
+                  Keep {upgradePrompt.existingUsername}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  disabled={loading}
+                  onClick={() => handleUpgradeConfirm(username)}
+                >
+                  Use {username}
+                </Button>
+              </div>
+              <button
+                type="button"
+                className="text-sm text-text-secondary hover:text-text-primary underline"
+                onClick={() => setUpgradePrompt(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+          <>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {!isLogin && (
               <FormField label="Username">
@@ -138,6 +196,8 @@ export default function AuthPage({ type }: AuthPageProps) {
               {isLogin ? 'Register' : 'Sign In'}
             </Link>
           </p>
+          </>
+          )}
         </Card>
       </div>
     </PageContainer>

@@ -24,6 +24,8 @@ export default function CreateAuctionPage() {
   const [maxPrice,      setMaxPrice]     = useState('')
   const [quantity,      setQuantity]     = useState('1')
   const [scheduledStart,setScheduledStart] = useState('')
+  const [pickupStart,   setPickupStart]   = useState('')
+  const [pickupEnd,     setPickupEnd]     = useState('')
   const [loading,       setLoading]      = useState(false)
   const [error,         setError]        = useState<string | null>(null)
   const [itemOpen,      setItemOpen]     = useState(false)
@@ -95,6 +97,10 @@ export default function CreateAuctionPage() {
       }
       if (scheduledStart) {
         payload.scheduled_start = new Date(scheduledStart).toISOString()
+      }
+      if (pickupStart && pickupEnd) {
+        payload.pickup_start = new Date(pickupStart).toISOString()
+        payload.pickup_end = new Date(pickupEnd).toISOString()
       }
       await api.auctions.create(payload, token!)
       navigate(`/seller/shops/${shopId}/auctions`)
@@ -188,6 +194,32 @@ export default function CreateAuctionPage() {
                 value={startBid}
                 onChange={(e) => setStartBid(e.target.value)}
               />
+            </FormField>
+
+            <FormField label="Pickup Window">
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-text-secondary mb-1 block">Start</label>
+                  <TextInput
+                    type="datetime-local"
+                    required
+                    value={pickupStart}
+                    onChange={(e) => setPickupStart(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-text-secondary mb-1 block">End</label>
+                  <TextInput
+                    type="datetime-local"
+                    required
+                    value={pickupEnd}
+                    onChange={(e) => setPickupEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-sm text-text-secondary mt-1">
+                When can the winner collect the item?
+              </p>
             </FormField>
 
             <FormField label="Max Price / Bid Ceiling ($, optional)">

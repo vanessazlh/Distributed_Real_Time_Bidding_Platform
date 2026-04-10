@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gin-gonic/gin"
 	"rtb/services/shop/internal/shop"
 	"rtb/shared/middleware"
@@ -20,9 +21,22 @@ import (
 
 func main() {
 	db := newDynamoClient()
-
 	repo := shop.NewRepository(db)
-	svc := shop.NewService(repo)
+
+	var uploader shop.Uploader
+	var publicURL string
+	if s3Client := newS3Client(); s3Client != nil {
+		bucket := envOr("S3_BUCKET", "uploads")
+		s3up := shop.NewS3Uploader(s3Client, bucket)
+		if err := s3up.EnsureBucket(context.Background()); err != nil {
+			log.Fatalf("ensure S3 bucket: %v", err)
+		}
+		uploader = s3up
+		publicURL = envOr("S3_PUBLIC_URL", "http://localhost:3000/uploads")
+		log.Printf("image uploads enabled (bucket=%s)", bucket)
+	}
+
+	svc := shop.NewService(repo, uploader, publicURL)
 	h := shop.NewHandler(svc)
 
 	r := gin.Default()
@@ -37,6 +51,7 @@ func main() {
 		protected.PUT("/shops/:shop_id", h.UpdateShop)
 		protected.POST("/shops/:shop_id/items", h.CreateItem)
 		protected.GET("/sellers/:user_id/shops", h.ListSellerShops)
+		protected.POST("/uploads", h.UploadImage)
 	}
 
 	addr := envOr("SERVER_ADDR", ":8083")
@@ -78,6 +93,31 @@ func newDynamoClient() *dynamodb.Client {
 		log.Fatalf("load aws config: %v", err)
 	}
 	return dynamodb.NewFromConfig(cfg)
+}
+
+func newS3Client() *s3.Client {
+	endpoint := os.Getenv("S3_ENDPOINT")
+	if endpoint == "" {
+		return nil
+	}
+	region := envOr("AWS_REGION", "us-east-1")
+
+	cfg, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(region),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			envOr("S3_ACCESS_KEY", "minioadmin"),
+			envOr("S3_SECRET_KEY", "minioadmin"),
+			"",
+		)),
+	)
+	if err != nil {
+		log.Fatalf("load s3 config: %v", err)
+	}
+
+	return s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(endpoint)
+		o.UsePathStyle = true
+	})
 }
 
 func envOr(key, fallback string) string {

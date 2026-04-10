@@ -104,6 +104,23 @@ func (m *mockAuctionRepo) AtomicCloseAndReadWinner(_ context.Context, auctionID 
 	return a.HighestBidder, a.CurrentHighest, nil
 }
 
+func (m *mockAuctionRepo) AtomicCloseAndReadWinners(_ context.Context, auctionID string) (map[string]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.auctions[auctionID]
+	if !ok {
+		return nil, errors.New("auction not found")
+	}
+	if a.Status != "OPEN" {
+		return nil, errors.New("auction is not open")
+	}
+	a.Status = "CLOSED"
+	if a.HighestBidder != "" {
+		return map[string]int64{a.HighestBidder: a.CurrentHighest}, nil
+	}
+	return map[string]int64{}, nil
+}
+
 func (m *mockAuctionRepo) RollbackClose(_ context.Context, auctionID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -117,6 +134,10 @@ func (m *mockAuctionRepo) PersistClosedState(_ context.Context, _ string) error 
 func (m *mockAuctionRepo) CleanupRedis(_ context.Context, _ string) error       { return nil }
 func (m *mockAuctionRepo) GetDynamoWinners(_ context.Context, _ string) (string, int64, error) {
 	return "", 0, errors.New("not configured")
+}
+
+func (m *mockAuctionRepo) GetDynamoAllWinners(_ context.Context, _ string) (map[string]int64, error) {
+	return nil, errors.New("not configured")
 }
 
 // --- tests ---

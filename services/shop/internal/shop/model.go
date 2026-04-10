@@ -42,3 +42,8 @@ type CreateItemRequest struct {
 	ImageURL    string `json:"image_url"`
 	Category    string `json:"category"`
 }
+
+// UploadResponse is returned by the upload endpoint.
+type UploadResponse struct {
+	URL string `json:"url"`
+}

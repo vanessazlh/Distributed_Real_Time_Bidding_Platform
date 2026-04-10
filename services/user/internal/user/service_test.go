@@ -41,12 +41,15 @@ func (m *mockRepo) FindByEmail(_ context.Context, email string) (*user.User, err
 	return nil, errors.New("user not found")
 }
 
-func (m *mockRepo) UpdateUsername(_ context.Context, userID, username string) error {
+func (m *mockRepo) UpdateProfile(_ context.Context, userID, username, avatarURL string) error {
 	u, ok := m.users[userID]
 	if !ok {
 		return errors.New("user not found")
 	}
 	u.Username = username
+	if avatarURL != "" {
+		u.AvatarURL = avatarURL
+	}
 	return nil
 }
 
@@ -200,6 +203,64 @@ func TestLogin_UnknownEmail(t *testing.T) {
 	})
 	if !errors.Is(err, user.ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestRegister_BuyerToSellerUsernameMismatch(t *testing.T) {
+	svc := user.NewService(newMockRepo())
+
+	if _, err := svc.Register(context.Background(), user.RegisterRequest{
+		Email: "fay@example.com", Password: "pass123", Username: "fay_buyer",
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	// Attempt upgrade with different username — should get mismatch error
+	_, err := svc.Register(context.Background(), user.RegisterRequest{
+		Email: "fay@example.com", Password: "pass123", Username: "fay_seller", Role: "seller",
+	})
+	var mismatch *user.UsernameMismatchError
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("expected UsernameMismatchError, got %v", err)
+	}
+	if mismatch.ExistingUsername != "fay_buyer" {
+		t.Fatalf("expected existing username fay_buyer, got %s", mismatch.ExistingUsername)
+	}
+}
+
+func TestRegister_BuyerToSellerConfirmNewUsername(t *testing.T) {
+	repo := newMockRepo()
+	svc := user.NewService(repo)
+
+	buyerID, err := svc.Register(context.Background(), user.RegisterRequest{
+		Email: "gina@example.com", Password: "pass123", Username: "gina_buyer",
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	// Confirm upgrade with new username
+	sellerID, err := svc.Register(context.Background(), user.RegisterRequest{
+		Email: "gina@example.com", Password: "pass123", Username: "gina_seller",
+		Role: "seller", ConfirmUpgrade: true,
+	})
+	if err != nil {
+		t.Fatalf("confirmed upgrade: %v", err)
+	}
+	if sellerID != buyerID {
+		t.Fatalf("expected same user_id, got buyer=%s seller=%s", buyerID, sellerID)
+	}
+
+	// Verify username was updated
+	u, err := svc.GetProfile(context.Background(), sellerID)
+	if err != nil {
+		t.Fatalf("get profile: %v", err)
+	}
+	if u.Username != "gina_seller" {
+		t.Fatalf("expected username gina_seller, got %s", u.Username)
+	}
+	if u.Role != "seller" {
+		t.Fatalf("expected role seller, got %s", u.Role)
 	}
 }
 

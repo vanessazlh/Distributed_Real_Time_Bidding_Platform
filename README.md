@@ -100,7 +100,7 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/auctions` | ✓ | Create auction |
+| `POST` | `/auctions` | ✓ | Create auction (optional: `scheduled_start`, `pickup_start`, `pickup_end`) |
 | `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`) |
 | `GET` | `/auctions/:id` | — | Get auction details |
 | `POST` | `/auctions/:id/bid` | ✓ | Place bid |
@@ -209,6 +209,14 @@ Auctions support a `quantity` field (default 1) that determines how many buyers 
 - The Notification and Bid services notify/mark all N winners
 
 Quantity auctions require the **pessimistic** concurrency strategy (Lua script atomicity). The experimental strategies reject bids on `quantity > 1` auctions.
+
+### Pickup Time Windows
+
+Auctions support an optional **pickup window** (`pickup_start` and `pickup_end`, both RFC3339 timestamps) that tells buyers when they can physically collect their won item. Pickup is per-auction, not per-item — the same catalog item can have different pickup windows in different auctions.
+
+- Sellers set the pickup window when creating an auction (or leave it empty to arrange separately)
+- The homepage offers a second filter row — **Any Time / Morning / Afternoon / Evening** — that filters auctions by the hour of `pickup_start`. Auctions without a pickup window are hidden when a time filter is active.
+- Auction cards show the pickup window below the bid info; the detail page displays it prominently with a clock icon
 
 ---
 

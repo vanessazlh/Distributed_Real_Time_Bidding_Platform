@@ -8,7 +8,7 @@ import { Badge, Button, Card, EmptyState, Spinner, StatCard, StatusBanner } from
 import { CountdownTimer } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
-import { formatCurrency, maskUsername, timeAgo } from '@/lib/utils'
+import { formatCurrency, formatPickupWindow, maskUsername, timeAgo } from '@/lib/utils'
 
 export default function SellerAuctionDetailPage() {
   const { auctionId } = useParams<{ auctionId: string }>()
@@ -285,6 +285,14 @@ export default function SellerAuctionDetailPage() {
                   <div className="flex justify-between">
                     <dt className="text-text-secondary text-sm">Bid Ceiling</dt>
                     <dd className="text-text-primary text-sm font-medium">{formatCurrency(auction.max_price)}</dd>
+                  </div>
+                )}
+                {auction.pickup_start && auction.pickup_end && (
+                  <div className="flex justify-between">
+                    <dt className="text-text-secondary text-sm">Pickup Window</dt>
+                    <dd className="text-text-primary text-sm font-medium">
+                      {formatPickupWindow(auction.pickup_start, auction.pickup_end)}
+                    </dd>
                   </div>
                 )}
               </dl>

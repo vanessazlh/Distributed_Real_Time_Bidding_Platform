@@ -157,6 +157,24 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 
 	endTime := startTime.Add(time.Duration(req.Duration) * time.Minute)
 
+	// Parse required pickup window
+	if req.PickupStart == "" || req.PickupEnd == "" {
+		return nil, fmt.Errorf("%w: pickup_start and pickup_end are required", ErrValidation)
+	}
+	pickupStart, err := time.Parse(time.RFC3339, req.PickupStart)
+	if err != nil {
+		return nil, fmt.Errorf("%w: pickup_start must be a valid RFC3339 timestamp", ErrValidation)
+	}
+	pickupStart = pickupStart.UTC()
+	pickupEnd, err := time.Parse(time.RFC3339, req.PickupEnd)
+	if err != nil {
+		return nil, fmt.Errorf("%w: pickup_end must be a valid RFC3339 timestamp", ErrValidation)
+	}
+	pickupEnd = pickupEnd.UTC()
+	if !pickupEnd.After(pickupStart) {
+		return nil, fmt.Errorf("%w: pickup_end must be after pickup_start", ErrValidation)
+	}
+
 	qty := req.Quantity
 	if qty < 1 {
 		qty = 1
@@ -176,6 +194,8 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 		ShopLogoURL:    req.ShopLogoURL,
 		Description:    req.Description,
 		Category:       req.Category,
+		PickupStart:    pickupStart,
+		PickupEnd:      pickupEnd,
 		StartTime:      startTime,
 		EndTime:        endTime,
 		CurrentHighest: req.StartBid,

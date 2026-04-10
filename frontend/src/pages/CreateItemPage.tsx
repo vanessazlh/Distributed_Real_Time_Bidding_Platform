@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { CATEGORIES } from '@/types'
-import { Card, Button, FormField, TextInput, TextArea, StatusBanner, EmptyState } from '@/components/ui'
+import { Card, Button, FormField, TextInput, TextArea, StatusBanner, EmptyState, ImageUpload } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
 
@@ -145,12 +145,12 @@ export default function CreateItemPage() {
             </div>
           </FormField>
 
-          <FormField label="Image URL (optional)">
-            <TextInput
-              type="url"
-              placeholder="https://example.com/item.png"
+          <FormField label="Item Image (optional)">
+            <ImageUpload
               value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
+              onChange={setImageUrl}
+              token={token}
+              label="Item Image"
             />
           </FormField>
 

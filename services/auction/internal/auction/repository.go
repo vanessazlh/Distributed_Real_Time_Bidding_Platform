@@ -104,6 +104,8 @@ type dynamoAuction struct {
 	ShopLogoURL    string `dynamodbav:"shop_logo_url"`
 	Description    string `dynamodbav:"description"`
 	Category       string `dynamodbav:"category,omitempty"`
+	PickupStart    string `dynamodbav:"pickup_start,omitempty"`
+	PickupEnd      string `dynamodbav:"pickup_end,omitempty"`
 	StartTime      string `dynamodbav:"start_time"`
 	EndTime        string `dynamodbav:"end_time"`
 	CurrentHighest int64  `dynamodbav:"current_highest"`
@@ -133,6 +135,8 @@ func toDynamo(a *Auction) dynamoAuction {
 		ShopLogoURL:    a.ShopLogoURL,
 		Description:    a.Description,
 		Category:       a.Category,
+		PickupStart:    formatOptionalTime(a.PickupStart),
+		PickupEnd:      formatOptionalTime(a.PickupEnd),
 		StartTime:      a.StartTime.Format(time.RFC3339),
 		EndTime:        a.EndTime.Format(time.RFC3339),
 		CurrentHighest: a.CurrentHighest,
@@ -147,6 +151,8 @@ func toDynamo(a *Auction) dynamoAuction {
 func fromDynamo(d dynamoAuction) *Auction {
 	startTime, _ := time.Parse(time.RFC3339, d.StartTime)
 	endTime, _ := time.Parse(time.RFC3339, d.EndTime)
+	pickupStart, _ := time.Parse(time.RFC3339, d.PickupStart)
+	pickupEnd, _ := time.Parse(time.RFC3339, d.PickupEnd)
 	return &Auction{
 		AuctionID:      d.AuctionID,
 		SellerID:       d.SellerID,
@@ -161,6 +167,8 @@ func fromDynamo(d dynamoAuction) *Auction {
 		ShopLogoURL:    d.ShopLogoURL,
 		Description:    d.Description,
 		Category:       d.Category,
+		PickupStart:    pickupStart,
+		PickupEnd:      pickupEnd,
 		StartTime:      startTime,
 		EndTime:        endTime,
 		CurrentHighest: d.CurrentHighest,
@@ -729,6 +737,8 @@ func auctionToRedisMap(a *Auction) map[string]interface{} {
 		"shop_logo_url":   a.ShopLogoURL,
 		"description":     a.Description,
 		"category":        a.Category,
+		"pickup_start":    formatOptionalTime(a.PickupStart),
+		"pickup_end":      formatOptionalTime(a.PickupEnd),
 		"start_time":      a.StartTime.Format(time.RFC3339),
 		"end_time":        a.EndTime.Format(time.RFC3339),
 		"current_highest": a.CurrentHighest,
@@ -742,6 +752,8 @@ func auctionToRedisMap(a *Auction) map[string]interface{} {
 func parseAuction(vals map[string]string) (*Auction, error) {
 	startTime, _ := time.Parse(time.RFC3339, vals["start_time"])
 	endTime, _ := time.Parse(time.RFC3339, vals["end_time"])
+	pickupStart, _ := time.Parse(time.RFC3339, vals["pickup_start"])
+	pickupEnd, _ := time.Parse(time.RFC3339, vals["pickup_end"])
 	currentHighest, _ := strconv.ParseInt(vals["current_highest"], 10, 64)
 	version, _ := strconv.ParseInt(vals["version"], 10, 64)
 	bidCount, _ := strconv.ParseInt(vals["bid_count"], 10, 64)
@@ -766,6 +778,8 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 		ShopLogoURL:    vals["shop_logo_url"],
 		Description:    vals["description"],
 		Category:       vals["category"],
+		PickupStart:    pickupStart,
+		PickupEnd:      pickupEnd,
 		StartTime:      startTime,
 		EndTime:        endTime,
 		CurrentHighest: currentHighest,
@@ -774,4 +788,11 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 		Status:         vals["status"],
 		Version:        version,
 	}, nil
+}
+
+func formatOptionalTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
 }

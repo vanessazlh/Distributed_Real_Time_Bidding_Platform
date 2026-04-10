@@ -132,13 +132,9 @@ Payment processing is currently simulated (90% success rate mock). Replace with 
 ### 12. Shop settlement
 The payment flow records `shop_id` but does not disburse funds to the shop owner. Settlement flow to be designed.
 
-### 7. Image storage — file upload + S3
-Currently `image_url` and `logo_url` are free-text URL fields. There is no file upload support — sellers must paste an external URL manually.
+### 7. ~~Image storage — file upload + S3~~ **Done**
 
-Plan:
-- Add a file upload endpoint (e.g. `POST /uploads`) that accepts a multipart image, stores it in S3 (or compatible object storage like MinIO for local dev), and returns a public URL
-- Replace the URL text inputs on `CreateItemPage` and `CreateShopPage` with a file picker that calls this endpoint
-- In production, serve images via CloudFront in front of S3 for low-latency delivery
+Added MinIO (S3-compatible) container to docker-compose. `POST /uploads` endpoint in shop service accepts multipart images (JPEG, PNG, WebP, GIF; max 5MB), stores with UUID key in MinIO, returns public URL. Frontend `ImageUpload` component provides file picker with drag-and-drop, preview, and URL-paste fallback. Used on CreateItemPage, CreateShopPage, and SellerShopPage edit form. Nginx proxies MinIO for serving uploaded images. Bucket auto-created on startup with public-read policy.
 
 
 ### 13. ~~Seller sees buyer-facing auction detail page~~ **Done**
@@ -147,25 +143,28 @@ In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`Auc
 
 **Fix:** Added `SellerAuctionDetailPage` at `/seller/auctions/:auctionId` — a dedicated seller drill-down page with: auction metadata header (image, title, status badge, quantity badge), stats row (current bid, retail price, total bids, max price, time left), full bid history table (bidder, amount, status, time) with real-time WebSocket updates, item details sidebar, winners card for closed auctions, and payment status card. Auction rows in `SellerShopPage` (both active and closed) now link to this page. Close Auction button available for OPEN auctions. Nginx route added for `GET /auctions/:id/bids` → bid service.
 
-### 14. Pickup time window on auctions + buyer filter
+### 14. ~~Pickup time window on auctions + buyer filter~~ **Done**
 
-Buyers need to know when they can physically collect their won item. A pickup window on the auction (not the item — items are reusable catalog entries, pickup is per-auction-event) solves this and enables time-based filtering on the homepage.
+Added optional `pickup_start` and `pickup_end` (RFC3339) fields to the Auction model, Redis hash, DynamoDB, and API. Backend validates RFC3339 format and that end > start. Frontend: `CreateAuctionPage` has paired datetime-local inputs in a "Pickup Window" field. `AuctionCard` shows "Pickup {date}, {start} – {end}" below the bid info when present. `AuctionDetailPage` shows a prominent pickup window card with clock icon. `SellerAuctionDetailPage` shows pickup window in the Item Details sidebar. `HomePage` has a second filter row (pill buttons): Any Time / Morning (before 12pm) / Afternoon (12–5pm) / Evening (after 5pm), client-side filtering on `pickup_start` hour. Auctions without a pickup window are hidden when a time filter is active.
 
-#### Backend — Auction Service
+### 15. Watchlist / favorites
+Allow buyers to save auctions to a watchlist. Persist in DynamoDB (user_id + auction_id). Show a heart/star toggle on AuctionCard and AuctionDetailPage. Dedicated "My Watchlist" page. Optionally notify when a watched auction is about to close.
 
-- Add `pickup_start` and `pickup_end` (RFC3339 strings) to the `Auction` model in Redis
-- Accept both fields in `POST /auctions` request body (optional; no pickup window = seller arranges separately)
-- Return both fields in `GET /auctions` and `GET /auctions/:id` responses
+### 16. Search
+Full-text search across auction titles, descriptions, and shop names. Options: DynamoDB Scan with `contains` filter (simple, poor scaling), or a lightweight search index (e.g. in-memory inverted index in the auction service, or ElasticSearch/MeiliSearch container for production). Search bar in the homepage header with live results.
 
-#### Frontend
+### 17. Recurring auctions
+Allow sellers to create auction templates that auto-generate auctions on a schedule (daily, weekly). Store templates in DynamoDB with cron-like schedule fields. A scheduler goroutine (similar to closer.go) creates new auctions from templates at the configured times. Useful for bakeries and restaurants with predictable daily surplus.
 
-- **`types.ts`** — add `pickup_start?: number` and `pickup_end?: number` (epoch ms) to the `Auction` type; add to `BackendAuction` interface and `toAuction()` transform in `api.ts`
-- **`CreateAuctionPage`** — add two `<input type="time">` fields for pickup start/end (date derived from auction end date); include in `api.auctions.create()` payload
-- **`AuctionCard`** — show pickup window as a small line below the countdown if present (e.g. "Pickup 5:00–6:00 pm")
-- **`AuctionDetailPage`** — display pickup window prominently in the item info section
-- **`HomePage`** — add a second filter row below the category tabs for pickup time slots: All / Morning (before 12pm) / Afternoon (12–5pm) / Evening (after 5pm). Client-side filter against `pickup_start`; no new API call needed.
+### 18. Analytics dashboard
+Seller-facing analytics page: revenue over time, average selling price vs retail price, bidder count trends, top-performing items. Aggregate data from completed auctions and payments. Chart library (e.g. Recharts) for visualizations. Could also include a platform-wide admin view.
 
-#### Open questions
-- Should pickup window be required when creating an auction, or optional?
-- Should auctions with no pickup window be hidden or shown at the bottom of filtered views?
+### 19. Minimum bid increment
+Add optional `min_increment` field (int64, cents) to Auction model. Lua bid validation script enforces `new_bid >= current_highest + min_increment`. Default to 1 cent if not set. Frontend shows the minimum next bid amount in BiddingPanel. Prevents 1-cent bid wars.
+
+### 20. Ratings & reviews
+After a completed auction + payment, buyers can rate the pickup experience (1–5 stars + optional text). Store in DynamoDB (reviewer_id, shop_id, auction_id, rating, comment, timestamp). Display average rating on ShopDetailPage and AuctionCard. Sellers can respond to reviews. One review per auction per buyer.
+
+### 21. Mobile responsive polish
+Audit all pages for small-screen breakpoints. Key areas: homepage grid (single column on mobile), auction detail layout (stack sidebar below main), navbar (hamburger menu), bidding panel (full-width sticky bottom), filter bar (horizontal scroll or collapsible). Tailwind responsive prefixes (`sm:`, `md:`) are already available.
 
