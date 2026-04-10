@@ -3,7 +3,11 @@ import type { Auction, AuctionBid, AuctionStatus, Category, User, UserBid, Item,
 // ── Error type ───────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly details?: Record<string, unknown>,
+  ) {
     super(message)
     this.name = 'ApiError'
   }
@@ -46,13 +50,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, options)
   if (!res.ok) {
     let message = `HTTP ${res.status}`
+    let details: Record<string, unknown> | undefined
     try {
       const body = await res.json() as Record<string, unknown>
       message = (body.error ?? body.message ?? message) as string
+      details = body
     } catch {
       message = await res.text().catch(() => message)
     }
-    throw new ApiError(res.status, friendlyError(message))
+    throw new ApiError(res.status, friendlyError(message), details)
   }
   return res.json() as Promise<T>
 }
@@ -151,11 +157,11 @@ export const api = {
       }),
 
     /** POST /users → User */
-    register: (username: string, email: string, password: string, role: 'buyer' | 'seller' = 'buyer') =>
+    register: (username: string, email: string, password: string, role: 'buyer' | 'seller' = 'buyer', confirmUpgrade = false) =>
       request<User>('/users', {
         method: 'POST',
         headers: jsonHeaders(),
-        body: JSON.stringify({ username, email, password, role }),
+        body: JSON.stringify({ username, email, password, role, confirm_upgrade: confirmUpgrade || undefined }),
       }),
   },
 

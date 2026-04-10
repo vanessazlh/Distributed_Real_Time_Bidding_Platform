@@ -32,7 +32,13 @@ func (h *Handler) Register(c *gin.Context) {
 
 	userID, err := h.svc.Register(c.Request.Context(), req)
 	if err != nil {
+		var mismatch *UsernameMismatchError
 		switch {
+		case errors.As(err, &mismatch):
+			c.JSON(http.StatusConflict, gin.H{
+				"error":             "username_mismatch",
+				"existing_username": mismatch.ExistingUsername,
+			})
 		case errors.Is(err, ErrEmailTaken):
 			c.JSON(http.StatusConflict, gin.H{"error": "email already registered"})
 		case errors.Is(err, ErrAlreadySeller):
