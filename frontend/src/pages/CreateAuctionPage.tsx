@@ -196,6 +196,32 @@ export default function CreateAuctionPage() {
               />
             </FormField>
 
+            <FormField label="Pickup Window">
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-text-secondary mb-1 block">Start</label>
+                  <TextInput
+                    type="datetime-local"
+                    required
+                    value={pickupStart}
+                    onChange={(e) => setPickupStart(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-text-secondary mb-1 block">End</label>
+                  <TextInput
+                    type="datetime-local"
+                    required
+                    value={pickupEnd}
+                    onChange={(e) => setPickupEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-sm text-text-secondary mt-1">
+                When can the winner collect the item?
+              </p>
+            </FormField>
+
             <FormField label="Max Price / Bid Ceiling ($, optional)">
               <TextInput
                 type="number"
@@ -233,32 +259,6 @@ export default function CreateAuctionPage() {
               />
               <p className="text-sm text-text-secondary mt-1">
                 Leave empty to start immediately. Set a future time to create a scheduled (PENDING) auction.
-              </p>
-            </FormField>
-
-            <FormField label="Pickup Window">
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-xs text-text-secondary mb-1 block">Start</label>
-                  <TextInput
-                    type="datetime-local"
-                    required
-                    value={pickupStart}
-                    onChange={(e) => setPickupStart(e.target.value)}
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs text-text-secondary mb-1 block">End</label>
-                  <TextInput
-                    type="datetime-local"
-                    required
-                    value={pickupEnd}
-                    onChange={(e) => setPickupEnd(e.target.value)}
-                  />
-                </div>
-              </div>
-              <p className="text-sm text-text-secondary mt-1">
-                When can the winner collect the item?
               </p>
             </FormField>
 

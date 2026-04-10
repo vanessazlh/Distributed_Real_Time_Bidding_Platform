@@ -147,3 +147,24 @@ In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`Auc
 
 Added optional `pickup_start` and `pickup_end` (RFC3339) fields to the Auction model, Redis hash, DynamoDB, and API. Backend validates RFC3339 format and that end > start. Frontend: `CreateAuctionPage` has paired datetime-local inputs in a "Pickup Window" field. `AuctionCard` shows "Pickup {date}, {start} – {end}" below the bid info when present. `AuctionDetailPage` shows a prominent pickup window card with clock icon. `SellerAuctionDetailPage` shows pickup window in the Item Details sidebar. `HomePage` has a second filter row (pill buttons): Any Time / Morning (before 12pm) / Afternoon (12–5pm) / Evening (after 5pm), client-side filtering on `pickup_start` hour. Auctions without a pickup window are hidden when a time filter is active.
 
+### 15. Watchlist / favorites
+Allow buyers to save auctions to a watchlist. Persist in DynamoDB (user_id + auction_id). Show a heart/star toggle on AuctionCard and AuctionDetailPage. Dedicated "My Watchlist" page. Optionally notify when a watched auction is about to close.
+
+### 16. Search
+Full-text search across auction titles, descriptions, and shop names. Options: DynamoDB Scan with `contains` filter (simple, poor scaling), or a lightweight search index (e.g. in-memory inverted index in the auction service, or ElasticSearch/MeiliSearch container for production). Search bar in the homepage header with live results.
+
+### 17. Recurring auctions
+Allow sellers to create auction templates that auto-generate auctions on a schedule (daily, weekly). Store templates in DynamoDB with cron-like schedule fields. A scheduler goroutine (similar to closer.go) creates new auctions from templates at the configured times. Useful for bakeries and restaurants with predictable daily surplus.
+
+### 18. Analytics dashboard
+Seller-facing analytics page: revenue over time, average selling price vs retail price, bidder count trends, top-performing items. Aggregate data from completed auctions and payments. Chart library (e.g. Recharts) for visualizations. Could also include a platform-wide admin view.
+
+### 19. Minimum bid increment
+Add optional `min_increment` field (int64, cents) to Auction model. Lua bid validation script enforces `new_bid >= current_highest + min_increment`. Default to 1 cent if not set. Frontend shows the minimum next bid amount in BiddingPanel. Prevents 1-cent bid wars.
+
+### 20. Ratings & reviews
+After a completed auction + payment, buyers can rate the pickup experience (1–5 stars + optional text). Store in DynamoDB (reviewer_id, shop_id, auction_id, rating, comment, timestamp). Display average rating on ShopDetailPage and AuctionCard. Sellers can respond to reviews. One review per auction per buyer.
+
+### 21. Mobile responsive polish
+Audit all pages for small-screen breakpoints. Key areas: homepage grid (single column on mobile), auction detail layout (stack sidebar below main), navbar (hamburger menu), bidding panel (full-width sticky bottom), filter bar (horizontal scroll or collapsible). Tailwind responsive prefixes (`sm:`, `md:`) are already available.
+
