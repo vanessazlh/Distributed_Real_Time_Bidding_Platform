@@ -169,6 +169,41 @@ func (h *Handler) ListSellerShops(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"shops": shops})
 }
 
+// UploadImage godoc
+// POST /uploads
+func (h *Handler) UploadImage(c *gin.Context) {
+	if callerRole(c) != "seller" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only sellers can upload images"})
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 6*1024*1024)
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+		return
+	}
+	defer file.Close()
+
+	resp, err := h.svc.UploadImage(c.Request.Context(), header.Header.Get("Content-Type"), file, header.Size)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrFileTooLarge):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, ErrInvalidFileType):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, ErrUploadNotConfigured):
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "image upload is not available"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "upload failed"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
 // ListItems godoc
 // GET /shops/:shop_id/items
 func (h *Handler) ListItems(c *gin.Context) {

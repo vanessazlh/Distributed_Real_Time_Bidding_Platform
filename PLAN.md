@@ -132,13 +132,9 @@ Payment processing is currently simulated (90% success rate mock). Replace with 
 ### 12. Shop settlement
 The payment flow records `shop_id` but does not disburse funds to the shop owner. Settlement flow to be designed.
 
-### 7. Image storage — file upload + S3
-Currently `image_url` and `logo_url` are free-text URL fields. There is no file upload support — sellers must paste an external URL manually.
+### 7. ~~Image storage — file upload + S3~~ **Done**
 
-Plan:
-- Add a file upload endpoint (e.g. `POST /uploads`) that accepts a multipart image, stores it in S3 (or compatible object storage like MinIO for local dev), and returns a public URL
-- Replace the URL text inputs on `CreateItemPage` and `CreateShopPage` with a file picker that calls this endpoint
-- In production, serve images via CloudFront in front of S3 for low-latency delivery
+Added MinIO (S3-compatible) container to docker-compose. `POST /uploads` endpoint in shop service accepts multipart images (JPEG, PNG, WebP, GIF; max 5MB), stores with UUID key in MinIO, returns public URL. Frontend `ImageUpload` component provides file picker with drag-and-drop, preview, and URL-paste fallback. Used on CreateItemPage, CreateShopPage, and SellerShopPage edit form. Nginx proxies MinIO for serving uploaded images. Bucket auto-created on startup with public-read policy.
 
 
 ### 13. ~~Seller sees buyer-facing auction detail page~~ **Done**

@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { Shop, Auction, Item } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Spinner, EmptyState, StatCard, FormField, TextInput, StatusBanner } from '@/components/ui'
+import { Card, Badge, Button, Spinner, EmptyState, StatCard, FormField, TextInput, StatusBanner, ImageUpload } from '@/components/ui'
 import { CountdownTimer } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
@@ -149,8 +149,13 @@ export default function SellerShopPage() {
             <FormField label="Location">
               <TextInput value={editLocation} onChange={(e) => setEditLocation(e.target.value)} required />
             </FormField>
-            <FormField label="Logo URL (optional)">
-              <TextInput type="url" value={editLogo} onChange={(e) => setEditLogo(e.target.value)} placeholder="https://example.com/logo.png" />
+            <FormField label="Shop Logo (optional)">
+              <ImageUpload
+                value={editLogo}
+                onChange={setEditLogo}
+                token={token}
+                label="Shop Logo"
+              />
             </FormField>
             <div className="flex gap-3">
               <Button variant="primary" disabled={editSaving || !editName || !editLocation} onClick={handleSaveShop}>

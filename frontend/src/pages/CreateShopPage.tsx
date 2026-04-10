@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
-import { Card, Button, FormField, TextInput, StatusBanner, EmptyState } from '@/components/ui'
+import { Card, Button, FormField, TextInput, StatusBanner, EmptyState, ImageUpload } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
 
@@ -84,12 +84,12 @@ export default function CreateShopPage() {
             />
           </FormField>
 
-          <FormField label="Logo URL (optional)">
-            <TextInput
-              type="url"
-              placeholder="https://example.com/logo.png"
+          <FormField label="Shop Logo (optional)">
+            <ImageUpload
               value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
+              onChange={setLogoUrl}
+              token={token}
+              label="Shop Logo"
             />
           </FormField>
 

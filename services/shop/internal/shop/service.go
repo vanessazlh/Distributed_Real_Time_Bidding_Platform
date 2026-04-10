@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/google/uuid"
 )
@@ -17,6 +18,20 @@ var ErrForbidden = errors.New("forbidden")
 // ErrInvalidInput is returned when request data fails business validation.
 var ErrInvalidInput = errors.New("invalid input")
 
+// ErrUploadNotConfigured is returned when S3 is not configured.
+var ErrUploadNotConfigured = errors.New("upload not configured")
+
+// ErrFileTooLarge is returned when the upload exceeds the size limit.
+var ErrFileTooLarge = errors.New("file exceeds 5MB limit")
+
+// ErrInvalidFileType is returned when the upload has a disallowed MIME type.
+var ErrInvalidFileType = errors.New("only JPEG, PNG, WebP, and GIF files are allowed")
+
+// Uploader handles file storage operations.
+type Uploader interface {
+	Upload(ctx context.Context, key string, contentType string, body io.Reader, size int64) error
+}
+
 // Repo is the interface the service depends on (enables unit-testing with mocks).
 type Repo interface {
 	SaveShop(ctx context.Context, s Shop) error
@@ -29,12 +44,14 @@ type Repo interface {
 
 // Service contains business logic for the shop domain.
 type Service struct {
-	repo Repo
+	repo      Repo
+	uploader  Uploader
+	publicURL string
 }
 
-// NewService creates a new Service.
-func NewService(repo Repo) *Service {
-	return &Service{repo: repo}
+// NewService creates a new Service. uploader may be nil if S3 is not configured.
+func NewService(repo Repo, uploader Uploader, publicURL string) *Service {
+	return &Service{repo: repo, uploader: uploader, publicURL: publicURL}
 }
 
 // CreateShop creates a new shop owned by ownerID.
@@ -144,4 +161,36 @@ func (s *Service) ListItems(ctx context.Context, shopID string) ([]Item, error) 
 		return nil, fmt.Errorf("list items: %w", err)
 	}
 	return items, nil
+}
+
+var allowedMIMETypes = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/webp": ".webp",
+	"image/gif":  ".gif",
+}
+
+// UploadImage validates and stores an image file, returning its public URL.
+func (s *Service) UploadImage(ctx context.Context, contentType string, body io.Reader, size int64) (*UploadResponse, error) {
+	if s.uploader == nil {
+		return nil, ErrUploadNotConfigured
+	}
+
+	const maxSize = 5 * 1024 * 1024
+	if size > maxSize {
+		return nil, ErrFileTooLarge
+	}
+
+	ext, ok := allowedMIMETypes[contentType]
+	if !ok {
+		return nil, ErrInvalidFileType
+	}
+
+	key := "images/" + uuid.NewString() + ext
+
+	if err := s.uploader.Upload(ctx, key, contentType, body, size); err != nil {
+		return nil, fmt.Errorf("upload file: %w", err)
+	}
+
+	return &UploadResponse{URL: s.publicURL + "/" + key}, nil
 }

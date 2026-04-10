@@ -288,6 +288,34 @@ export const api = {
       }),
   },
 
+  uploads: {
+    /** POST /uploads (multipart) → url string */
+    image: async (file: File, token: string): Promise<string> => {
+      const form = new FormData()
+      form.append('file', file)
+
+      const res = await fetch('/uploads', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      })
+
+      if (!res.ok) {
+        let message = `HTTP ${res.status}`
+        try {
+          const body = await res.json() as Record<string, unknown>
+          message = (body.error ?? body.message ?? message) as string
+        } catch {
+          message = await res.text().catch(() => message)
+        }
+        throw new ApiError(res.status, friendlyError(message))
+      }
+
+      const data = await res.json() as { url: string }
+      return data.url
+    },
+  },
+
   payments: {
     /** GET /users/:userId/payments → Payment[] */
     listByUser: (userId: string, token: string) =>
