@@ -44,9 +44,16 @@ export function formatPickupWindow(startMs: number, endMs: number): string {
   return `${dateStr}, ${startTime} – ${endTime}`
 }
 
-/** Get the hour of day from epoch ms (0–23) */
-export function getPickupHour(ms: number): number {
-  return new Date(ms).getHours()
+/** Check if a pickup window overlaps a time-of-day range (hours 0–23) */
+export function pickupOverlaps(startMs: number, endMs: number, rangeStart: number, rangeEnd: number): boolean {
+  const startHour = new Date(startMs).getHours()
+  const endDate = new Date(endMs)
+  // If end is exactly on the hour boundary (e.g. 17:00), treat as previous hour
+  const endHour = endDate.getMinutes() === 0 && endDate.getSeconds() === 0
+    ? endDate.getHours() - 1
+    : endDate.getHours()
+  // Overlap: start <= rangeEnd AND end >= rangeStart
+  return startHour <= rangeEnd && endHour >= rangeStart
 }
 
 /** Mask a username for privacy: "yuxin_w" → "yux***" */

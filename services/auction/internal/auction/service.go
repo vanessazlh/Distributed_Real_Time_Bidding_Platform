@@ -157,23 +157,21 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 
 	endTime := startTime.Add(time.Duration(req.Duration) * time.Minute)
 
-	// Parse optional pickup window
-	var pickupStart, pickupEnd time.Time
-	if req.PickupStart != "" {
-		parsed, err := time.Parse(time.RFC3339, req.PickupStart)
-		if err != nil {
-			return nil, fmt.Errorf("%w: pickup_start must be a valid RFC3339 timestamp", ErrValidation)
-		}
-		pickupStart = parsed.UTC()
+	// Parse required pickup window
+	if req.PickupStart == "" || req.PickupEnd == "" {
+		return nil, fmt.Errorf("%w: pickup_start and pickup_end are required", ErrValidation)
 	}
-	if req.PickupEnd != "" {
-		parsed, err := time.Parse(time.RFC3339, req.PickupEnd)
-		if err != nil {
-			return nil, fmt.Errorf("%w: pickup_end must be a valid RFC3339 timestamp", ErrValidation)
-		}
-		pickupEnd = parsed.UTC()
+	pickupStart, err := time.Parse(time.RFC3339, req.PickupStart)
+	if err != nil {
+		return nil, fmt.Errorf("%w: pickup_start must be a valid RFC3339 timestamp", ErrValidation)
 	}
-	if !pickupStart.IsZero() && !pickupEnd.IsZero() && !pickupEnd.After(pickupStart) {
+	pickupStart = pickupStart.UTC()
+	pickupEnd, err := time.Parse(time.RFC3339, req.PickupEnd)
+	if err != nil {
+		return nil, fmt.Errorf("%w: pickup_end must be a valid RFC3339 timestamp", ErrValidation)
+	}
+	pickupEnd = pickupEnd.UTC()
+	if !pickupEnd.After(pickupStart) {
 		return nil, fmt.Errorf("%w: pickup_end must be after pickup_start", ErrValidation)
 	}
 

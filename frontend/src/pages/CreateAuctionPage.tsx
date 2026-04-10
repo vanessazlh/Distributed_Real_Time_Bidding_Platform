@@ -98,12 +98,8 @@ export default function CreateAuctionPage() {
       if (scheduledStart) {
         payload.scheduled_start = new Date(scheduledStart).toISOString()
       }
-      if (pickupStart) {
-        payload.pickup_start = new Date(pickupStart).toISOString()
-      }
-      if (pickupEnd) {
-        payload.pickup_end = new Date(pickupEnd).toISOString()
-      }
+      payload.pickup_start = new Date(pickupStart).toISOString()
+      payload.pickup_end = new Date(pickupEnd).toISOString()
       await api.auctions.create(payload, token!)
       navigate(`/seller/shops/${shopId}/auctions`)
     } catch (err) {
@@ -238,12 +234,13 @@ export default function CreateAuctionPage() {
               </p>
             </FormField>
 
-            <FormField label="Pickup Window (optional)">
+            <FormField label="Pickup Window">
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="text-xs text-text-secondary mb-1 block">Start</label>
                   <TextInput
                     type="datetime-local"
+                    required
                     value={pickupStart}
                     onChange={(e) => setPickupStart(e.target.value)}
                   />
@@ -252,13 +249,14 @@ export default function CreateAuctionPage() {
                   <label className="text-xs text-text-secondary mb-1 block">End</label>
                   <TextInput
                     type="datetime-local"
+                    required
                     value={pickupEnd}
                     onChange={(e) => setPickupEnd(e.target.value)}
                   />
                 </div>
               </div>
               <p className="text-sm text-text-secondary mt-1">
-                When can the winner collect the item? Leave empty if arranging separately.
+                When can the winner collect the item?
               </p>
             </FormField>
 

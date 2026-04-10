@@ -106,8 +106,8 @@ interface BackendAuction {
   shop_logo_url:       string
   description:         string
   category?:           string
-  pickup_start?:       string   // RFC3339
-  pickup_end?:         string   // RFC3339
+  pickup_start:        string   // RFC3339
+  pickup_end:          string   // RFC3339
   end_time:            string   // RFC3339
   current_highest_bid: number
   bid_count:           number
@@ -115,8 +115,6 @@ interface BackendAuction {
 }
 
 function toAuction(b: BackendAuction): Auction {
-  const pickupStart = b.pickup_start ? new Date(b.pickup_start).getTime() : undefined
-  const pickupEnd   = b.pickup_end   ? new Date(b.pickup_end).getTime()   : undefined
   return {
     auction_id:          b.auction_id,
     item: {
@@ -135,8 +133,8 @@ function toAuction(b: BackendAuction): Auction {
     shop_logo_url:       b.shop_logo_url       ?? '',
     description:         b.description         ?? '',
     category:            (b.category as Category) || undefined,
-    pickup_start:        pickupStart && pickupStart > 0 ? pickupStart : undefined,
-    pickup_end:          pickupEnd && pickupEnd > 0     ? pickupEnd   : undefined,
+    pickup_start:        new Date(b.pickup_start).getTime(),
+    pickup_end:          new Date(b.pickup_end).getTime(),
   }
 }
 
@@ -172,7 +170,7 @@ export const api = {
       request<BackendAuction>(`/auctions/${id}`).then(toAuction),
 
     /** POST /auctions → Auction */
-    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; max_price?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string; pickup_start?: string; pickup_end?: string }, token: string) =>
+    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; max_price?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string; pickup_start: string; pickup_end: string }, token: string) =>
       request<BackendAuction>('/auctions', {
         method: 'POST',
         headers: jsonHeaders(token),
