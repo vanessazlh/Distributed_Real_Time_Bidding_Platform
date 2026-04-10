@@ -21,6 +21,8 @@ function friendlyError(raw: string): string {
   // Backend registration conflict messages
   if (raw === 'email already registered')
     return 'You already have an account. Try signing in instead.'
+  if (raw === 'incorrect password for existing account')
+    return 'You already have a buyer account with this email. Please enter your existing password to upgrade to seller.'
   if (raw === 'account is already a seller')
     return 'You already have an account with this email. Sign in and select Buyer — your seller account can also be used to browse and bid.'
 
