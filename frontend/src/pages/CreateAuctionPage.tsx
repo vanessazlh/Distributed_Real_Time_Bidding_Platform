@@ -98,8 +98,10 @@ export default function CreateAuctionPage() {
       if (scheduledStart) {
         payload.scheduled_start = new Date(scheduledStart).toISOString()
       }
-      payload.pickup_start = new Date(pickupStart).toISOString()
-      payload.pickup_end = new Date(pickupEnd).toISOString()
+      if (pickupStart && pickupEnd) {
+        payload.pickup_start = new Date(pickupStart).toISOString()
+        payload.pickup_end = new Date(pickupEnd).toISOString()
+      }
       await api.auctions.create(payload, token!)
       navigate(`/seller/shops/${shopId}/auctions`)
     } catch (err) {

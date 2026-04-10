@@ -44,8 +44,8 @@ export interface Auction {
   shop_logo_url: string
   description: string
   category?: Category
-  pickup_start: number   // Unix ms
-  pickup_end: number     // Unix ms
+  pickup_start?: number   // Unix ms
+  pickup_end?: number     // Unix ms
 }
 
 export interface User {
