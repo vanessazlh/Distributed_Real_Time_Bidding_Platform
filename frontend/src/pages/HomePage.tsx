@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { Auction } from '@/types'
 import { CATEGORIES } from '@/types'
 import { api } from '@/lib/api'
+import { getPickupHour } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
 import { AuctionCard } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
@@ -11,13 +12,17 @@ import { Spinner, EmptyState } from '@/components/ui'
 const TABS = ['All', ...CATEGORIES] as const
 type TabFilter = typeof TABS[number]
 
+const PICKUP_FILTERS = ['Any Time', 'Morning', 'Afternoon', 'Evening'] as const
+type PickupFilter = typeof PICKUP_FILTERS[number]
+
 export default function HomePage() {
   const { isSeller } = useAuth()
   const navigate = useNavigate()
   const [auctions, setAuctions] = useState<Auction[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
-  const [filter,   setFilter]   = useState<TabFilter>('All')
+  const [filter,       setFilter]       = useState<TabFilter>('All')
+  const [pickupFilter, setPickupFilter] = useState<PickupFilter>('Any Time')
 
   useEffect(() => {
     if (isSeller) { navigate('/seller/dashboard', { replace: true }); return }
@@ -27,9 +32,19 @@ export default function HomePage() {
       .finally(() => setLoading(false))
   }, [isSeller, navigate])
 
-  const visible = filter === 'All'
+  const byCategory = filter === 'All'
     ? auctions
     : auctions.filter((a) => a.category === filter)
+
+  const visible = pickupFilter === 'Any Time'
+    ? byCategory
+    : byCategory.filter((a) => {
+        if (!a.pickup_start) return false
+        const hour = getPickupHour(a.pickup_start)
+        if (pickupFilter === 'Morning')   return hour < 12
+        if (pickupFilter === 'Afternoon') return hour >= 12 && hour < 17
+        return hour >= 17 // Evening
+      })
 
   return (
     <PageContainer>
@@ -44,7 +59,7 @@ export default function HomePage() {
       </div>
 
       {/* Category tabs */}
-      <div className="flex justify-center gap-8 mb-8 border-b border-border">
+      <div className="flex justify-center gap-8 border-b border-border">
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -57,6 +72,24 @@ export default function HomePage() {
             ].join(' ')}
           >
             {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Pickup time filter */}
+      <div className="flex justify-center gap-3 mt-4 mb-8">
+        {PICKUP_FILTERS.map((pf) => (
+          <button
+            key={pf}
+            onClick={() => setPickupFilter(pf)}
+            className={[
+              'px-4 py-1.5 rounded-full text-sm font-medium transition-colors',
+              pickupFilter === pf
+                ? 'bg-brand text-white'
+                : 'bg-surface text-text-secondary hover:bg-surface-alt hover:text-text-primary',
+            ].join(' ')}
+          >
+            {pf}
           </button>
         ))}
       </div>

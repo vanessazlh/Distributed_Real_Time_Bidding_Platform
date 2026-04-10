@@ -147,25 +147,7 @@ In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`Auc
 
 **Fix:** Added `SellerAuctionDetailPage` at `/seller/auctions/:auctionId` — a dedicated seller drill-down page with: auction metadata header (image, title, status badge, quantity badge), stats row (current bid, retail price, total bids, max price, time left), full bid history table (bidder, amount, status, time) with real-time WebSocket updates, item details sidebar, winners card for closed auctions, and payment status card. Auction rows in `SellerShopPage` (both active and closed) now link to this page. Close Auction button available for OPEN auctions. Nginx route added for `GET /auctions/:id/bids` → bid service.
 
-### 14. Pickup time window on auctions + buyer filter
+### 14. ~~Pickup time window on auctions + buyer filter~~ **Done**
 
-Buyers need to know when they can physically collect their won item. A pickup window on the auction (not the item — items are reusable catalog entries, pickup is per-auction-event) solves this and enables time-based filtering on the homepage.
-
-#### Backend — Auction Service
-
-- Add `pickup_start` and `pickup_end` (RFC3339 strings) to the `Auction` model in Redis
-- Accept both fields in `POST /auctions` request body (optional; no pickup window = seller arranges separately)
-- Return both fields in `GET /auctions` and `GET /auctions/:id` responses
-
-#### Frontend
-
-- **`types.ts`** — add `pickup_start?: number` and `pickup_end?: number` (epoch ms) to the `Auction` type; add to `BackendAuction` interface and `toAuction()` transform in `api.ts`
-- **`CreateAuctionPage`** — add two `<input type="time">` fields for pickup start/end (date derived from auction end date); include in `api.auctions.create()` payload
-- **`AuctionCard`** — show pickup window as a small line below the countdown if present (e.g. "Pickup 5:00–6:00 pm")
-- **`AuctionDetailPage`** — display pickup window prominently in the item info section
-- **`HomePage`** — add a second filter row below the category tabs for pickup time slots: All / Morning (before 12pm) / Afternoon (12–5pm) / Evening (after 5pm). Client-side filter against `pickup_start`; no new API call needed.
-
-#### Open questions
-- Should pickup window be required when creating an auction, or optional?
-- Should auctions with no pickup window be hidden or shown at the bottom of filtered views?
+Added optional `pickup_start` and `pickup_end` (RFC3339) fields to the Auction model, Redis hash, DynamoDB, and API. Backend validates RFC3339 format and that end > start. Frontend: `CreateAuctionPage` has paired datetime-local inputs in a "Pickup Window" field. `AuctionCard` shows "Pickup {date}, {start} – {end}" below the bid info when present. `AuctionDetailPage` shows a prominent pickup window card with clock icon. `SellerAuctionDetailPage` shows pickup window in the Item Details sidebar. `HomePage` has a second filter row (pill buttons): Any Time / Morning (before 12pm) / Afternoon (12–5pm) / Evening (after 5pm), client-side filtering on `pickup_start` hour. Auctions without a pickup window are hidden when a time filter is active.
 

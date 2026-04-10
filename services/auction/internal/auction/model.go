@@ -17,6 +17,8 @@ type Auction struct {
 	ShopLogoURL    string    `json:"shop_logo_url"`
 	Description    string    `json:"description"`
 	Category       string    `json:"category,omitempty"`
+	PickupStart    time.Time `json:"pickup_start"`
+	PickupEnd      time.Time `json:"pickup_end"`
 	StartTime      time.Time `json:"start_time"`
 	EndTime        time.Time `json:"end_time"`
 	CurrentHighest int64     `json:"current_highest_bid"`
@@ -43,6 +45,8 @@ type CreateAuctionRequest struct {
 	Duration       int    `json:"duration_minutes" binding:"required,min=1"`
 	StartBid       int64  `json:"start_bid"`
 	ScheduledStart string `json:"scheduled_start"` // optional RFC3339; if set, auction starts as PENDING
+	PickupStart    string `json:"pickup_start"`    // optional RFC3339; pickup window start
+	PickupEnd      string `json:"pickup_end"`      // optional RFC3339; pickup window end
 }
 
 // PlaceBidRequest is the payload for POST /auctions/:id/bid.

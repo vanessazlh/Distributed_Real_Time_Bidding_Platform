@@ -24,6 +24,8 @@ export default function CreateAuctionPage() {
   const [maxPrice,      setMaxPrice]     = useState('')
   const [quantity,      setQuantity]     = useState('1')
   const [scheduledStart,setScheduledStart] = useState('')
+  const [pickupStart,   setPickupStart]   = useState('')
+  const [pickupEnd,     setPickupEnd]     = useState('')
   const [loading,       setLoading]      = useState(false)
   const [error,         setError]        = useState<string | null>(null)
   const [itemOpen,      setItemOpen]     = useState(false)
@@ -95,6 +97,12 @@ export default function CreateAuctionPage() {
       }
       if (scheduledStart) {
         payload.scheduled_start = new Date(scheduledStart).toISOString()
+      }
+      if (pickupStart) {
+        payload.pickup_start = new Date(pickupStart).toISOString()
+      }
+      if (pickupEnd) {
+        payload.pickup_end = new Date(pickupEnd).toISOString()
       }
       await api.auctions.create(payload, token!)
       navigate(`/seller/shops/${shopId}/auctions`)
@@ -227,6 +235,30 @@ export default function CreateAuctionPage() {
               />
               <p className="text-sm text-text-secondary mt-1">
                 Leave empty to start immediately. Set a future time to create a scheduled (PENDING) auction.
+              </p>
+            </FormField>
+
+            <FormField label="Pickup Window (optional)">
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-text-secondary mb-1 block">Start</label>
+                  <TextInput
+                    type="datetime-local"
+                    value={pickupStart}
+                    onChange={(e) => setPickupStart(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-text-secondary mb-1 block">End</label>
+                  <TextInput
+                    type="datetime-local"
+                    value={pickupEnd}
+                    onChange={(e) => setPickupEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-sm text-text-secondary mt-1">
+                When can the winner collect the item? Leave empty if arranging separately.
               </p>
             </FormField>
 

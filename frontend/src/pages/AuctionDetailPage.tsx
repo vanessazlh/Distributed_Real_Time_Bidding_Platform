@@ -8,6 +8,7 @@ import { Avatar, Button, Card, EmptyState, Spinner, StatusBanner } from '@/compo
 import { BidHistoryFeed, BiddingPanel } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
+import { formatPickupWindow } from '@/lib/utils'
 
 type BannerState = 'WINNING' | 'OUTBID' | 'WON' | 'CLOSED' | null
 
@@ -166,6 +167,21 @@ export default function AuctionDetailPage() {
                 {auction.item.title}
               </h1>
               <p className="text-text-secondary text-lg leading-relaxed">{auction.description}</p>
+
+              {auction.pickup_start && auction.pickup_end && (
+                <div className="mt-6 flex items-center gap-3 bg-brand/5 border border-brand/15 rounded-xl px-5 py-3">
+                  <svg className="w-5 h-5 text-brand shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">Pickup Window</p>
+                    <p className="text-sm text-text-secondary">
+                      {formatPickupWindow(auction.pickup_start, auction.pickup_end)}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 

@@ -7,7 +7,7 @@ SurpriseAuction is a real-time surplus auction platform where local stores list 
 ## Buyer Journey
 
 ### 1. Discovery
-A buyer lands on the homepage and sees a live feed of active auctions, filterable by category (Bakery, Sushi, and more). Each card shows the item photo, the shop it comes from, the current highest bid, and a live countdown to closing. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
+A buyer lands on the homepage and sees a live feed of active auctions, filterable by category (Bakery, Meals, Groceries, and more). A second row of pill-shaped buttons lets the buyer filter by **pickup time** — Any Time, Morning (before 12 pm), Afternoon (12–5 pm), or Evening (after 5 pm) — so they can find auctions that fit their schedule. Each card shows the item photo, the shop it comes from, the current highest bid, a live countdown to closing, and (if set) the pickup window. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
 
 ### 2. Account
 The buyer registers or logs in at `/login` — the single entry point for all users. A **Buyer / Seller toggle** at the top of the page determines the session role; buyers leave it on **Buyer**. Authentication is JWT-based; no session state is stored server-side. The platform uses a **single-account model**: one email = one account. A buyer can later upgrade to a seller (see Seller Journey, step 1) without creating a second account — they simply re-register with the same email and Seller selected.
@@ -16,6 +16,7 @@ The buyer registers or logs in at `/login` — the single entry point for all us
 The buyer clicks into an auction and sees:
 - A full item photo and description
 - Retail price and the originating shop (with a link to the shop profile)
+- If a pickup window is set, a prominent card with a clock icon showing the date and time range for collection
 - The current highest bid, updating in real time via WebSocket
 - A live bid history feed showing who bid what and when
 - A countdown timer to closing
@@ -83,7 +84,7 @@ The seller fills in a shop name and location at `/shops/new`. The shop is saved 
 From a shop page, the seller adds a surplus item via `/shops/:id/items/new`, providing a title, description, retail value, and optional image URL. Items are saved to DynamoDB under the shop.
 
 ### 5. Publish an Auction
-The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, optionally a max price (bid ceiling), a **quantity** (number of winners, default 1), and optionally schedule a future start time. On submission:
+The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, optionally a max price (bid ceiling), a **quantity** (number of winners, default 1), optionally schedule a future start time, and optionally set a **pickup window** (start and end datetime for when winners can collect the item). On submission:
 - Auction enrichment data (shop name, retail price, item image, description) is captured at creation time and stored in Redis
 - If no schedule time is set, the auction immediately goes live (**OPEN**) and is visible to all buyers
 - If a future start time is set, the auction is created as **PENDING** and automatically transitions to OPEN when the scheduled time arrives
@@ -99,7 +100,7 @@ Clicking an auction row opens the **Seller Auction Detail** page at `/seller/auc
 - **Header** — item image, title, status badge, quantity badge (for multi-winner auctions), and a "Close Auction" button for OPEN auctions
 - **Stats row** — current bid, retail price, total bids, max price (if set), and a live countdown timer
 - **Bid history table** — every bid placed, showing masked bidder ID, amount, status (Winning / Outbid / Won), and relative time. Updates in real time via WebSocket as new bids arrive.
-- **Item details sidebar** — description, category, quantity, and bid ceiling
+- **Item details sidebar** — description, category, quantity, bid ceiling, and pickup window (if set)
 - **Winners card** (closed auctions) — lists each winner with their winning bid amount
 - **Payment status card** (closed auctions) — shows payment status (Pending / Completed / Failed / Refunded) and amount
 
