@@ -55,6 +55,30 @@ func (m *mockAuctionRepo) List(_ context.Context, status string) ([]*auction.Auc
 	return result, nil
 }
 
+func (m *mockAuctionRepo) ListByShop(_ context.Context, shopID string) ([]*auction.Auction, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []*auction.Auction
+	for _, a := range m.auctions {
+		if a.ShopID == shopID {
+			cpy := *a
+			result = append(result, &cpy)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockAuctionRepo) Open(_ context.Context, auctionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.auctions[auctionID]
+	if !ok {
+		return errors.New("auction not found")
+	}
+	a.Status = "OPEN"
+	return nil
+}
+
 func (m *mockAuctionRepo) Close(_ context.Context, auctionID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -64,6 +88,56 @@ func (m *mockAuctionRepo) Close(_ context.Context, auctionID string) error {
 	}
 	a.Status = "CLOSED"
 	return nil
+}
+
+func (m *mockAuctionRepo) AtomicCloseAndReadWinner(_ context.Context, auctionID string) (string, int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.auctions[auctionID]
+	if !ok {
+		return "", 0, errors.New("auction not found")
+	}
+	if a.Status != "OPEN" {
+		return "", 0, errors.New("auction is not open")
+	}
+	a.Status = "CLOSED"
+	return a.HighestBidder, a.CurrentHighest, nil
+}
+
+func (m *mockAuctionRepo) AtomicCloseAndReadWinners(_ context.Context, auctionID string) (map[string]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.auctions[auctionID]
+	if !ok {
+		return nil, errors.New("auction not found")
+	}
+	if a.Status != "OPEN" {
+		return nil, errors.New("auction is not open")
+	}
+	a.Status = "CLOSED"
+	if a.HighestBidder != "" {
+		return map[string]int64{a.HighestBidder: a.CurrentHighest}, nil
+	}
+	return map[string]int64{}, nil
+}
+
+func (m *mockAuctionRepo) RollbackClose(_ context.Context, auctionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if a, ok := m.auctions[auctionID]; ok && a.Status == "CLOSED" {
+		a.Status = "OPEN"
+	}
+	return nil
+}
+
+func (m *mockAuctionRepo) PersistClosedState(_ context.Context, _ string) error { return nil }
+func (m *mockAuctionRepo) CleanupRedis(_ context.Context, _ string) error       { return nil }
+func (m *mockAuctionRepo) GetDynamoWinners(_ context.Context, _ string) (string, int64, error) {
+	return "", 0, errors.New("not configured")
+}
+
+func (m *mockAuctionRepo) GetDynamoAllWinners(_ context.Context, _ string) (map[string]int64, error) {
+	return nil, errors.New("not configured")
 }
 
 // --- tests ---

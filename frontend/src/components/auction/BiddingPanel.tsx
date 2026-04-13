@@ -5,7 +5,7 @@ import { formatCurrency } from '@/lib/utils'
 import { CountdownTimer } from './CountdownTimer'
 import { PriceDisplay } from './PriceDisplay'
 
-type BidBannerState = 'WINNING' | 'OUTBID' | null
+type BidBannerState = 'WINNING' | 'OUTBID' | 'WON' | 'CLOSED' | null
 
 interface BiddingPanelProps {
   auction: Auction
@@ -14,6 +14,7 @@ interface BiddingPanelProps {
   flash: boolean
   banner: BidBannerState
   isClosed: boolean
+  isPending?: boolean
   user: User | null
   bidInput: string
   onBidInputChange: (value: string) => void
@@ -28,6 +29,7 @@ export function BiddingPanel({
   flash,
   banner,
   isClosed,
+  isPending = false,
   user,
   bidInput,
   onBidInputChange,
@@ -39,6 +41,11 @@ export function BiddingPanel({
   return (
     <Card padding="p-8">
       {/* Status banner */}
+      {isPending && (
+        <div className="mb-6">
+          <StatusBanner type="info" message="This auction hasn't started yet." detail="Bidding will open at the scheduled time." />
+        </div>
+      )}
       {banner === 'OUTBID' && (
         <div className="mb-6">
           <StatusBanner
@@ -53,10 +60,32 @@ export function BiddingPanel({
           <StatusBanner type="winning" message="You're currently winning!" detail="Keep an eye on the timer." />
         </div>
       )}
+      {banner === 'WON' && (
+        <div className="mb-6">
+          <StatusBanner type="success" message="You won this auction!" detail={`Final price: ${formatCurrency(highestBid)}`} />
+        </div>
+      )}
+      {banner === 'CLOSED' && (
+        <div className="mb-6">
+          <StatusBanner type="error" message="This auction has ended." detail="Better luck next time!" />
+        </div>
+      )}
+
+      {/* Quantity badge */}
+      {auction.quantity > 1 && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="inline-flex items-center gap-1 bg-brand/10 text-brand text-sm font-semibold px-3 py-1 rounded-full">
+            {auction.quantity} winners
+          </span>
+          <span className="text-text-secondary text-sm">
+            Top {auction.quantity} bids win
+          </span>
+        </div>
+      )}
 
       {/* Current bid */}
       <p className="text-text-secondary text-sm font-medium uppercase tracking-wide mb-1">
-        Current Highest Bid
+        {auction.quantity > 1 ? 'Minimum Bid to Win' : 'Current Highest Bid'}
       </p>
       <div className="mb-6">
         <PriceDisplay
@@ -93,7 +122,7 @@ export function BiddingPanel({
 
         {user ? (
           <Button variant="action" size="lg" disabled={isClosed} type="submit" fullWidth>
-            {isClosed ? 'Auction Closed' : 'Place Bid'}
+            {isPending ? 'Starting Soon' : isClosed ? 'Auction Closed' : 'Place Bid'}
           </Button>
         ) : (
           <Button variant="dark" size="lg" fullWidth type="button" onClick={onSignIn}>

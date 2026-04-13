@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { Item, Shop } from '@/types'
@@ -19,10 +19,25 @@ export default function CreateAuctionPage() {
   const [shop,        setShop]        = useState<Shop | null>(null)
   const [loadingItems,setLoadingItems]= useState(true)
   const [itemId,      setItemId]      = useState('')
-  const [duration,    setDuration]    = useState('5')
-  const [startBid,    setStartBid]    = useState('')
-  const [loading,     setLoading]     = useState(false)
-  const [error,       setError]       = useState<string | null>(null)
+  const [duration,      setDuration]      = useState('5')
+  const [startBid,      setStartBid]     = useState('')
+  const [maxPrice,      setMaxPrice]     = useState('')
+  const [quantity,      setQuantity]     = useState('1')
+  const [scheduledStart,setScheduledStart] = useState('')
+  const [pickupStart,   setPickupStart]   = useState('')
+  const [pickupEnd,     setPickupEnd]     = useState('')
+  const [loading,       setLoading]      = useState(false)
+  const [error,         setError]        = useState<string | null>(null)
+  const [itemOpen,      setItemOpen]     = useState(false)
+  const itemRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (itemRef.current && !itemRef.current.contains(e.target as Node)) setItemOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   useEffect(() => {
     if (!shopId) { setLoadingItems(false); return }
@@ -65,22 +80,30 @@ export default function CreateAuctionPage() {
     setError(null)
     setLoading(true)
     try {
-      const auction = await api.auctions.create(
-        {
-          item_id:          selectedItem.item_id,
-          item_title:       selectedItem.title,
-          shop_id:          shopId,
-          shop_name:        shop?.name        ?? '',
-          retail_price:     selectedItem.retail_value,
-          image_url:        selectedItem.image_url  ?? '',
-          shop_logo_url:    shop?.logo_url    ?? '',
-          description:      selectedItem.description ?? '',
-          duration_minutes: parseInt(duration, 10),
-          start_bid:        Math.round(parseFloat(startBid) * 100),
-        },
-        token!,
-      )
-      navigate(`/auction/${auction.auction_id}`)
+      const payload: Parameters<typeof api.auctions.create>[0] = {
+        item_id:          selectedItem.item_id,
+        item_title:       selectedItem.title,
+        shop_id:          shopId,
+        shop_name:        shop?.name             ?? '',
+        retail_price:     selectedItem.retail_value,
+        image_url:        selectedItem.image_url ?? '',
+        shop_logo_url:    shop?.logo_url         ?? '',
+        description:      selectedItem.description ?? '',
+        category:         selectedItem.category  ?? undefined,
+        duration_minutes: parseInt(duration, 10),
+        start_bid:        Math.round(parseFloat(startBid) * 100),
+        max_price:        maxPrice ? Math.round(parseFloat(maxPrice) * 100) : undefined,
+        quantity:          parseInt(quantity, 10) > 1 ? parseInt(quantity, 10) : undefined,
+      }
+      if (scheduledStart) {
+        payload.scheduled_start = new Date(scheduledStart).toISOString()
+      }
+      if (pickupStart && pickupEnd) {
+        payload.pickup_start = new Date(pickupStart).toISOString()
+        payload.pickup_end = new Date(pickupEnd).toISOString()
+      }
+      await api.auctions.create(payload, token!)
+      navigate(`/seller/shops/${shopId}/auctions`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
@@ -91,15 +114,15 @@ export default function CreateAuctionPage() {
   return (
     <PageContainer narrow>
       <Link
-        to={`/shop/${shopId}`}
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        to="/seller/dashboard"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
-        <ChevronLeftIcon /> Back to Shop
+        <ChevronLeftIcon /> Back to Dashboard
       </Link>
 
       <Card padding="p-8">
         <h1 className="font-display text-3xl text-text-primary mb-2">Publish Auction</h1>
-        <p className="text-text-secondary text-sm mb-8">
+        <p className="text-text-secondary text-base mb-8">
           Choose an item and set the auction duration and starting bid.
         </p>
 
@@ -112,28 +135,41 @@ export default function CreateAuctionPage() {
         {loadingItems ? (
           <Spinner className="py-10" />
         ) : items.length === 0 ? (
-          <div className="text-center py-8">
+          <div className="text-center py-8 w-full">
             <p className="text-text-secondary mb-4">No items in your shop yet.</p>
-            <Button onClick={() => navigate(`/shops/${shopId}/items/new`)}>
-              Add an Item First
-            </Button>
+            <div className="flex justify-center">
+              <Button onClick={() => navigate(`/shops/${shopId}/items/new`)}>
+                Add an Item First
+              </Button>
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <FormField label="Select Item">
-              <select
-                required
-                value={itemId}
-                onChange={(e) => setItemId(e.target.value)}
-                className="w-full bg-surface-alt border-2 border-border rounded-lg py-3 px-4 font-sans text-text-primary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
-              >
-                <option value="">— choose an item —</option>
-                {items.map((item) => (
-                  <option key={item.item_id} value={item.item_id}>
-                    {item.title} (retail {formatCurrency(item.retail_value)})
-                  </option>
-                ))}
-              </select>
+              <div ref={itemRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setItemOpen((o) => !o)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 font-sans text-base transition-all bg-white ${itemOpen ? 'border-brand ring-2 ring-brand/20' : 'border-border hover:border-brand/50'} ${itemId ? 'text-text-primary' : 'text-text-secondary'}`}
+                >
+                  <span>{selectedItem ? `${selectedItem.title} (retail ${formatCurrency(selectedItem.retail_value)})` : '— choose an item —'}</span>
+                  <svg className={`w-4 h-4 text-text-secondary shrink-0 transition-transform ${itemOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                {itemOpen && (
+                  <ul className="absolute z-50 mt-1 w-full bg-white border border-border rounded-xl shadow-lg overflow-hidden">
+                    {items.map((item) => (
+                      <li
+                        key={item.item_id}
+                        onMouseDown={() => { setItemId(item.item_id); setItemOpen(false) }}
+                        className={`px-4 py-2.5 text-base cursor-pointer transition-colors ${itemId === item.item_id ? 'bg-brand/10 text-brand font-medium' : 'text-text-primary hover:bg-brand/5'}`}
+                      >
+                        <span className="font-medium">{item.title}</span>
+                        <span className="text-text-secondary text-sm ml-2">retail {formatCurrency(item.retail_value)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </FormField>
 
             <FormField label="Duration (minutes)">
@@ -158,6 +194,72 @@ export default function CreateAuctionPage() {
                 value={startBid}
                 onChange={(e) => setStartBid(e.target.value)}
               />
+            </FormField>
+
+            <FormField label="Pickup Window">
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-text-secondary mb-1 block">Start</label>
+                  <TextInput
+                    type="datetime-local"
+                    required
+                    value={pickupStart}
+                    onChange={(e) => setPickupStart(e.target.value)}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-text-secondary mb-1 block">End</label>
+                  <TextInput
+                    type="datetime-local"
+                    required
+                    value={pickupEnd}
+                    onChange={(e) => setPickupEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-sm text-text-secondary mt-1">
+                When can the winner collect the item?
+              </p>
+            </FormField>
+
+            <FormField label="Max Price / Bid Ceiling ($, optional)">
+              <TextInput
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="Leave empty for no limit"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+              />
+              <p className="text-sm text-text-secondary mt-1">
+                Bids above this amount will be rejected. Leave empty for no ceiling.
+              </p>
+            </FormField>
+
+            <FormField label="Winners / Quantity (optional)">
+              <TextInput
+                type="number"
+                min="1"
+                max="100"
+                placeholder="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+              <p className="text-sm text-text-secondary mt-1">
+                How many buyers can win. Leave at 1 for a standard single-winner auction.
+              </p>
+            </FormField>
+
+            <FormField label="Schedule Start (optional)">
+              <TextInput
+                type="datetime-local"
+                value={scheduledStart}
+                onChange={(e) => setScheduledStart(e.target.value)}
+                placeholder=""
+              />
+              <p className="text-sm text-text-secondary mt-1">
+                Leave empty to start immediately. Set a future time to create a scheduled (PENDING) auction.
+              </p>
             </FormField>
 
             <Button

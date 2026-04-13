@@ -24,17 +24,34 @@ func callerID(c *gin.Context) string {
 	return id
 }
 
+// callerRole extracts the authenticated user role set by the JWT middleware.
+func callerRole(c *gin.Context) string {
+	v, _ := c.Get("role")
+	role, _ := v.(string)
+	return role
+}
+
 // CreateAuction godoc
 // POST /auctions
 func (h *Handler) CreateAuction(c *gin.Context) {
+	if callerRole(c) != "seller" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only sellers can create auctions"})
+		return
+	}
+
 	var req CreateAuctionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	auction, err := h.svc.CreateAuction(c.Request.Context(), req)
+	sellerID := callerID(c)
+	auction, err := h.svc.CreateAuction(c.Request.Context(), req, sellerID)
 	if err != nil {
+		if errors.Is(err, ErrValidation) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
@@ -75,6 +92,20 @@ func (h *Handler) ListAuctions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"auctions": auctions})
 }
 
+// ListShopAuctions godoc
+// GET /shops/:shop_id/auctions
+func (h *Handler) ListShopAuctions(c *gin.Context) {
+	shopID := c.Param("shop_id")
+
+	auctions, err := h.svc.ListAuctionsByShop(c.Request.Context(), shopID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"auctions": auctions})
+}
+
 // PlaceBid godoc
 // POST /auctions/:id/bid
 func (h *Handler) PlaceBid(c *gin.Context) {
@@ -96,6 +127,10 @@ func (h *Handler) PlaceBid(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "auction is not open"})
 		case errors.Is(err, ErrBidTooLow):
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bid must be higher than current highest"})
+		case errors.Is(err, ErrBidExceedsMax):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bid exceeds the maximum price for this auction"})
+		case errors.Is(err, ErrSelfBid):
+			c.JSON(http.StatusForbidden, gin.H{"error": "sellers cannot bid on their own auction"})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		}
@@ -109,8 +144,20 @@ func (h *Handler) PlaceBid(c *gin.Context) {
 // POST /auctions/:id/close
 func (h *Handler) CloseAuction(c *gin.Context) {
 	auctionID := c.Param("id")
+	userID := callerID(c)
 
-	err := h.svc.CloseAuction(c.Request.Context(), auctionID)
+	// Ownership check: only the seller who owns the shop can close the auction
+	auction, err := h.svc.GetAuction(c.Request.Context(), auctionID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "auction not found"})
+		return
+	}
+	if auction.SellerID != "" && auction.SellerID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "you do not own this auction"})
+		return
+	}
+
+	err = h.svc.CloseAuction(c.Request.Context(), auctionID)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNotFound):

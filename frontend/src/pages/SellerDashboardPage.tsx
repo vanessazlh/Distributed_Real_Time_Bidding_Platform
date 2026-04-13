@@ -1,23 +1,36 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import type { Shop } from '@/types'
+import type { Shop, Auction } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
-import { Card, Button, Spinner, EmptyState } from '@/components/ui'
+import { Card, Button, Spinner, EmptyState, StatCard } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
+import { ArrowRightIcon } from '@/components/icons'
 
 export default function SellerDashboardPage() {
   const { user, token, isSeller } = useAuth()
   const navigate = useNavigate()
 
   const [shops,   setShops]   = useState<Shop[]>([])
+  const [shopAuctions, setShopAuctions] = useState<Record<string, Auction[]>>({})
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
 
   useEffect(() => {
     if (!user || !token) return
     api.shops.listByOwner(user.user_id, token)
-      .then(setShops)
+      .then(async (shops) => {
+        setShops(shops)
+        const auctionMap: Record<string, Auction[]> = {}
+        await Promise.all(
+          shops.map((shop) =>
+            api.auctions.listByShop(shop.shop_id, token)
+              .then((auctions) => { auctionMap[shop.shop_id] = auctions })
+              .catch(() => { auctionMap[shop.shop_id] = [] })
+          )
+        )
+        setShopAuctions(auctionMap)
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load shops'))
       .finally(() => setLoading(false))
   }, [user, token])
@@ -33,12 +46,18 @@ export default function SellerDashboardPage() {
     )
   }
 
+  // Aggregate stats across all shops
+  const allAuctions = Object.values(shopAuctions).flat()
+  const totalOpen   = allAuctions.filter((a) => a.status === 'OPEN').length
+  const totalClosed = allAuctions.filter((a) => a.status === 'CLOSED').length
+  const totalBids   = allAuctions.reduce((sum, a) => sum + a.bid_count, 0)
+
   return (
     <PageContainer>
       {/* Header */}
-      <div className="py-10 flex items-end justify-between border-b border-border mb-10">
+      <div className="pb-8 flex items-end justify-between border-b border-border mb-10">
         <div>
-          <p className="text-text-secondary text-sm mb-1">Seller dashboard</p>
+          <p className="text-text-secondary text-base mb-1">Seller dashboard</p>
           <h1 className="font-display text-4xl text-text-primary">
             Welcome back, {user.username}
           </h1>
@@ -65,45 +84,53 @@ export default function SellerDashboardPage() {
 
       {!loading && !error && shops.length > 0 && (
         <>
+          {/* Stats overview */}
+          <div className="flex gap-4 mb-10">
+            <StatCard label="Shops" value={shops.length} />
+            <StatCard label="Active Auctions" value={totalOpen} />
+            <StatCard label="Closed Auctions" value={totalClosed} />
+            <StatCard label="Total Bids" value={totalBids} />
+          </div>
+
           <h2 className="font-sans font-semibold text-xl text-text-primary mb-6">
             Your Shops
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {shops.map((shop) => (
-              <Card key={shop.shop_id} padding="p-6" className="flex flex-col gap-4">
-                <div>
-                  <h3 className="font-sans font-semibold text-lg text-text-primary">
-                    {shop.name}
-                  </h3>
-                  <p className="text-text-secondary text-sm mt-0.5">{shop.location}</p>
-                </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {shops.map((shop) => {
+              const auctions = shopAuctions[shop.shop_id] ?? []
+              const openCount = auctions.filter((a) => a.status === 'OPEN').length
 
-                <div className="flex flex-col gap-2 mt-auto">
-                  <Link
-                    to={`/shop/${shop.shop_id}`}
-                    className="text-brand text-sm font-medium hover:underline"
-                  >
-                    View public page →
-                  </Link>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => navigate(`/shops/${shop.shop_id}/items/new`)}
-                    >
-                      + Add Item
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => navigate(`/auctions/new?shopId=${shop.shop_id}`)}
-                    >
-                      + Publish Auction
-                    </Button>
+              return (
+                <Card key={shop.shop_id} padding="p-8" className="flex flex-col gap-5">
+                  {/* Shop header */}
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="font-sans font-semibold text-xl text-text-primary">
+                        {shop.name}
+                      </h3>
+                      <p className="text-text-secondary text-base mt-1">{shop.location}</p>
+                    </div>
+                    <span className="text-text-secondary text-base">
+                      {openCount} active
+                    </span>
                   </div>
-                </div>
-              </Card>
-            ))}
+
+                  {/* Quick stats */}
+                  <div className="flex gap-6 text-sm text-text-secondary">
+                    <span>{auctions.length} auction{auctions.length !== 1 ? 's' : ''}</span>
+                    <span>{auctions.reduce((s, a) => s + a.bid_count, 0)} total bids</span>
+                  </div>
+
+                  {/* Manage link */}
+                  <Link
+                    to={`/seller/shops/${shop.shop_id}/items`}
+                    className="mt-auto inline-flex items-center gap-2 font-sans font-semibold text-brand hover:text-brand-dark transition-colors text-base"
+                  >
+                    Manage <ArrowRightIcon />
+                  </Link>
+                </Card>
+              )
+            })}
           </div>
         </>
       )}

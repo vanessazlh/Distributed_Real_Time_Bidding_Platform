@@ -55,6 +55,38 @@ func (h *Handler) CreateShop(c *gin.Context) {
 	c.JSON(http.StatusCreated, shop)
 }
 
+// UpdateShop godoc
+// PUT /shops/:shop_id
+func (h *Handler) UpdateShop(c *gin.Context) {
+	if callerRole(c) != "seller" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only sellers can update shops"})
+		return
+	}
+
+	shopID := c.Param("shop_id")
+
+	var req UpdateShopRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	shop, err := h.svc.UpdateShop(c.Request.Context(), shopID, req, callerID(c))
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "shop not found"})
+		case errors.Is(err, ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the shop owner can update this shop"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, shop)
+}
+
 // GetShop godoc
 // GET /shops/:shop_id
 func (h *Handler) GetShop(c *gin.Context) {
@@ -135,6 +167,41 @@ func (h *Handler) ListSellerShops(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"shops": shops})
+}
+
+// UploadImage godoc
+// POST /uploads
+func (h *Handler) UploadImage(c *gin.Context) {
+	if callerRole(c) != "seller" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only sellers can upload images"})
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 6*1024*1024)
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+		return
+	}
+	defer file.Close()
+
+	resp, err := h.svc.UploadImage(c.Request.Context(), header.Header.Get("Content-Type"), file, header.Size)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrFileTooLarge):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, ErrInvalidFileType):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, ErrUploadNotConfigured):
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "image upload is not available"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "upload failed"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // ListItems godoc

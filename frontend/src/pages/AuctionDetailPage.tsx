@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import type { Auction, BidHistoryEntry, BidPlacedEvent } from '@/types'
+import type { Auction, BidHistoryEntry, BidPlacedEvent, AuctionClosedEvent } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { useAuctionWebSocket } from '@/hooks/useAuctionWebSocket'
@@ -8,8 +8,9 @@ import { Avatar, Button, Card, EmptyState, Spinner, StatusBanner } from '@/compo
 import { BidHistoryFeed, BiddingPanel } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
+import { formatPickupWindow } from '@/lib/utils'
 
-type BannerState = 'WINNING' | 'OUTBID' | null
+type BannerState = 'WINNING' | 'OUTBID' | 'WON' | 'CLOSED' | null
 
 export default function AuctionDetailPage() {
   const { id }          = useParams<{ id: string }>()
@@ -55,12 +56,30 @@ export default function AuctionDetailPage() {
   }, [])
 
   // Real-time updates via WebSocket
-  const handleWsMessage = useCallback((event: BidPlacedEvent) => {
+  const handleBidPlaced = useCallback((event: BidPlacedEvent) => {
     applyNewBid(event.amount, event.user_id)
-    setBanner((cur) => (cur === 'WINNING' ? 'OUTBID' : cur))
-  }, [applyNewBid])
+    if (user && event.previous_bidder === user.user_id && event.user_id !== user.user_id) {
+      // Someone else outbid us
+      setBanner('OUTBID')
+    } else if (user && event.user_id === user.user_id) {
+      // We placed the winning bid (including outbidding ourselves)
+      setBanner('WINNING')
+    }
+  }, [applyNewBid, user])
 
-  useAuctionWebSocket(id ?? '', handleWsMessage)
+  const handleAuctionClosed = useCallback((event: AuctionClosedEvent) => {
+    setAuction((prev) => prev ? { ...prev, status: 'CLOSED' } : prev)
+    if (user && event.winner_id === user.user_id) {
+      setBanner('WON')
+    } else if (user && banner !== null) {
+      setBanner('CLOSED')
+    }
+  }, [user, banner])
+
+  useAuctionWebSocket(id ?? '', {
+    onBidPlaced: handleBidPlaced,
+    onAuctionClosed: handleAuctionClosed,
+  })
 
   if (loading) {
     return (
@@ -81,7 +100,8 @@ export default function AuctionDetailPage() {
     )
   }
 
-  const isClosed = auction.end_time <= Date.now() || auction.status === 'CLOSED'
+  const isPending = auction.status === 'PENDING'
+  const isClosed = auction.status === 'CLOSED' || (!isPending && auction.end_time <= Date.now())
 
   const handlePlaceBid = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -92,13 +112,15 @@ export default function AuctionDetailPage() {
       return
     }
     try {
-      const result = await api.auctions.placeBid(
+      await api.auctions.placeBid(
         auction.auction_id,
         user?.user_id ?? '',
         cents,
         token ?? '',
       )
-      applyNewBid(result.new_highest_bid, user?.username ?? 'you')
+      // Don't update state here — the WebSocket bid_placed event will fire
+      // for all connected clients (including us) and is the single source of truth.
+      // Updating here too would double-count bid_count and flash the price twice.
       setBanner('WINNING')
       setBidInput('')
     } catch (err) {
@@ -111,7 +133,7 @@ export default function AuctionDetailPage() {
       {/* Back */}
       <Link
         to="/"
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
         <ChevronLeftIcon /> All Auctions
       </Link>
@@ -145,6 +167,21 @@ export default function AuctionDetailPage() {
                 {auction.item.title}
               </h1>
               <p className="text-text-secondary text-lg leading-relaxed">{auction.description}</p>
+
+              {auction.pickup_start && auction.pickup_end && (
+                <div className="mt-6 flex items-center gap-3 bg-brand/5 border border-brand/15 rounded-xl px-5 py-3">
+                  <svg className="w-5 h-5 text-brand shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">Pickup Window</p>
+                    <p className="text-sm text-text-secondary">
+                      {formatPickupWindow(auction.pickup_start, auction.pickup_end)}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -161,6 +198,7 @@ export default function AuctionDetailPage() {
               flash={flash}
               banner={banner}
               isClosed={isClosed}
+              isPending={isPending}
               user={user}
               bidInput={bidInput}
               onBidInputChange={setBidInput}

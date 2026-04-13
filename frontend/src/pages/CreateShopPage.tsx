@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
-import { Card, Button, FormField, TextInput, StatusBanner, EmptyState } from '@/components/ui'
+import { Card, Button, FormField, TextInput, StatusBanner, EmptyState, ImageUpload } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
 
@@ -33,8 +33,8 @@ export default function CreateShopPage() {
     setError(null)
     setLoading(true)
     try {
-      const shop = await api.shops.create({ name, location, logo_url: logoUrl || undefined }, token!)
-      navigate(`/shop/${shop.shop_id}`)
+      await api.shops.create({ name, location, logo_url: logoUrl || undefined }, token!)
+      navigate('/seller/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
@@ -45,15 +45,15 @@ export default function CreateShopPage() {
   return (
     <PageContainer narrow>
       <Link
-        to="/"
-        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-sm font-medium transition-colors mb-8"
+        to="/seller/dashboard"
+        className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
-        <ChevronLeftIcon /> All Auctions
+        <ChevronLeftIcon /> Back to Dashboard
       </Link>
 
       <Card padding="p-8">
         <h1 className="font-display text-3xl text-text-primary mb-2">Register Your Shop</h1>
-        <p className="text-text-secondary text-sm mb-8">
+        <p className="text-text-secondary text-base mb-8">
           Create a shop to start listing surplus food for auction.
         </p>
 
@@ -84,12 +84,12 @@ export default function CreateShopPage() {
             />
           </FormField>
 
-          <FormField label="Logo URL (optional)">
-            <TextInput
-              type="url"
-              placeholder="https://example.com/logo.png"
+          <FormField label="Shop Logo (optional)">
+            <ImageUpload
               value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
+              onChange={setLogoUrl}
+              token={token}
+              label="Shop Logo"
             />
           </FormField>
 

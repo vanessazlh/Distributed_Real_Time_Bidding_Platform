@@ -32,16 +32,26 @@ func (h *Handler) Register(c *gin.Context) {
 
 	userID, err := h.svc.Register(c.Request.Context(), req)
 	if err != nil {
+		var mismatch *UsernameMismatchError
 		switch {
+		case errors.As(err, &mismatch):
+			c.JSON(http.StatusConflict, gin.H{
+				"error":             "username_mismatch",
+				"existing_username": mismatch.ExistingUsername,
+			})
 		case errors.Is(err, ErrEmailTaken):
 			c.JSON(http.StatusConflict, gin.H{"error": "email already registered"})
+		case errors.Is(err, ErrAlreadySeller):
+			c.JSON(http.StatusConflict, gin.H{"error": "account is already a seller"})
+		case errors.Is(err, ErrInvalidCredentials):
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "incorrect password for existing account"})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		}
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"user_id": userID})
+	c.JSON(http.StatusCreated, gin.H{"user_id": userID, "role": req.Role})
 }
 
 // Login godoc
@@ -65,6 +75,35 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
+// UpdateProfile godoc
+// PUT /users/:user_id
+func (h *Handler) UpdateProfile(c *gin.Context) {
+	userID := c.Param("user_id")
+	callerID, _ := c.Get("user_id")
+	if userID != callerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "cannot update another user's profile"})
+		return
+	}
+
+	var req UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.UpdateProfile(c.Request.Context(), userID, req); err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 // GetProfile godoc

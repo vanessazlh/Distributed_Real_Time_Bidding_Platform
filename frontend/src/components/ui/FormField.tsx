@@ -4,11 +4,12 @@ import type { InputHTMLAttributes, TextareaHTMLAttributes, ReactNode } from 'rea
 
 interface FormFieldProps {
   label?: string
+  hint?: string
   error?: string
   children: ReactNode
 }
 
-export function FormField({ label, error, children }: FormFieldProps) {
+export function FormField({ label, hint, error, children }: FormFieldProps) {
   return (
     <div>
       {label && (
@@ -17,6 +18,7 @@ export function FormField({ label, error, children }: FormFieldProps) {
         </label>
       )}
       {children}
+      {hint  && <p className="text-xs text-text-secondary mt-1">{hint}</p>}
       {error && <p className="text-xs text-critical mt-1">{error}</p>}
     </div>
   )

@@ -17,6 +17,7 @@ type Item struct {
 	Description string `dynamodbav:"description" json:"description"`
 	RetailValue int64  `dynamodbav:"retail_value" json:"retail_value"`
 	ImageURL    string `dynamodbav:"image_url,omitempty" json:"image_url,omitempty"`
+	Category    string `dynamodbav:"category,omitempty" json:"category,omitempty"`
 }
 
 // CreateShopRequest is the payload for POST /shops.
@@ -26,10 +27,23 @@ type CreateShopRequest struct {
 	LogoURL  string `json:"logo_url"`
 }
 
+// UpdateShopRequest is the payload for PUT /shops/:shop_id.
+type UpdateShopRequest struct {
+	Name     string `json:"name"`
+	Location string `json:"location"`
+	LogoURL  string `json:"logo_url"`
+}
+
 // CreateItemRequest is the payload for POST /shops/:shop_id/items.
 type CreateItemRequest struct {
 	Title       string `json:"title" binding:"required,min=1"`
 	Description string `json:"description"`
 	RetailValue int64  `json:"retail_value"`
 	ImageURL    string `json:"image_url"`
+	Category    string `json:"category"`
+}
+
+// UploadResponse is returned by the upload endpoint.
+type UploadResponse struct {
+	URL string `json:"url"`
 }

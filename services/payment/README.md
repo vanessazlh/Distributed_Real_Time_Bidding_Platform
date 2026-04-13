@@ -2,7 +2,9 @@
 
 Handles post-auction payments for the Real-Time Surplus Auction Platform.
 
-When an auction closes, the auction service publishes an `auction_closed` event. This service picks it up, charges the winner, and records the result.
+When an auction closes, the auction service publishes an `auction_closed` event. This service picks it up, charges the winner(s), and records the result.
+
+For **quantity auctions** (multiple winners), one payment is created per winner from the `winners` map in the event. Per-winner idempotency ensures partial-failure retries don't duplicate payments.
 
 ---
 
@@ -11,17 +13,18 @@ When an auction closes, the auction service publishes an `auction_closed` event.
 ```
 auction_closed (Redis Pub/Sub)
         ↓
-  create Payment (pending)
+  for each winner:
+    create Payment (pending)
         ↓
-  simulate charge
+    simulate charge
         ↓
-  completed ──────────────→ payment_processed
-  failed    ──→ [refund] ──→ payment_failed / refund_processed
+    completed ──────────────→ payment_processed
+    failed    ──→ [refund] ──→ payment_failed / refund_processed
 ```
 
 Payments are stored in DynamoDB. Status transitions: `pending → processing → completed / failed → refunded`.
 
-If `winner_id` is empty (no bids placed), payment is skipped.
+If no winners exist (no bids placed), payment is skipped.
 
 ---
 

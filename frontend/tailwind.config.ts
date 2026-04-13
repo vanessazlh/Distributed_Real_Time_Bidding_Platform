@@ -28,6 +28,7 @@ export default {
       animation: {
         'flash-bid':  'flashBid 1s ease-out',
         'slide-down': 'slideDown 0.3s ease-out forwards',
+        'slide-up':   'slideUp 0.3s ease-out forwards',
       },
       keyframes: {
         flashBid: {
@@ -36,6 +37,10 @@ export default {
         },
         slideDown: {
           '0%':   { opacity: '0', transform: 'translateY(-10px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        slideUp: {
+          '0%':   { opacity: '0', transform: 'translateY(10px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
       },

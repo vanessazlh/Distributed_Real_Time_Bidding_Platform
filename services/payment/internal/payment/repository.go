@@ -63,7 +63,7 @@ func (r *Repository) GetByID(ctx context.Context, paymentID string) (*Payment, e
 	return &p, nil
 }
 
-// GetByAuctionID retrieves the payment for a given auction (via GSI).
+// GetByAuctionID retrieves the first payment for a given auction (via GSI).
 func (r *Repository) GetByAuctionID(ctx context.Context, auctionID string) (*Payment, error) {
 	out, err := r.db.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(tableName),
@@ -86,6 +86,31 @@ func (r *Repository) GetByAuctionID(ctx context.Context, auctionID string) (*Pay
 		return nil, fmt.Errorf("unmarshal payment: %w", err)
 	}
 	return &p, nil
+}
+
+// GetAllByAuctionID retrieves all payments for a given auction (via GSI).
+// Returns a set of user IDs that already have a payment for this auction.
+func (r *Repository) GetAllByAuctionID(ctx context.Context, auctionID string) (map[string]bool, error) {
+	out, err := r.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(tableName),
+		IndexName:              aws.String("auction-index"),
+		KeyConditionExpression: aws.String("auction_id = :aid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":aid": &types.AttributeValueMemberS{Value: auctionID},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query payments by auction: %w", err)
+	}
+	existing := make(map[string]bool, len(out.Items))
+	for _, item := range out.Items {
+		var p Payment
+		if err := attributevalue.UnmarshalMap(item, &p); err != nil {
+			continue
+		}
+		existing[p.UserID] = true
+	}
+	return existing, nil
 }
 
 // GetByUserID retrieves all payments for a given user (via GSI).

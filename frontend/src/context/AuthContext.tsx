@@ -3,11 +3,12 @@ import type { ReactNode } from 'react'
 import type { User } from '@/types'
 
 interface AuthContextValue {
-  user:     User | null
-  token:    string | null
-  isSeller: boolean
-  login:    (user: User, token: string) => void
-  logout:   () => void
+  user:       User | null
+  token:      string | null
+  isSeller:   boolean
+  login:      (user: User, token: string) => void
+  logout:     () => void
+  updateUser: (patch: Partial<User>) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -39,10 +40,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('auth_token')
   }
 
+  const updateUser = (patch: Partial<User>) => {
+    if (!user) return
+    const updated = { ...user, ...patch }
+    setUser(updated)
+    localStorage.setItem('auth_user', JSON.stringify(updated))
+  }
+
   const isSeller = user?.role === 'seller'
 
   return (
-    <AuthContext.Provider value={{ user, token, isSeller, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isSeller, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   )
