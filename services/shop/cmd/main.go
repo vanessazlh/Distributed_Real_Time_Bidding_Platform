@@ -77,18 +77,24 @@ func main() {
 }
 
 func newDynamoClient() *dynamodb.Client {
-	endpoint := envOr("DYNAMODB_ENDPOINT", "http://localhost:8000")
+	endpoint := os.Getenv("DYNAMODB_ENDPOINT")
 	region := envOr("AWS_REGION", "us-east-1")
 
-	cfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(region),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("local", "local", "")),
-		config.WithEndpointResolverWithOptions(
-			aws.EndpointResolverWithOptionsFunc(func(service, reg string, _ ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{URL: endpoint}, nil
-			}),
-		),
-	)
+	opts := []func(*config.LoadOptions) error{config.WithRegion(region)}
+	if endpoint != "" {
+		// Local dev: custom endpoint (DynamoDB Local) + static credentials
+		opts = append(opts,
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("local", "local", "")),
+			config.WithEndpointResolverWithOptions(
+				aws.EndpointResolverWithOptionsFunc(func(service, reg string, _ ...interface{}) (aws.Endpoint, error) {
+					return aws.Endpoint{URL: endpoint}, nil
+				}),
+			),
+		)
+	}
+	// Production (ECS): endpoint unset → SDK uses ECS task role credentials + real DynamoDB
+
+	cfg, err := config.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
 		log.Fatalf("load aws config: %v", err)
 	}
@@ -96,28 +102,34 @@ func newDynamoClient() *dynamodb.Client {
 }
 
 func newS3Client() *s3.Client {
-	endpoint := os.Getenv("S3_ENDPOINT")
-	if endpoint == "" {
-		return nil
-	}
 	region := envOr("AWS_REGION", "us-east-1")
+	endpoint := os.Getenv("S3_ENDPOINT")
 
-	cfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(region),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			envOr("S3_ACCESS_KEY", "minioadmin"),
-			envOr("S3_SECRET_KEY", "minioadmin"),
-			"",
-		)),
-	)
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 	if err != nil {
 		log.Fatalf("load s3 config: %v", err)
 	}
 
-	return s3.NewFromConfig(cfg, func(o *s3.Options) {
-		o.BaseEndpoint = aws.String(endpoint)
-		o.UsePathStyle = true
-	})
+	if endpoint != "" {
+		// Local dev: MinIO with custom endpoint + static credentials
+		cfg, err = config.LoadDefaultConfig(context.Background(),
+			config.WithRegion(region),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				envOr("S3_ACCESS_KEY", "minioadmin"),
+				envOr("S3_SECRET_KEY", "minioadmin"),
+				"",
+			)),
+		)
+		if err != nil {
+			log.Fatalf("load s3 config: %v", err)
+		}
+		return s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+			o.UsePathStyle = true
+		})
+	}
+	// Production (ECS): endpoint unset → real S3 with ECS task role credentials
+	return s3.NewFromConfig(cfg)
 }
 
 func envOr(key, fallback string) string {

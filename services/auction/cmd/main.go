@@ -86,26 +86,32 @@ func newRedisClient() *redis.Client {
 
 func newDynamoClient() *dynamodb.Client {
 	endpoint := os.Getenv("DYNAMODB_ENDPOINT")
-	if endpoint == "" {
-		log.Println("DYNAMODB_ENDPOINT not set — DynamoDB backing store disabled")
-		return nil
-	}
-
 	region := envOr("AWS_REGION", "us-east-1")
-	cfg, err := awsCfg.LoadDefaultConfig(context.Background(),
-		awsCfg.WithRegion(region),
-		awsCfg.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("local", "local", "")),
-		awsCfg.WithEndpointResolverWithOptions(
-			aws.EndpointResolverWithOptionsFunc(func(service, reg string, _ ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{URL: endpoint}, nil
-			}),
-		),
-	)
+
+	opts := []func(*awsCfg.LoadOptions) error{awsCfg.WithRegion(region)}
+	if endpoint != "" {
+		// Local dev: custom endpoint (DynamoDB Local) + static credentials
+		opts = append(opts,
+			awsCfg.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("local", "local", "")),
+			awsCfg.WithEndpointResolverWithOptions(
+				aws.EndpointResolverWithOptionsFunc(func(service, reg string, _ ...interface{}) (aws.Endpoint, error) {
+					return aws.Endpoint{URL: endpoint}, nil
+				}),
+			),
+		)
+	}
+	// Production (ECS): endpoint unset → SDK uses ECS task role credentials + real DynamoDB
+
+	cfg, err := awsCfg.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
 		log.Printf("WARN: failed to load AWS config — DynamoDB disabled: %v", err)
 		return nil
 	}
-	log.Printf("connected to DynamoDB at %s", endpoint)
+	if endpoint != "" {
+		log.Printf("auction: DynamoDB at %s (local)", endpoint)
+	} else {
+		log.Printf("auction: DynamoDB via AWS SDK defaults (production)")
+	}
 	return dynamodb.NewFromConfig(cfg)
 }
 
