@@ -1,8 +1,12 @@
 package notification
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 // mockClient implements Client for testing without real network connections.
@@ -10,6 +14,7 @@ type mockClient struct {
 	mu       sync.Mutex
 	messages [][]byte
 	ctype    string
+	sendErr  error
 }
 
 func newMockClient(ctype string) *mockClient {
@@ -17,6 +22,9 @@ func newMockClient(ctype string) *mockClient {
 }
 
 func (c *mockClient) Send(msg []byte) error {
+	if c.sendErr != nil {
+		return c.sendErr
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	cp := make([]byte, len(msg))
@@ -35,14 +43,67 @@ func (c *mockClient) received() [][]byte {
 	return out
 }
 
-// newTestHub builds a Hub without a Redis client (safe for unit tests that
-// never call SubscribeRedis).
+type mockStore struct {
+	mu          sync.Mutex
+	added       map[string][]StoredNotification
+	unread      map[string]int
+	addErr      error
+	unreadErr   error
+}
+
+func newMockStore() *mockStore {
+	return &mockStore{
+		added:  make(map[string][]StoredNotification),
+		unread: make(map[string]int),
+	}
+}
+
+func (s *mockStore) Add(_ context.Context, userID string, n StoredNotification) error {
+	if s.addErr != nil {
+		return s.addErr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.added[userID] = append(s.added[userID], n)
+	s.unread[userID]++
+	return nil
+}
+
+func (s *mockStore) UnreadCount(_ context.Context, userID string) (int, error) {
+	if s.unreadErr != nil {
+		return 0, s.unreadErr
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.unread[userID], nil
+}
+
+// newTestHub builds a Hub without Redis stream consumption. This keeps tests
+// focused on in-memory fanout and notification shaping.
 func newTestHub() *Hub {
 	return &Hub{
 		clients:     make(map[string]map[Client]struct{}),
 		userClients: make(map[string]map[Client]struct{}),
 		latency:     newLatencyTracker(),
 	}
+}
+
+func newTestHubWithStore(store notificationStore) *Hub {
+	return &Hub{
+		clients:     make(map[string]map[Client]struct{}),
+		userClients: make(map[string]map[Client]struct{}),
+		latency:     newLatencyTracker(),
+		store:       store,
+	}
+}
+
+func decodeUserMessage(t *testing.T, msg []byte) UserNotificationMessage {
+	t.Helper()
+	var got UserNotificationMessage
+	if err := json.Unmarshal(msg, &got); err != nil {
+		t.Fatalf("unmarshal user notification: %v", err)
+	}
+	return got
 }
 
 func TestSingleConnectionReceivesBroadcast(t *testing.T) {
@@ -186,5 +247,154 @@ func TestMetricsCountConnections(t *testing.T) {
 	hub.Broadcast("auc-001", []byte("ping"), "")
 	if m2 := hub.GetMetrics(); m2.TotalBroadcasts != 1 {
 		t.Errorf("expected TotalBroadcasts=1, got %d", m2.TotalBroadcasts)
+	}
+}
+
+func TestSendToUser_AllConnectionsReceiveMessage(t *testing.T) {
+	hub := newTestHub()
+	a := newMockClient("websocket")
+	b := newMockClient("websocket")
+	hub.RegisterUser("user-1", a)
+	hub.RegisterUser("user-1", b)
+
+	hub.SendToUser("user-1", []byte(`{"type":"notification"}`))
+
+	if len(a.received()) != 1 || len(b.received()) != 1 {
+		t.Fatal("expected both user-level clients to receive notification")
+	}
+}
+
+func TestHandleBidEvent_PushesOutbidNotificationToPreviousBidder(t *testing.T) {
+	store := newMockStore()
+	hub := newTestHubWithStore(store)
+	userClient := newMockClient("websocket")
+	hub.RegisterUser("usr-001", userClient)
+
+	payload := `{
+		"auction_id": "auc-001",
+		"user_id":    "usr-002",
+		"amount":     2000,
+		"previous_bidder": "usr-001",
+		"item_title": "Pastry Box",
+		"timestamp":  "2026-03-28T10:00:01Z",
+		"bid_accepted_at": "2026-03-28T10:00:01Z"
+	}`
+	hub.handleBidEvent(payload)
+
+	if len(store.added["usr-001"]) != 1 {
+		t.Fatalf("expected one stored notification, got %d", len(store.added["usr-001"]))
+	}
+	n := store.added["usr-001"][0]
+	if n.Type != "outbid" || n.AuctionID != "auc-001" {
+		t.Fatalf("unexpected stored notification: %+v", n)
+	}
+	msgs := userClient.received()
+	if len(msgs) != 1 {
+		t.Fatalf("expected one pushed user notification, got %d", len(msgs))
+	}
+	got := decodeUserMessage(t, msgs[0])
+	if got.Notification.Type != "outbid" || got.UnreadCount != 1 {
+		t.Fatalf("unexpected pushed notification: %+v", got)
+	}
+}
+
+func TestHandleBidEvent_DoesNotPushWhenPreviousBidderIsCurrentBidder(t *testing.T) {
+	store := newMockStore()
+	hub := newTestHubWithStore(store)
+
+	payload := `{
+		"auction_id": "auc-001",
+		"user_id":    "usr-001",
+		"amount":     2000,
+		"previous_bidder": "usr-001",
+		"item_title": "Pastry Box",
+		"timestamp":  "2026-03-28T10:00:01Z",
+		"bid_accepted_at": "2026-03-28T10:00:01Z"
+	}`
+	hub.handleBidEvent(payload)
+
+	if len(store.added["usr-001"]) != 0 {
+		t.Fatalf("expected no stored notification, got %d", len(store.added["usr-001"]))
+	}
+}
+
+func TestHandleAuctionClosedEvent_PushesToAllWinners(t *testing.T) {
+	store := newMockStore()
+	hub := newTestHubWithStore(store)
+	user1 := newMockClient("websocket")
+	user2 := newMockClient("websocket")
+	hub.RegisterUser("usr-001", user1)
+	hub.RegisterUser("usr-002", user2)
+
+	payload := `{
+		"auction_id": "auc-001",
+		"item_title": "Pastry Box",
+		"shop_id":    "shop-001",
+		"winners": {
+			"usr-001": 5000,
+			"usr-002": 4500
+		},
+		"closed_at":  "2026-03-28T10:05:00Z"
+	}`
+	hub.handleAuctionClosedEvent(payload)
+
+	if len(store.added["usr-001"]) != 1 || len(store.added["usr-002"]) != 1 {
+		t.Fatalf("expected winner notifications for both users, got %+v", store.added)
+	}
+	if got := decodeUserMessage(t, user1.received()[0]); got.Notification.Type != "won" {
+		t.Fatalf("expected won notification for user1, got %+v", got)
+	}
+	if got := decodeUserMessage(t, user2.received()[0]); got.Notification.Type != "won" {
+		t.Fatalf("expected won notification for user2, got %+v", got)
+	}
+}
+
+func TestStoreAndPushNotification_StoreFailurePreventsPush(t *testing.T) {
+	store := newMockStore()
+	store.addErr = errors.New("boom")
+	hub := newTestHubWithStore(store)
+	userClient := newMockClient("websocket")
+	hub.RegisterUser("usr-001", userClient)
+
+	hub.storeAndPushNotification("usr-001", StoredNotification{ID: "n1", Type: "outbid"})
+
+	if len(userClient.received()) != 0 {
+		t.Fatal("expected no pushed notification when store add fails")
+	}
+}
+
+func TestStoreAndPushNotification_UnreadCountFailureFallsBackToZero(t *testing.T) {
+	store := newMockStore()
+	store.unreadErr = errors.New("boom")
+	hub := newTestHubWithStore(store)
+	userClient := newMockClient("websocket")
+	hub.RegisterUser("usr-001", userClient)
+
+	hub.storeAndPushNotification("usr-001", StoredNotification{ID: "n1", Type: "outbid"})
+
+	msgs := userClient.received()
+	if len(msgs) != 1 {
+		t.Fatalf("expected pushed notification, got %d", len(msgs))
+	}
+	got := decodeUserMessage(t, msgs[0])
+	if got.UnreadCount != 0 {
+		t.Fatalf("expected unread fallback 0, got %d", got.UnreadCount)
+	}
+}
+
+func TestBroadcast_RecordsLatency(t *testing.T) {
+	hub := newTestHub()
+	client := newMockClient("websocket")
+	hub.Register("auc-001", client)
+	acceptedAt := time.Now().UTC().Add(-10 * time.Millisecond).Format(time.RFC3339Nano)
+
+	hub.Broadcast("auc-001", []byte("ping"), acceptedAt)
+
+	m := hub.GetMetrics()
+	if m.TotalBroadcasts != 1 {
+		t.Fatalf("expected one broadcast, got %d", m.TotalBroadcasts)
+	}
+	if m.AvgDeliveryLatency <= 0 {
+		t.Fatalf("expected positive avg latency, got %f", m.AvgDeliveryLatency)
 	}
 }
