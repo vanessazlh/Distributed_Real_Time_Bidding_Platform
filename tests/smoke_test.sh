@@ -118,6 +118,9 @@ assert_field "B5 add item" "$ITEM" "item_id"
 # ── B6: Seller creates auction ─────────────────────────────────────────────────
 echo ""
 echo "── B6: Create auction"
+# pickup window: 1 day from now → 2 days from now (required fields added in service validation)
+PICKUP_START=$(python3 -c "from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc)+timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+PICKUP_END=$(python3 -c "from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc)+timedelta(days=2)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
 AUCTION=$(curl -sf -X POST "$AUCTION_SVC/auctions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SELLER_TOKEN" \
@@ -131,7 +134,9 @@ AUCTION=$(curl -sf -X POST "$AUCTION_SVC/auctions" \
     \"image_url\": \"https://example.com/img.jpg\",
     \"shop_logo_url\": \"https://example.com/logo.jpg\",
     \"duration_minutes\": 1,
-    \"start_bid\": 200
+    \"start_bid\": 200,
+    \"pickup_start\": \"$PICKUP_START\",
+    \"pickup_end\": \"$PICKUP_END\"
   }")
 AUCTION_ID=$(json_field "$AUCTION" "auction_id")
 assert_field "B6 create auction" "$AUCTION" "auction_id"
@@ -175,6 +180,41 @@ else
   fail "B9 low bid rejected" "expected 4xx, got HTTP $LOW_BID"
 fi
 
+# ── Auth negative cases ───────────────────────────────────────────────────────
+echo ""
+echo "── N1: Buyer cannot create auction (expect 403)"
+N1=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$AUCTION_SVC/auctions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $BUYER_TOKEN" \
+  -d "{\"item_id\":\"$ITEM_ID\",\"shop_id\":\"$SHOP_ID\",\"duration_minutes\":1,\"pickup_start\":\"$PICKUP_START\",\"pickup_end\":\"$PICKUP_END\"}")
+if [ "$N1" = "403" ]; then
+  ok "N1 buyer cannot create auction (HTTP 403)"
+else
+  fail "N1 buyer cannot create auction" "expected 403, got HTTP $N1"
+fi
+
+echo ""
+echo "── N2: Seller cannot self-bid (expect 403)"
+N2=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$AUCTION_SVC/auctions/$AUCTION_ID/bid" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $SELLER_TOKEN" \
+  -d '{"amount": 600}')
+if [ "$N2" = "403" ]; then
+  ok "N2 seller cannot self-bid (HTTP 403)"
+else
+  fail "N2 seller cannot self-bid" "expected 403, got HTTP $N2"
+fi
+
+echo ""
+echo "── N3: Buyer cannot close auction (expect 403)"
+N3=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$AUCTION_SVC/auctions/$AUCTION_ID/close" \
+  -H "Authorization: Bearer $BUYER_TOKEN")
+if [ "$N3" = "403" ]; then
+  ok "N3 buyer cannot close auction (HTTP 403)"
+else
+  fail "N3 buyer cannot close auction" "expected 403, got HTTP $N3"
+fi
+
 # ── B10: Bid history for auction ──────────────────────────────────────────────
 echo ""
 echo "── B10: Bid history (auction)"
@@ -211,18 +251,25 @@ else
   fail "B12 close auction" "got: $CLOSE"
 fi
 
-# Wait for payment consumer to process
-echo "  ⏳ Waiting 2s for payment consumer..."
-sleep 2
+# Wait for payment consumer to process (poll until status settles, up to 10s)
+echo "  ⏳ Waiting for payment consumer (up to 10s)..."
+PAYMENT=""
+PAYMENT_STATUS=""
+for i in $(seq 1 10); do
+  PAYMENT=$(curl -s "$PAYMENT_SVC/auctions/$AUCTION_ID/payment" \
+    -H "Authorization: Bearer $BUYER_TOKEN") || PAYMENT=""
+  PAYMENT_STATUS=$(json_field "$PAYMENT" "status")
+  if [ "$PAYMENT_STATUS" = "completed" ] || [ "$PAYMENT_STATUS" = "failed" ]; then
+    break
+  fi
+  sleep 1
+done
 
 # B13: Payment triggered
-PAYMENT=$(curl -sf "$PAYMENT_SVC/auctions/$AUCTION_ID/payment" \
-  -H "Authorization: Bearer $BUYER_TOKEN")
-PAYMENT_STATUS=$(json_field "$PAYMENT" "status")
 if [ "$PAYMENT_STATUS" = "completed" ] || [ "$PAYMENT_STATUS" = "failed" ]; then
   ok "B13 payment triggered (status=$PAYMENT_STATUS)"
 else
-  fail "B13 payment triggered" "expected completed/failed, got: $PAYMENT"
+  fail "B13 payment triggered" "expected completed/failed after 10s, got: $PAYMENT"
 fi
 
 # B14: User payment history
