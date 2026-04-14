@@ -60,18 +60,24 @@ func main() {
 }
 
 func newDynamoClient() *dynamodb.Client {
-	endpoint := envOr("DYNAMODB_ENDPOINT", "http://localhost:8000")
+	endpoint := os.Getenv("DYNAMODB_ENDPOINT")
 	region := envOr("AWS_REGION", "us-east-1")
 
-	cfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(region),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("local", "local", "")),
-		config.WithEndpointResolverWithOptions(
-			aws.EndpointResolverWithOptionsFunc(func(service, reg string, _ ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{URL: endpoint}, nil
-			}),
-		),
-	)
+	opts := []func(*config.LoadOptions) error{config.WithRegion(region)}
+	if endpoint != "" {
+		// Local dev: custom endpoint (DynamoDB Local) + static credentials
+		opts = append(opts,
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("local", "local", "")),
+			config.WithEndpointResolverWithOptions(
+				aws.EndpointResolverWithOptionsFunc(func(service, reg string, _ ...interface{}) (aws.Endpoint, error) {
+					return aws.Endpoint{URL: endpoint}, nil
+				}),
+			),
+		)
+	}
+	// Production (ECS): endpoint unset → SDK uses ECS task role credentials + real DynamoDB
+
+	cfg, err := config.LoadDefaultConfig(context.Background(), opts...)
 	if err != nil {
 		log.Fatalf("load aws config: %v", err)
 	}
