@@ -96,11 +96,6 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (string, er
 		return "", fmt.Errorf("hash password: %w", err)
 	}
 
-	role := req.Role
-	if role != "seller" {
-		role = "buyer"
-	}
-
 	u := User{
 		UserID:       uuid.NewString(),
 		Email:        req.Email,
