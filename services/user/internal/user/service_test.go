@@ -1,15 +1,19 @@
+// Package user_test exercises the exported user service behavior through
+// in-memory test doubles instead of real persistence.
 package user_test
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"rtb/services/user/internal/user"
 )
 
-// --- mock repo ---
-
+// mockRepo is an in-memory implementation of user.Repo used by unit tests.
 type mockRepo struct {
 	users map[string]*user.User // keyed by user_id
 }
@@ -62,7 +66,24 @@ func (m *mockRepo) UpdateRole(_ context.Context, userID, role string) error {
 	return nil
 }
 
-// --- tests ---
+func decodeTokenClaims(t *testing.T, token string) map[string]any {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected JWT with 3 parts, got %q", token)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode token payload: %v", err)
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatalf("unmarshal token claims: %v", err)
+	}
+	return claims
+}
+
+// --- registration / upgrade flow ---
 
 func TestRegister_Success(t *testing.T) {
 	svc := user.NewService(newMockRepo())
@@ -76,6 +97,28 @@ func TestRegister_Success(t *testing.T) {
 	}
 	if id == "" {
 		t.Fatal("expected non-empty user_id")
+	}
+}
+
+func TestRegister_DefaultRoleIsBuyer(t *testing.T) {
+	svc := user.NewService(newMockRepo())
+
+	id, err := svc.Register(context.Background(), user.RegisterRequest{
+		Email:    "default@example.com",
+		Password: "secret123",
+		Username: "default-user",
+		Role:     "admin",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	profile, err := svc.GetProfile(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get profile: %v", err)
+	}
+	if profile.Role != "buyer" {
+		t.Fatalf("expected fallback role buyer, got %s", profile.Role)
 	}
 }
 
@@ -161,6 +204,8 @@ func TestRegister_AlreadySeller(t *testing.T) {
 	}
 }
 
+// --- login / JWT claims ---
+
 func TestLogin_Success(t *testing.T) {
 	svc := user.NewService(newMockRepo())
 	if _, err := svc.Register(context.Background(), user.RegisterRequest{
@@ -177,6 +222,38 @@ func TestLogin_Success(t *testing.T) {
 	}
 	if token == "" {
 		t.Fatal("expected non-empty token")
+	}
+}
+
+func TestLogin_TokenContainsExpectedClaims(t *testing.T) {
+	svc := user.NewService(newMockRepo())
+	id, err := svc.Register(context.Background(), user.RegisterRequest{
+		Email:    "claims@example.com",
+		Password: "mypassword",
+		Username: "claims-user",
+		Role:     "seller",
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	token, err := svc.Login(context.Background(), user.LoginRequest{
+		Email:    "claims@example.com",
+		Password: "mypassword",
+	})
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+
+	claims := decodeTokenClaims(t, token)
+	if got := claims["sub"]; got != id {
+		t.Fatalf("expected sub=%s, got %#v", id, got)
+	}
+	if got := claims["role"]; got != "seller" {
+		t.Fatalf("expected role=seller, got %#v", got)
+	}
+	if got := claims["username"]; got != "claims-user" {
+		t.Fatalf("expected username=claims-user, got %#v", got)
 	}
 }
 
@@ -205,6 +282,8 @@ func TestLogin_UnknownEmail(t *testing.T) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
+
+// --- profile lookup / updates ---
 
 func TestRegister_BuyerToSellerUsernameMismatch(t *testing.T) {
 	svc := user.NewService(newMockRepo())
@@ -261,6 +340,48 @@ func TestRegister_BuyerToSellerConfirmNewUsername(t *testing.T) {
 	}
 	if u.Role != "seller" {
 		t.Fatalf("expected role seller, got %s", u.Role)
+	}
+}
+
+func TestUpdateProfile_Success(t *testing.T) {
+	svc := user.NewService(newMockRepo())
+	id, err := svc.Register(context.Background(), user.RegisterRequest{
+		Email:    "update@example.com",
+		Password: "pass123",
+		Username: "before",
+	})
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	err = svc.UpdateProfile(context.Background(), id, user.UpdateProfileRequest{
+		Username:  "after",
+		AvatarURL: "https://example.com/avatar.png",
+	})
+	if err != nil {
+		t.Fatalf("update profile: %v", err)
+	}
+
+	profile, err := svc.GetProfile(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get profile: %v", err)
+	}
+	if profile.Username != "after" {
+		t.Fatalf("expected username after, got %s", profile.Username)
+	}
+	if profile.AvatarURL != "https://example.com/avatar.png" {
+		t.Fatalf("expected avatar_url updated, got %s", profile.AvatarURL)
+	}
+}
+
+func TestUpdateProfile_NotFound(t *testing.T) {
+	svc := user.NewService(newMockRepo())
+
+	err := svc.UpdateProfile(context.Background(), "missing-id", user.UpdateProfileRequest{
+		Username: "after",
+	})
+	if !errors.Is(err, user.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 

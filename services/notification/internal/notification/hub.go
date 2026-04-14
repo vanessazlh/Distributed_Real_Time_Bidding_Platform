@@ -69,6 +69,11 @@ type Metrics struct {
 	P99DeliveryLatency float64 `json:"p99_delivery_latency_ms"`
 }
 
+type notificationStore interface {
+	Add(ctx context.Context, userID string, n StoredNotification) error
+	UnreadCount(ctx context.Context, userID string) (int, error)
+}
+
 // latencyTracker stores delivery latency samples and computes avg / p99.
 // Capped at maxSamples to bound memory usage during long load test runs.
 type latencyTracker struct {
@@ -131,11 +136,11 @@ type Hub struct {
 	broadcastCount atomic.Int64
 	latency        *latencyTracker
 	rdb            *redis.Client
-	store          *Store
+	store          notificationStore
 }
 
 // NewHub creates a new Hub backed by the given Redis client.
-func NewHub(rdb *redis.Client, store *Store) *Hub {
+func NewHub(rdb *redis.Client, store notificationStore) *Hub {
 	return &Hub{
 		clients:     make(map[string]map[Client]struct{}),
 		userClients: make(map[string]map[Client]struct{}),

@@ -1,3 +1,5 @@
+// Package auction_test exercises exported auction service behavior with
+// lightweight in-memory test doubles instead of real Redis or DynamoDB.
 package auction_test
 
 import (
@@ -7,26 +9,27 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"rtb/services/auction/internal/auction"
+	localEvents "rtb/services/auction/internal/events"
 )
 
-// --- mock auction repo ---
-
+// mockAuctionRepo is an in-memory implementation of auction.Repo used by
+// service-level unit tests.
 type mockAuctionRepo struct {
 	mu       sync.Mutex
 	auctions map[string]*auction.Auction
 }
 
 func newMockAuctionRepo() *mockAuctionRepo {
-	return &mockAuctionRepo{
-		auctions: make(map[string]*auction.Auction),
-	}
+	return &mockAuctionRepo{auctions: make(map[string]*auction.Auction)}
 }
 
 func (m *mockAuctionRepo) Create(_ context.Context, a *auction.Auction) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.auctions[a.AuctionID] = a
+	cp := *a
+	m.auctions[a.AuctionID] = &cp
 	return nil
 }
 
@@ -37,9 +40,8 @@ func (m *mockAuctionRepo) GetByID(_ context.Context, auctionID string) (*auction
 	if !ok {
 		return nil, errors.New("auction not found")
 	}
-	// Return a copy
-	cpy := *a
-	return &cpy, nil
+	cp := *a
+	return &cp, nil
 }
 
 func (m *mockAuctionRepo) List(_ context.Context, status string) ([]*auction.Auction, error) {
@@ -48,8 +50,8 @@ func (m *mockAuctionRepo) List(_ context.Context, status string) ([]*auction.Auc
 	var result []*auction.Auction
 	for _, a := range m.auctions {
 		if status == "" || a.Status == status {
-			cpy := *a
-			result = append(result, &cpy)
+			cp := *a
+			result = append(result, &cp)
 		}
 	}
 	return result, nil
@@ -61,8 +63,8 @@ func (m *mockAuctionRepo) ListByShop(_ context.Context, shopID string) ([]*aucti
 	var result []*auction.Auction
 	for _, a := range m.auctions {
 		if a.ShopID == shopID {
-			cpy := *a
-			result = append(result, &cpy)
+			cp := *a
+			result = append(result, &cp)
 		}
 	}
 	return result, nil
@@ -115,6 +117,13 @@ func (m *mockAuctionRepo) AtomicCloseAndReadWinners(_ context.Context, auctionID
 		return nil, errors.New("auction is not open")
 	}
 	a.Status = "CLOSED"
+	if len(a.Winners) > 0 {
+		cp := make(map[string]int64, len(a.Winners))
+		for k, v := range a.Winners {
+			cp[k] = v
+		}
+		return cp, nil
+	}
 	if a.HighestBidder != "" {
 		return map[string]int64{a.HighestBidder: a.CurrentHighest}, nil
 	}
@@ -135,60 +144,139 @@ func (m *mockAuctionRepo) CleanupRedis(_ context.Context, _ string) error       
 func (m *mockAuctionRepo) GetDynamoWinners(_ context.Context, _ string) (string, int64, error) {
 	return "", 0, errors.New("not configured")
 }
-
 func (m *mockAuctionRepo) GetDynamoAllWinners(_ context.Context, _ string) (map[string]int64, error) {
 	return nil, errors.New("not configured")
 }
 
-// --- tests ---
+func newTestService(repo auction.Repo) *auction.Service {
+	return auction.NewService(repo, nil, nil, auction.Pessimistic)
+}
 
-func TestCreateAuction_Success(t *testing.T) {
-	repo := newMockAuctionRepo()
-	// We can't easily test with real Redis in unit tests, so we test the repo layer
-	a := &auction.Auction{
-		AuctionID:      "test-auction",
-		ItemID:         "item-1",
-		ItemTitle:      "Test Item",
-		ShopID:         "shop-1",
-		StartTime:      time.Now().UTC(),
-		EndTime:        time.Now().UTC().Add(10 * time.Minute),
-		CurrentHighest: 0,
-		Status:         "OPEN",
-		Version:        0,
-	}
-	if err := repo.Create(context.Background(), a); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+func newClosingTestService(repo auction.Repo) *auction.Service {
+	// Use an invalid local Redis address so publisher calls fail immediately.
+	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"})
+	return auction.NewService(repo, localEvents.NewPublisher(rdb), rdb, auction.Pessimistic)
+}
 
-	got, err := repo.GetByID(context.Background(), "test-auction")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.AuctionID != "test-auction" {
-		t.Fatalf("expected test-auction, got %s", got.AuctionID)
-	}
-	if got.Status != "OPEN" {
-		t.Fatalf("expected OPEN, got %s", got.Status)
+func validCreateRequest() auction.CreateAuctionRequest {
+	return auction.CreateAuctionRequest{
+		ItemID:      "item-1",
+		ItemTitle:   "Test Item",
+		ShopID:      "shop-1",
+		ShopName:    "Test Shop",
+		RetailPrice: 1000,
+		ImageURL:    "https://example.com/item.png",
+		ShopLogoURL: "https://example.com/logo.png",
+		Description: "desc",
+		Category:    "bakery",
+		Duration:    10,
+		StartBid:    200,
+		PickupStart: time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339),
+		PickupEnd:   time.Now().UTC().Add(25 * time.Hour).Format(time.RFC3339),
 	}
 }
 
-func TestGetAuction_NotFound(t *testing.T) {
+// --- auction creation / validation ---
+
+func TestCreateAuction_Success(t *testing.T) {
 	repo := newMockAuctionRepo()
-	_, err := repo.GetByID(context.Background(), "nonexistent")
-	if err == nil {
-		t.Fatal("expected error for nonexistent auction")
+	svc := newTestService(repo)
+
+	a, err := svc.CreateAuction(context.Background(), validCreateRequest(), "seller-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.AuctionID == "" {
+		t.Fatal("expected non-empty auction_id")
+	}
+	if a.SellerID != "seller-1" {
+		t.Fatalf("seller mismatch: got %s", a.SellerID)
+	}
+	if a.Status != "OPEN" {
+		t.Fatalf("expected OPEN, got %s", a.Status)
+	}
+	if a.Quantity != 1 {
+		t.Fatalf("expected default quantity 1, got %d", a.Quantity)
+	}
+	if a.PickupEnd.Before(a.PickupStart) || a.PickupEnd.Equal(a.PickupStart) {
+		t.Fatal("expected pickup_end after pickup_start")
+	}
+}
+
+func TestCreateAuction_ScheduledStartCreatesPendingAuction(t *testing.T) {
+	repo := newMockAuctionRepo()
+	svc := newTestService(repo)
+	req := validCreateRequest()
+	req.ScheduledStart = time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+
+	a, err := svc.CreateAuction(context.Background(), req, "seller-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a.Status != "PENDING" {
+		t.Fatalf("expected PENDING, got %s", a.Status)
+	}
+	if !a.StartTime.After(time.Now().UTC()) {
+		t.Fatal("expected scheduled start time in the future")
+	}
+}
+
+func TestCreateAuction_RequiresPickupWindow(t *testing.T) {
+	repo := newMockAuctionRepo()
+	svc := newTestService(repo)
+	req := validCreateRequest()
+	req.PickupEnd = ""
+
+	_, err := svc.CreateAuction(context.Background(), req, "seller-1")
+	if !errors.Is(err, auction.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+func TestCreateAuction_MaxPriceMustExceedStartBid(t *testing.T) {
+	repo := newMockAuctionRepo()
+	svc := newTestService(repo)
+	req := validCreateRequest()
+	req.MaxPrice = req.StartBid
+
+	_, err := svc.CreateAuction(context.Background(), req, "seller-1")
+	if !errors.Is(err, auction.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+func TestCreateAuction_RejectsPastScheduledStart(t *testing.T) {
+	repo := newMockAuctionRepo()
+	svc := newTestService(repo)
+	req := validCreateRequest()
+	req.ScheduledStart = time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+
+	_, err := svc.CreateAuction(context.Background(), req, "seller-1")
+	if !errors.Is(err, auction.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+// --- lookup / listing / open transitions ---
+
+func TestGetAuction_NotFound(t *testing.T) {
+	svc := newTestService(newMockAuctionRepo())
+
+	_, err := svc.GetAuction(context.Background(), "missing")
+	if !errors.Is(err, auction.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestListAuctions_ByStatus(t *testing.T) {
 	repo := newMockAuctionRepo()
 	ctx := context.Background()
-
 	_ = repo.Create(ctx, &auction.Auction{AuctionID: "a1", Status: "OPEN"})
 	_ = repo.Create(ctx, &auction.Auction{AuctionID: "a2", Status: "CLOSED"})
 	_ = repo.Create(ctx, &auction.Auction{AuctionID: "a3", Status: "OPEN"})
+	svc := newTestService(repo)
 
-	open, err := repo.List(ctx, "OPEN")
+	open, err := svc.ListAuctions(ctx, "OPEN")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -196,41 +284,78 @@ func TestListAuctions_ByStatus(t *testing.T) {
 		t.Fatalf("expected 2 open auctions, got %d", len(open))
 	}
 
-	all, err := repo.List(ctx, "")
+	all, err := svc.ListAuctions(ctx, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(all) != 3 {
-		t.Fatalf("expected 3 total auctions, got %d", len(all))
+		t.Fatalf("expected 3 auctions, got %d", len(all))
 	}
 }
 
-func TestCloseAuction(t *testing.T) {
+func TestListAuctionsByShop(t *testing.T) {
 	repo := newMockAuctionRepo()
 	ctx := context.Background()
+	_ = repo.Create(ctx, &auction.Auction{AuctionID: "a1", ShopID: "shop-1"})
+	_ = repo.Create(ctx, &auction.Auction{AuctionID: "a2", ShopID: "shop-1"})
+	_ = repo.Create(ctx, &auction.Auction{AuctionID: "a3", ShopID: "shop-2"})
+	svc := newTestService(repo)
 
-	_ = repo.Create(ctx, &auction.Auction{AuctionID: "a1", Status: "OPEN"})
-	if err := repo.Close(ctx, "a1"); err != nil {
+	auctions, err := svc.ListAuctionsByShop(ctx, "shop-1")
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	a, _ := repo.GetByID(ctx, "a1")
-	if a.Status != "CLOSED" {
-		t.Fatalf("expected CLOSED, got %s", a.Status)
+	if len(auctions) != 2 {
+		t.Fatalf("expected 2 auctions for shop-1, got %d", len(auctions))
 	}
 }
 
-func TestCloseAuction_NotFound(t *testing.T) {
+func TestOpenAuction_Success(t *testing.T) {
 	repo := newMockAuctionRepo()
-	err := repo.Close(context.Background(), "nonexistent")
-	if err == nil {
-		t.Fatal("expected error for nonexistent auction")
+	ctx := context.Background()
+	_ = repo.Create(ctx, &auction.Auction{AuctionID: "a1", Status: "PENDING"})
+	svc := newTestService(repo)
+
+	if err := svc.OpenAuction(ctx, "a1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, _ := repo.GetByID(ctx, "a1")
+	if got.Status != "OPEN" {
+		t.Fatalf("expected OPEN, got %s", got.Status)
 	}
 }
+
+// --- reliable close sequence ---
+
+func TestCloseAuction_PublishFailureRollsBackStatus(t *testing.T) {
+	repo := newMockAuctionRepo()
+	ctx := context.Background()
+	_ = repo.Create(ctx, &auction.Auction{
+		AuctionID:      "a1",
+		ItemID:         "item-1",
+		ItemTitle:      "Item",
+		ShopID:         "shop-1",
+		HighestBidder:  "buyer-1",
+		CurrentHighest: 500,
+		Quantity:       1,
+		Status:         "OPEN",
+	})
+	svc := newClosingTestService(repo)
+
+	err := svc.CloseAuction(ctx, "a1")
+	if err == nil {
+		t.Fatal("expected publish failure from invalid redis client")
+	}
+	got, _ := repo.GetByID(ctx, "a1")
+	if got.Status != "OPEN" {
+		t.Fatalf("expected rollback to OPEN, got %s", got.Status)
+	}
+}
+
+// --- metrics / constants / sentinel errors ---
 
 func TestMetrics(t *testing.T) {
 	m := auction.NewMetrics()
-
 	m.RecordSuccessful(10 * time.Millisecond)
 	m.RecordSuccessful(20 * time.Millisecond)
 	m.RecordRejected()
@@ -240,10 +365,10 @@ func TestMetrics(t *testing.T) {
 		t.Fatalf("expected 3 total bids, got %d", snap.TotalBids)
 	}
 	if snap.SuccessfulBids != 2 {
-		t.Fatalf("expected 2 successful, got %d", snap.SuccessfulBids)
+		t.Fatalf("expected 2 successful bids, got %d", snap.SuccessfulBids)
 	}
 	if snap.RejectedBids != 1 {
-		t.Fatalf("expected 1 rejected, got %d", snap.RejectedBids)
+		t.Fatalf("expected 1 rejected bid, got %d", snap.RejectedBids)
 	}
 	if snap.AvgLatencyMs <= 0 {
 		t.Fatal("expected positive avg latency")
@@ -284,7 +409,9 @@ func TestErrVariables(t *testing.T) {
 	if !errors.Is(auction.ErrBidTooLow, auction.ErrBidTooLow) {
 		t.Fatal("ErrBidTooLow should match itself")
 	}
+	if !errors.Is(auction.ErrValidation, auction.ErrValidation) {
+		t.Fatal("ErrValidation should match itself")
+	}
 }
 
-// Compile-time interface check
 var _ auction.Repo = (*mockAuctionRepo)(nil)

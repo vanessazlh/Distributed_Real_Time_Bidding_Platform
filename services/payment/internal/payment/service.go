@@ -14,12 +14,28 @@ import (
 
 // Service handles payment business logic.
 type Service struct {
-	repo      *Repository
-	publisher *events.Publisher
+	repo      paymentRepo
+	publisher paymentPublisher
+}
+
+type paymentRepo interface {
+	Create(ctx context.Context, p *Payment) error
+	GetByID(ctx context.Context, paymentID string) (*Payment, error)
+	GetByAuctionID(ctx context.Context, auctionID string) (*Payment, error)
+	GetAllByAuctionID(ctx context.Context, auctionID string) (map[string]bool, error)
+	GetByUserID(ctx context.Context, userID string) ([]*Payment, error)
+	UpdateStatus(ctx context.Context, paymentID, status, failReason string) error
+	SetGatewayDecision(ctx context.Context, paymentID, decision string) error
+}
+
+type paymentPublisher interface {
+	PublishPaymentProcessed(ctx context.Context, event events.PaymentProcessedEvent) error
+	PublishPaymentFailed(ctx context.Context, event events.PaymentFailedEvent) error
+	PublishRefundProcessed(ctx context.Context, event events.RefundProcessedEvent) error
 }
 
 // NewService creates a new Service.
-func NewService(repo *Repository, publisher *events.Publisher) *Service {
+func NewService(repo paymentRepo, publisher paymentPublisher) *Service {
 	return &Service{repo: repo, publisher: publisher}
 }
 
