@@ -85,23 +85,31 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 | `GET` | `/users/:id` | ✓ | Get profile |
 | `PUT` | `/users/:id` | ✓ | Update profile (username) — owner only |
 | `GET` | `/users/:id/bids` | ✓ | List user's bids (proxied to Bid Service) |
+| `GET` | `/users/:id/watchlist` | ✓ | Get watchlisted auction IDs — owner only |
+| `POST` | `/users/:id/watchlist/:auctionId` | ✓ | Add auction to watchlist — owner only |
+| `DELETE` | `/users/:id/watchlist/:auctionId` | ✓ | Remove auction from watchlist — owner only |
 
-### Shops + Items — Shop Service
+### Shops + Items + Reviews — Shop Service
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/shops` | ✓ seller | Create shop |
+| `POST` | `/shops` | ✓ seller | Create shop (optional: `lat`, `lng` for geo proximity) |
 | `GET` | `/shops/:id` | — | Get shop |
+| `PUT` | `/shops/:id` | ✓ seller | Update shop name, location, logo, lat/lng — owner only |
 | `GET` | `/sellers/:userId/shops` | ✓ | List shops owned by a seller |
 | `POST` | `/shops/:id/items` | ✓ seller | Add item to shop |
 | `GET` | `/shops/:id/items` | — | List items in a shop |
+| `GET` | `/shops/:id/reviews` | — | List reviews + average rating + total count |
+| `POST` | `/shops/:id/reviews` | ✓ buyer | Submit review (1–5 stars, optional comment; one per auction per buyer) |
+| `POST` | `/shops/:id/reviews/:reviewId/reply` | ✓ seller | Shop owner replies to a review |
+| `POST` | `/uploads` | ✓ seller | Upload image (JPEG/PNG/WebP/GIF, max 5 MB) → public URL |
 
 ### Auctions — Auction Service
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/auctions` | ✓ | Create auction (optional: `scheduled_start`, `pickup_start`, `pickup_end`) |
-| `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`) |
+| `POST` | `/auctions` | ✓ | Create auction (optional: `scheduled_start`, `pickup_start`, `pickup_end`, `shop_lat`, `shop_lng`, `max_price`, `min_increment`, `quantity`) |
+| `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`; geo filter: `?lat=X&lng=Y&radius_km=R`; search: `?q=<term>`) |
 | `GET` | `/auctions/:id` | — | Get auction details |
 | `POST` | `/auctions/:id/bid` | ✓ | Place bid |
 | `POST` | `/auctions/:id/close` | ✓ | Close auction early (owner only) |
@@ -218,6 +226,51 @@ Auctions support an optional **pickup window** (`pickup_start` and `pickup_end`,
 - The homepage offers a second filter row — **Any Time / Morning / Afternoon / Evening** — that filters auctions by the hour of `pickup_start`. Auctions without a pickup window are hidden when a time filter is active.
 - Auction cards show the pickup window below the bid info; the detail page displays it prominently with a clock icon
 
+### Minimum Bid Increment
+
+Auctions support an optional `min_increment` field (int64, cents) that sets the minimum raise a bidder must make over the current highest bid. Prevents 1-cent bid wars without needing a hard price ceiling.
+
+- Sellers set the increment when creating an auction; leaving it empty (or 0) means any raise above the current bid is accepted
+- The Lua bid script (`placeBidLua`) enforces the constraint atomically — bids below `current_highest + min_increment` are rejected with a `-5` code, mapped to HTTP 400
+- For multi-winner auctions the same rule applies per slot: a bidder improving their own slot bid must also meet the increment
+- `BiddingPanel` derives the minimum input value from `min_increment` and shows a "Minimum raise: $X.XX per bid" hint when the field is set
+
+### Search
+
+`GET /auctions?q=<term>` filters the auction list by a case-insensitive substring match across **item title**, **description**, and **shop name**. The filter is applied in-memory (`filterByQuery` in `handler.go`) after the Redis fetch and is composable with all other query params — e.g. `?q=sourdough&lat=X&lng=Y&radius_km=5` returns nearby sourdough auctions.
+
+On the frontend, the HomePage hero contains a search bar that applies the same substring filter client-side on the already-fetched auction list for instant, zero-latency results. The filter chain is: category tab → pickup time → search query.
+
+### Ratings & Reviews
+
+After completing a purchase, buyers can rate their pickup experience on a 1–5 star scale with an optional text comment.
+
+- Stored in a dedicated DynamoDB `Reviews` table (PK: `review_id`, two GSIs: `shop_id-index` for listing and `auction_id-reviewer-index` for duplicate enforcement)
+- **One review per auction per buyer** — the service queries `auction_id-reviewer-index` before saving; duplicate attempts return 409 Conflict
+- **Payment eligibility check** — when `PAYMENT_SERVICE_URL` is configured (i.e., in production Docker Compose), the shop service calls the payment service to verify the buyer has a `completed` payment for the given auction before accepting a review; skipped when unset (local dev without payment wiring)
+- Sellers can post a single reply to any review via `POST /shops/:id/reviews/:reviewId/reply` (ownership-checked; only the shop owner can reply)
+- `GET /shops/:id/reviews` returns the full review list, `average_rating` (rounded to 1 decimal), and `total_reviews`
+- **Frontend:** `ShopDetailPage` shows the star average + review count in the shop header, followed by a write-a-review form (for logged-in buyers) and the review list with seller reply UI. `AuctionDetailPage` shows the shop's average rating and review count below the shop name link.
+
+### Watchlist / Favorites
+
+Buyers can save any auction to a personal watchlist with a heart toggle.
+
+- Persisted as a DynamoDB `StringSet` attribute (`watchlist`) on the existing `Users` item — no separate table; atomic `ADD`/`DELETE` updates
+- `WatchlistContext` loads the set on login and exposes an optimistic `toggle()` — state updates instantly in the UI and rolls back on API failure
+- **Heart button** on `AuctionCard` (top-right image overlay) and `AuctionDetailPage` (next to the title)
+- **`/watchlist` page** — fetches full auction details in parallel for all saved IDs; shows the same `AuctionCard` grid as the homepage
+- **Heart icon** in the buyer navbar links to the watchlist page
+
+### Geo Support (Proximity Search)
+
+Shops can store a physical location as `lat`/`lng` coordinates. These are captured via the browser Geolocation API ("📍 Pin my location" button) on the shop create/edit form.
+
+- Coordinates are denormalized into each auction at creation time (`shop_lat`, `shop_lng`) and written to a Redis `shops:geo` sorted set via `GEOADD`
+- `GET /auctions?lat=X&lng=Y&radius_km=R` runs a Redis `GEOSEARCH` to return only auctions from shops within the given radius — O(N+log M) at query time
+- The homepage **Nearby** filter (Within 2 / 5 / 10 km) requests browser geolocation and re-fetches with geo params; user coords are cached so switching radii doesn't re-prompt
+- Auction cards show a `~X.Xkm` distance badge when the user's location is known
+
 ---
 
 ## Environment Variables
@@ -233,6 +286,12 @@ Auctions support an optional **pickup window** (`pickup_start` and `pickup_end`,
 | `BID_WORKERS` | `10` | Bid (stream consumer concurrency) |
 | `NOTIF_WORKERS` | `10` | Notification (stream consumer concurrency) |
 | `PAYMENT_WORKERS` | `10` | Payment (stream consumer concurrency) |
+| `S3_ENDPOINT` | — | Shop (MinIO/S3 for image uploads; omit for real S3) |
+| `S3_BUCKET` | `uploads` | Shop |
+| `S3_ACCESS_KEY` | `minioadmin` | Shop |
+| `S3_SECRET_KEY` | `minioadmin` | Shop |
+| `S3_PUBLIC_URL` | `http://localhost:3000/uploads` | Shop (base URL for served images) |
+| `PAYMENT_SERVICE_URL` | — | Shop (payment eligibility check for reviews; omit to skip check in dev) |
 
 All defaults are pre-configured in `docker-compose.yml`.
 

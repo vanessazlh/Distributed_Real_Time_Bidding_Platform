@@ -7,7 +7,14 @@ SurpriseAuction is a real-time surplus auction platform where local stores list 
 ## Buyer Journey
 
 ### 1. Discovery
-A buyer lands on the homepage and sees a live feed of active auctions, filterable by category (Bakery, Meals, Groceries, and more). A second row of pill-shaped buttons lets the buyer filter by **pickup time** — Any Time, Morning (before 12 pm), Afternoon (12–5 pm), or Evening (after 5 pm) — so they can find auctions that fit their schedule. Each card shows the item photo, the shop it comes from, the current highest bid, a live countdown to closing, and (if set) the pickup window. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
+A buyer lands on the homepage and sees a live feed of active auctions. A **search bar** at the top of the hero lets them type any keyword — results update instantly as they type, matching against item titles, descriptions, and shop names. The feed is also filterable by:
+- **Category** — Bakery, Meals, Groceries, Others (tab bar)
+- **Pickup time** — Any Time, Morning (before 12 pm), Afternoon (12–5 pm), Evening (after 5 pm)
+- **Nearby** — Within 2 km / 5 km / 10 km. The browser requests location permission automatically when the homepage loads. Once granted, distance badges (`~X.Xkm`) appear on each auction card immediately. Selecting a distance filter re-fetches only auctions from shops within that radius.
+
+All filters compose: a buyer can search for "sourdough", filter by "Morning" pickup, and restrict to "Within 5 km" simultaneously.
+
+Each card shows the item photo, the shop it comes from, the current highest bid, a live countdown to closing, and (if set) the pickup window. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
 
 ### 2. Account
 The buyer registers or logs in at `/login` — the single entry point for all users. A **Buyer / Seller toggle** at the top of the page determines the session role; buyers leave it on **Buyer**. Authentication is JWT-based; no session state is stored server-side. The platform uses a **single-account model**: one email = one account. A buyer can later upgrade to a seller (see Seller Journey, step 1) without creating a second account — they simply re-register with the same email and Seller selected.
@@ -27,10 +34,18 @@ The buyer enters a bid amount in the bidding panel. On submission:
 - If accepted, the buyer's panel shows a **Winning** banner and the price updates across all connected clients instantly
 - If outbid by someone else, the banner switches to **Outbid** and the new price is broadcast to all watchers
 - Sellers cannot bid on their own auctions (403 Forbidden)
+- If the auction has a **minimum bid increment**, the panel shows the minimum next bid amount and a "Minimum raise: $X.XX per bid" hint. Bids that don't meet the increment are rejected with a clear error.
 
 For **quantity auctions** (multiple winners), the bidding panel shows a "X winners" badge and the label changes to "Minimum Bid to Win" — the floor price to secure a winning slot. When all slots are full, a new bid must exceed the lowest winner's amount; the evicted bidder is notified as outbid.
 
-### 5. Notifications
+### 5. Watchlist
+A buyer can save any auction to their personal watchlist by clicking the **heart icon** on an auction card or detail page. The heart fills red immediately (optimistic update) and is synced to the backend.
+
+The buyer's watchlist is accessible from the **heart icon in the navbar** (links to `/watchlist`) or by navigating directly. The watchlist page shows the same auction card grid as the homepage — active auctions can be bid on directly from there. Closed or removed auctions are still shown so the buyer can review their saved history.
+
+The watchlist persists across sessions (stored in DynamoDB). Removing an auction from the watchlist is instant — click the heart again to unsave.
+
+### 6. Notifications
 Buyers receive real-time notifications regardless of which page they are on:
 - **Outbid** — when another buyer places a higher bid on an auction the buyer previously bid on
 - **Won** — when an auction the buyer is winning closes
@@ -41,7 +56,7 @@ Notifications are delivered two ways:
 
 Notifications are stored in Redis (capped at 20 per user with same-auction dedup, 7-day TTL) so they persist across page refreshes and browser sessions.
 
-### 6. Auction Close
+### 7. Auction Close
 When the countdown reaches zero (or the seller closes the auction early), the system resolves the winner(s) using a reliable close sequence:
 - A Lua script **atomically** marks the auction as CLOSED and reads the winner(s) from a Redis Sorted Set — top-N for quantity auctions (with DynamoDB fallback if Redis data is unavailable)
 - An `auction_closed` event is published to the Redis Stream — if publishing fails, the status is **rolled back to OPEN** and the closer retries on the next tick, preventing dead states
@@ -50,13 +65,24 @@ When the countdown reaches zero (or the seller closes the auction early), the sy
 - Winners see a **Won** banner on the auction page and receive a global notification
 - Other participants see a **Closed** banner
 
-### 7. Profile & History
+### 8. Profile & History
 The buyer's profile page (`/profile`) is a sidebar-tabbed account hub with three sections:
 - **Account** — view and edit username (inline save), see email and role badge. Buyers see an "Upgrade to Seller" CTA; sellers see a link to the Seller Dashboard.
-- **My Bids** (`/profile/bids`) — full bid history across all auctions, with status (Winning / Outbid / Won / Lost), item title, shop name, and a link to the payment record for won auctions
+- **My Bids** — full bid history across all auctions, with status (Winning / Outbid / Won / Lost), item title, shop name, and links to payment and review actions for won auctions. Accessible from the **My Bids** text link in the navbar (buyers only) at `/mybids`.
 - **Payments** (`/profile/payments`) — all payment records with status (Completed / Failed / Pending) and total spent
 
 The profile is accessible by clicking the username in the navbar. Individual payment details are at `/payment/auction/:id`.
+
+### 9. Ratings & Reviews
+After winning an auction, buyers can leave a review for the shop:
+
+1. Navigate to **My Bids** via the navbar link
+2. Find a **WON** bid and click **Leave a Review →**
+3. The review form at `/reviews/new?auction_id=<id>` pre-fills the shop name and item title automatically — no manual ID entry needed
+4. Select a star rating (1–5), optionally add a comment (up to 500 characters), and submit
+5. On success the buyer is redirected to the shop page where the new review appears with a confirmation banner
+
+Reviews are scoped per auction (one per buyer per auction). Shop owners can reply to any review from the shop detail page. Average rating and total review count are displayed in the shop header.
 
 ---
 
@@ -78,18 +104,26 @@ After login the seller lands on `/seller/dashboard`. The dashboard shows:
 - A "Manage →" link per shop leading to the per-shop management page
 
 ### 3. Create a Shop
-The seller fills in a shop name and location at `/shops/new`. The shop is saved in DynamoDB and immediately appears on the dashboard.
+The seller fills in a shop name and display address at `/shops/new`. A **Shop Location** field (required) provides two ways to set GPS coordinates:
+- **📍 Use my location** — auto-detects via browser geolocation
+- **🗺 Pin on map** — opens an interactive OpenStreetMap where the seller clicks or drags a pin to their exact location
+
+Coordinates are required to submit the form and enable proximity filtering for buyers. They can be updated later via the Edit Shop form.
 
 ### 4. Add an Item
 From a shop page, the seller adds a surplus item via `/shops/:id/items/new`, providing a title, description, retail value, and optional image URL. Items are saved to DynamoDB under the shop.
 
 ### 5. Publish an Auction
-The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, optionally a max price (bid ceiling), a **quantity** (number of winners, default 1), optionally schedule a future start time, and optionally set a **pickup window** (start and end datetime for when winners can collect the item). On submission:
+The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, and a **pickup window** (required — start and end datetime for when winners can collect the item). Optional fields include:
+- **Max price** — a bid ceiling above which bids are rejected
+- **Minimum bid increment** — the minimum raise a bidder must make over the current highest bid; prevents 1-cent bid wars. If left empty, any raise above the current bid is accepted.
+- **Quantity** — number of winners (default 1); for quantity > 1, the top N bidders each win a copy of the item
+- **Scheduled start** — a future start time; if set, the auction is created as **PENDING** and automatically transitions to OPEN when the time arrives. Leave empty to go live immediately.
+
+On submission:
 - Auction enrichment data (shop name, retail price, item image, description) is captured at creation time and stored in Redis
 - If no schedule time is set, the auction immediately goes live (**OPEN**) and is visible to all buyers
-- If a future start time is set, the auction is created as **PENDING** and automatically transitions to OPEN when the scheduled time arrives
-- For **quantity > 1**, the auction becomes a multi-winner auction where the top N bidders each win a copy of the item
-- Input validation enforces: start_bid >= 0, duration 1–10080 minutes, scheduled_start must be in the future
+- Input validation enforces: start_bid >= 0, duration 1–10080 minutes, min_increment >= 0, scheduled_start must be in the future
 
 ### 6. Monitor & Close
 The seller manages each shop from `/seller/shops/:shopId`, a tabbed page with two sections:
@@ -100,7 +134,7 @@ Clicking an auction row opens the **Seller Auction Detail** page at `/seller/auc
 - **Header** — item image, title, status badge, quantity badge (for multi-winner auctions), and a "Close Auction" button for OPEN auctions
 - **Stats row** — current bid, retail price, total bids, max price (if set), and a live countdown timer
 - **Bid history table** — every bid placed, showing masked bidder ID, amount, status (Winning / Outbid / Won), and relative time. Updates in real time via WebSocket as new bids arrive.
-- **Item details sidebar** — description, category, quantity, bid ceiling, and pickup window (if set)
+- **Item details sidebar** — description, category, quantity, bid ceiling, minimum bid increment (if set), and pickup window (if set)
 - **Winners card** (closed auctions) — lists each winner with their winning bid amount
 - **Payment status card** (closed auctions) — shows payment status (Pending / Completed / Failed / Refunded) and amount
 
@@ -153,5 +187,9 @@ Auction closes (seller closes or timer expires via closer.go)
 | Payment gateway | Simulated (90% success rate mock) — no real Stripe integration yet |
 | Shop settlement | Payment records `shop_id` but does not disburse funds to the seller |
 | Message delivery guarantee | Redis Streams with consumer groups — durable, replayable, with automatic pending-message recovery via XAutoClaim |
-| Geo / location filtering | No geo-based search or proximity filtering |
-| Image upload | No file upload — sellers must paste external image URLs manually |
+| Geo / location filtering | **Done** — Redis GEOSEARCH proximity filter, browser geolocation, distance badges |
+| Image upload | **Done** — MinIO/S3 file upload via `POST /uploads`, `ImageUpload` component with drag-and-drop and URL-paste fallback |
+| Minimum bid increment | **Done** — optional per-auction `min_increment` field; enforced atomically in Lua, surfaced in `BiddingPanel` |
+| Search | **Done** — keyword search across item titles, descriptions, and shop names; instant client-side results; composable with all other filters |
+| Watchlist / favorites | **Done** — heart toggle on auction cards and detail page; `/watchlist` page; DynamoDB-persisted; optimistic UI updates |
+| Ratings & reviews | **Done** — dedicated `/reviews/new` page reached from My Bids; shop_id and item title resolved automatically from the auction; no copy-paste required |

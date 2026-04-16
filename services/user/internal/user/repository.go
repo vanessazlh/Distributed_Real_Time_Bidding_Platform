@@ -103,6 +103,64 @@ func (r *Repository) UpdateProfile(ctx context.Context, userID, username, avatar
 	return err
 }
 
+// AddToWatchlist atomically adds an auction_id to the user's watchlist string-set.
+func (r *Repository) AddToWatchlist(ctx context.Context, userID, auctionID string) error {
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]types.AttributeValue{
+			"user_id": &types.AttributeValueMemberS{Value: userID},
+		},
+		UpdateExpression: aws.String("ADD watchlist :ids"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":ids": &types.AttributeValueMemberSS{Value: []string{auctionID}},
+		},
+		ConditionExpression: aws.String("attribute_exists(user_id)"),
+	})
+	return err
+}
+
+// RemoveFromWatchlist atomically removes an auction_id from the user's watchlist string-set.
+func (r *Repository) RemoveFromWatchlist(ctx context.Context, userID, auctionID string) error {
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]types.AttributeValue{
+			"user_id": &types.AttributeValueMemberS{Value: userID},
+		},
+		UpdateExpression: aws.String("DELETE watchlist :ids"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":ids": &types.AttributeValueMemberSS{Value: []string{auctionID}},
+		},
+	})
+	return err
+}
+
+// GetWatchlist returns the auction IDs saved on the user's watchlist.
+// Returns an empty slice when the attribute does not exist (never saved anything).
+func (r *Repository) GetWatchlist(ctx context.Context, userID string) ([]string, error) {
+	out, err := r.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(tableName),
+		Key: map[string]types.AttributeValue{
+			"user_id": &types.AttributeValueMemberS{Value: userID},
+		},
+		ProjectionExpression: aws.String("watchlist"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get item: %w", err)
+	}
+	if out.Item == nil {
+		return nil, errors.New("user not found")
+	}
+	attr, ok := out.Item["watchlist"]
+	if !ok {
+		return []string{}, nil
+	}
+	ss, ok := attr.(*types.AttributeValueMemberSS)
+	if !ok {
+		return []string{}, nil
+	}
+	return ss.Value, nil
+}
+
 // UpdateRole updates the role of an existing user (e.g. buyer → seller upgrade).
 func (r *Repository) UpdateRole(ctx context.Context, userID, role string) error {
 	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{

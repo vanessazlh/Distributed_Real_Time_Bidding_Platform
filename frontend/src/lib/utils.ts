@@ -34,11 +34,18 @@ export function timeAgo(ts: number): string {
   return `${Math.floor(secs / 3600)}h ago`
 }
 
-/** Format a pickup window from epoch ms: "Apr 10, 5:00 – 6:00 PM" */
+/** Format a pickup window from epoch ms: "Today, 5:00 – 6:00 PM" or "Apr 10, 5:00 – 6:00 PM" */
 export function formatPickupWindow(startMs: number, endMs: number): string {
   const s = new Date(startMs)
   const e = new Date(endMs)
-  const dateStr = s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const today = new Date()
+  const isToday =
+    s.getFullYear() === today.getFullYear() &&
+    s.getMonth()    === today.getMonth()    &&
+    s.getDate()     === today.getDate()
+  const dateStr = isToday
+    ? 'Today'
+    : s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   const startTime = s.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
   const endTime   = e.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
   return `${dateStr}, ${startTime} – ${endTime}`
@@ -54,6 +61,20 @@ export function pickupOverlaps(startMs: number, endMs: number, rangeStart: numbe
     : endDate.getHours()
   // Overlap: start <= rangeEnd AND end >= rangeStart
   return startHour <= rangeEnd && endHour >= rangeStart
+}
+
+/** Distance between two lat/lng points in kilometres (Haversine formula) */
+export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2)
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 /** Mask a username for privacy: "yuxin_w" → "yux***" */

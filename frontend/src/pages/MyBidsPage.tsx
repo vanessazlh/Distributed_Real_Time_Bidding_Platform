@@ -96,21 +96,21 @@ export default function MyBidsPage() {
               <div className="flex flex-col items-end gap-2">
                 <p className="font-display text-2xl text-text-primary">{formatCurrency(bid.amount)}</p>
                 <Badge status={bid.status} />
-                {bid.status === 'OUTBID' && (
-                  <Link
-                    to={`/auction/${bid.auction_id}`}
-                    className="text-brand text-sm font-medium hover:underline"
-                  >
-                    Bid Again →
-                  </Link>
-                )}
                 {bid.status === 'WON' && (
-                  <Link
-                    to={`/payment/auction/${bid.auction_id}`}
-                    className="text-brand text-sm font-medium hover:underline"
-                  >
-                    View Payment →
-                  </Link>
+                  <div className="flex items-center gap-4">
+                    <Link
+                      to={`/payment/auction/${bid.auction_id}`}
+                      className="text-brand text-sm font-medium hover:underline"
+                    >
+                      View Payment →
+                    </Link>
+                    <Link
+                      to={`/reviews/new?auction_id=${bid.auction_id}`}
+                      className="text-text-secondary text-sm font-medium hover:text-brand hover:underline transition-colors"
+                    >
+                      Leave a Review →
+                    </Link>
+                  </div>
                 )}
               </div>
             </div>

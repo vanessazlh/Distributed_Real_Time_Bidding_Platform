@@ -22,6 +22,7 @@ export default function CreateAuctionPage() {
   const [duration,      setDuration]      = useState('5')
   const [startBid,      setStartBid]     = useState('')
   const [maxPrice,      setMaxPrice]     = useState('')
+  const [minIncrement,  setMinIncrement] = useState('')
   const [quantity,      setQuantity]     = useState('1')
   const [scheduledStart,setScheduledStart] = useState('')
   const [pickupStart,   setPickupStart]   = useState('')
@@ -85,6 +86,8 @@ export default function CreateAuctionPage() {
         item_title:       selectedItem.title,
         shop_id:          shopId,
         shop_name:        shop?.name             ?? '',
+        shop_lat:         shop?.lat,
+        shop_lng:         shop?.lng,
         retail_price:     selectedItem.retail_value,
         image_url:        selectedItem.image_url ?? '',
         shop_logo_url:    shop?.logo_url         ?? '',
@@ -93,12 +96,25 @@ export default function CreateAuctionPage() {
         duration_minutes: parseInt(duration, 10),
         start_bid:        Math.round(parseFloat(startBid) * 100),
         max_price:        maxPrice ? Math.round(parseFloat(maxPrice) * 100) : undefined,
-        quantity:          parseInt(quantity, 10) > 1 ? parseInt(quantity, 10) : undefined,
+        min_increment:    minIncrement ? Math.round(parseFloat(minIncrement) * 100) : undefined,
+        quantity:         parseInt(quantity, 10) > 1 ? parseInt(quantity, 10) : undefined,
       }
       if (scheduledStart) {
         payload.scheduled_start = new Date(scheduledStart).toISOString()
       }
       if (pickupStart && pickupEnd) {
+        if (new Date(pickupEnd) <= new Date(pickupStart)) {
+          setError('Pickup end time must be after start time.')
+          setLoading(false)
+          return
+        }
+        const auctionStartMs = scheduledStart ? new Date(scheduledStart).getTime() : Date.now()
+        const auctionEndMs = auctionStartMs + parseInt(duration, 10) * 60 * 1000
+        if (new Date(pickupStart).getTime() <= auctionEndMs) {
+          setError('Pickup start time must be after the auction ends.')
+          setLoading(false)
+          return
+        }
         payload.pickup_start = new Date(pickupStart).toISOString()
         payload.pickup_end = new Date(pickupEnd).toISOString()
       }
@@ -233,6 +249,20 @@ export default function CreateAuctionPage() {
               />
               <p className="text-sm text-text-secondary mt-1">
                 Bids above this amount will be rejected. Leave empty for no ceiling.
+              </p>
+            </FormField>
+
+            <FormField label="Minimum Bid Increment ($, optional)">
+              <TextInput
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="Leave empty for no minimum raise"
+                value={minIncrement}
+                onChange={(e) => setMinIncrement(e.target.value)}
+              />
+              <p className="text-sm text-text-secondary mt-1">
+                Each bid must be at least this much higher than the current bid. Leave empty to allow any raise.
               </p>
             </FormField>
 

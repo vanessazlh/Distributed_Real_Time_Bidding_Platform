@@ -36,7 +36,11 @@ export function BiddingPanel({
   onPlaceBid,
   onSignIn,
 }: BiddingPanelProps) {
-  const minNextBid = highestBid + 50
+  // Minimum next bid: if min_increment is set and there is an existing bid, enforce it.
+  // Otherwise allow any amount strictly above current (1 cent above).
+  const minNextBid = auction.min_increment > 0 && highestBid > 0
+    ? highestBid + auction.min_increment
+    : highestBid + 1
 
   return (
     <Card padding="p-8">
@@ -104,32 +108,43 @@ export function BiddingPanel({
 
       <hr className="border-border mb-8" />
 
-      {/* Bid form */}
-      <form onSubmit={onPlaceBid} className="flex flex-col gap-4">
-        <FormField label={`Your bid (min ${formatCurrency(minNextBid)})`}>
-          <TextInput
-            type="number"
-            step="0.01"
-            min={minNextBid / 100}
-            required
-            disabled={isClosed}
-            value={bidInput}
-            onChange={(e) => onBidInputChange(e.target.value)}
-            placeholder={(minNextBid / 100).toFixed(2)}
-            prefix="$"
-          />
-        </FormField>
+      {/* Bid form — hidden when the user is already winning a single-winner auction */}
+      {banner === 'WINNING' && auction.quantity === 1 ? (
+        <p className="text-center text-text-secondary text-sm">
+          You are the highest bidder. No action needed until the auction closes.
+        </p>
+      ) : (
+        <form onSubmit={onPlaceBid} className="flex flex-col gap-4">
+          <FormField label={`Your bid (min ${formatCurrency(minNextBid)})`}>
+            <TextInput
+              type="number"
+              step="0.01"
+              min={minNextBid / 100}
+              required
+              disabled={isClosed}
+              value={bidInput}
+              onChange={(e) => onBidInputChange(e.target.value)}
+              placeholder={(minNextBid / 100).toFixed(2)}
+              prefix="$"
+            />
+            {auction.min_increment > 0 && (
+              <p className="text-xs text-text-secondary mt-1">
+                Minimum raise: {formatCurrency(auction.min_increment)} per bid
+              </p>
+            )}
+          </FormField>
 
-        {user ? (
-          <Button variant="action" size="lg" disabled={isClosed} type="submit" fullWidth>
-            {isPending ? 'Starting Soon' : isClosed ? 'Auction Closed' : 'Place Bid'}
-          </Button>
-        ) : (
-          <Button variant="dark" size="lg" fullWidth type="button" onClick={onSignIn}>
-            Sign in to bid
-          </Button>
-        )}
-      </form>
+          {user ? (
+            <Button variant="action" size="lg" disabled={isClosed} type="submit" fullWidth>
+              {isPending ? 'Starting Soon' : isClosed ? 'Auction Closed' : 'Place Bid'}
+            </Button>
+          ) : (
+            <Button variant="dark" size="lg" fullWidth type="button" onClick={onSignIn}>
+              Sign in to bid
+            </Button>
+          )}
+        </form>
+      )}
 
       <p className="text-center text-text-secondary text-xs mt-4">
         {bidCount} total bids placed so far

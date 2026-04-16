@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	shopsTable = "Shops"
-	itemsTable = "Items"
+	shopsTable   = "Shops"
+	itemsTable   = "Items"
+	reviewsTable = "Reviews"
 )
 
 // Repository handles DynamoDB operations for shops and items.
@@ -142,4 +143,112 @@ func (r *Repository) FindItemsByShop(ctx context.Context, shopID string) ([]Item
 		items = append(items, it)
 	}
 	return items, nil
+}
+
+// SaveReview persists a new review.
+func (r *Repository) SaveReview(ctx context.Context, rev Review) error {
+	item, err := attributevalue.MarshalMap(rev)
+	if err != nil {
+		return fmt.Errorf("marshal review: %w", err)
+	}
+	// Enforce one review per auction_id+reviewer_id via condition expression.
+	// The auction_id-reviewer-index GSI is used for the uniqueness check in the service layer;
+	// here we do a conditional PutItem on the primary key only.
+	_, err = r.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(reviewsTable),
+		Item:      item,
+	})
+	return err
+}
+
+// FindReviewsByShop returns all reviews for a shop, newest first.
+func (r *Repository) FindReviewsByShop(ctx context.Context, shopID string) ([]Review, error) {
+	out, err := r.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(reviewsTable),
+		IndexName:              aws.String("shop_id-index"),
+		KeyConditionExpression: aws.String("shop_id = :sid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":sid": &types.AttributeValueMemberS{Value: shopID},
+		},
+		ScanIndexForward: aws.Bool(false),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query reviews by shop: %w", err)
+	}
+
+	reviews := make([]Review, 0, len(out.Items))
+	for _, av := range out.Items {
+		var rev Review
+		if err := attributevalue.UnmarshalMap(av, &rev); err != nil {
+			return nil, fmt.Errorf("unmarshal review: %w", err)
+		}
+		reviews = append(reviews, rev)
+	}
+	return reviews, nil
+}
+
+// FindReviewByAuctionAndReviewer returns an existing review for an auction by a specific user,
+// used for the one-review-per-auction constraint.
+func (r *Repository) FindReviewByAuctionAndReviewer(ctx context.Context, auctionID, reviewerID string) (*Review, error) {
+	out, err := r.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(reviewsTable),
+		IndexName:              aws.String("auction_id-reviewer-index"),
+		KeyConditionExpression: aws.String("auction_id = :aid AND reviewer_id = :rid"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":aid": &types.AttributeValueMemberS{Value: auctionID},
+			":rid": &types.AttributeValueMemberS{Value: reviewerID},
+		},
+		Limit: aws.Int32(1),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query review by auction+reviewer: %w", err)
+	}
+	if len(out.Items) == 0 {
+		return nil, nil
+	}
+	var rev Review
+	if err := attributevalue.UnmarshalMap(out.Items[0], &rev); err != nil {
+		return nil, fmt.Errorf("unmarshal review: %w", err)
+	}
+	return &rev, nil
+}
+
+// FindReviewByID retrieves a review by its primary key.
+func (r *Repository) FindReviewByID(ctx context.Context, reviewID string) (*Review, error) {
+	out, err := r.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(reviewsTable),
+		Key: map[string]types.AttributeValue{
+			"review_id": &types.AttributeValueMemberS{Value: reviewID},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get review: %w", err)
+	}
+	if out.Item == nil {
+		return nil, errors.New("review not found")
+	}
+	var rev Review
+	if err := attributevalue.UnmarshalMap(out.Item, &rev); err != nil {
+		return nil, fmt.Errorf("unmarshal review: %w", err)
+	}
+	return &rev, nil
+}
+
+// UpdateReviewReply sets the seller_reply and updated_at on a review.
+func (r *Repository) UpdateReviewReply(ctx context.Context, reviewID, reply, updatedAt string) error {
+	_, err := r.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(reviewsTable),
+		Key: map[string]types.AttributeValue{
+			"review_id": &types.AttributeValueMemberS{Value: reviewID},
+		},
+		UpdateExpression: aws.String("SET seller_reply = :r, updated_at = :ua"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":r":  &types.AttributeValueMemberS{Value: reply},
+			":ua": &types.AttributeValueMemberS{Value: updatedAt},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("update review reply: %w", err)
+	}
+	return nil
 }

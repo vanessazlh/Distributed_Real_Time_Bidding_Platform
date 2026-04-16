@@ -3,6 +3,8 @@ package auction
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -80,16 +82,40 @@ func (h *Handler) GetAuction(c *gin.Context) {
 
 // ListAuctions godoc
 // GET /auctions
+// Optional geo filter: ?lat=<float>&lng=<float>&radius_km=<float>
+// Optional search:     ?q=<string>
 func (h *Handler) ListAuctions(c *gin.Context) {
-	status := c.Query("status")
+	latStr := c.Query("lat")
+	lngStr := c.Query("lng")
+	radiusStr := c.Query("radius_km")
+	query := c.Query("q")
 
-	auctions, err := h.svc.ListAuctions(c.Request.Context(), status)
+	var auctions []*Auction
+	var err error
+
+	if latStr != "" && lngStr != "" && radiusStr != "" {
+		lat, errLat := strconv.ParseFloat(latStr, 64)
+		lng, errLng := strconv.ParseFloat(lngStr, 64)
+		radius, errR := strconv.ParseFloat(radiusStr, 64)
+		if errLat == nil && errLng == nil && errR == nil && radius > 0 {
+			auctions, err = h.svc.ListAuctionsNear(c.Request.Context(), lat, lng, radius)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"auctions": filterByQuery(auctions, query)})
+			return
+		}
+	}
+
+	status := c.Query("status")
+	auctions, err = h.svc.ListAuctions(c.Request.Context(), status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"auctions": auctions})
+	c.JSON(http.StatusOK, gin.H{"auctions": filterByQuery(auctions, query)})
 }
 
 // ListShopAuctions godoc
@@ -129,6 +155,8 @@ func (h *Handler) PlaceBid(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bid must be higher than current highest"})
 		case errors.Is(err, ErrBidExceedsMax):
 			c.JSON(http.StatusBadRequest, gin.H{"error": "bid exceeds the maximum price for this auction"})
+		case errors.Is(err, ErrBidIncrementTooSmall):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bid does not meet the minimum increment for this auction"})
 		case errors.Is(err, ErrSelfBid):
 			c.JSON(http.StatusForbidden, gin.H{"error": "sellers cannot bid on their own auction"})
 		default:
@@ -208,4 +236,23 @@ func (h *Handler) SetStrategy(c *gin.Context) {
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid strategy, must be: optimistic, pessimistic, or queue"})
 	}
+}
+
+// filterByQuery filters auctions by a case-insensitive substring match across
+// ItemTitle, Description, and ShopName. Returns the original slice unchanged
+// when query is empty.
+func filterByQuery(auctions []*Auction, query string) []*Auction {
+	if query == "" {
+		return auctions
+	}
+	q := strings.ToLower(query)
+	result := make([]*Auction, 0, len(auctions))
+	for _, a := range auctions {
+		if strings.Contains(strings.ToLower(a.ItemTitle), q) ||
+			strings.Contains(strings.ToLower(a.Description), q) ||
+			strings.Contains(strings.ToLower(a.ShopName), q) {
+			result = append(result, a)
+		}
+	}
+	return result
 }

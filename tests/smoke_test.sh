@@ -297,6 +297,103 @@ for STRATEGY in pessimistic queue optimistic; do
   fi
 done
 
+# ── B16: Reviews ──────────────────────────────────────────────────────────────
+echo ""
+echo "── B16: Reviews"
+
+# B16a: List reviews for a shop (public, initially empty)
+REVIEWS_EMPTY=$(curl -sf "$SHOP_SVC/shops/$SHOP_ID/reviews")
+REV_COUNT=$(json_field "$REVIEWS_EMPTY" "total_reviews")
+if [ "$REV_COUNT" = "0" ]; then
+  ok "B16a list reviews (empty, total_reviews=0)"
+else
+  fail "B16a list reviews empty" "expected total_reviews=0, got: $REVIEWS_EMPTY"
+fi
+
+# B16b: Buyer submits a review (only possible if payment completed — smoke test
+#        uses the auction_id from the payment we triggered above)
+REV_BODY=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$SHOP_SVC/shops/$SHOP_ID/reviews" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $BUYER_TOKEN" \
+  -d "{\"auction_id\":\"$AUCTION_ID\",\"rating\":5,\"comment\":\"Great pickup!\"}")
+# Accept 201 (created) or 403 (payment check configured and auction still simulated).
+# In local dev PAYMENT_SERVICE_URL is configured so the payment service is hit;
+# payment status may be completed or failed — 403 is valid when not completed.
+if [ "$REV_BODY" = "201" ] || [ "$REV_BODY" = "403" ]; then
+  ok "B16b create review (HTTP $REV_BODY)"
+else
+  fail "B16b create review" "expected 201 or 403, got HTTP $REV_BODY"
+fi
+
+# B16c: If the review was created (201), verify it appears in the list and
+#        that the seller can reply.
+if [ "$REV_BODY" = "201" ]; then
+  REVIEW_RESP=$(curl -sf -X POST "$SHOP_SVC/shops/$SHOP_ID/reviews" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $BUYER_TOKEN" \
+    -d "{\"auction_id\":\"$AUCTION_ID\",\"rating\":5,\"comment\":\"Great pickup!\"}" 2>/dev/null || echo "{}")
+  REVIEW_ID=$(json_field "$REVIEW_RESP" "review_id")
+
+  # List should now have ≥1 review
+  REVIEWS_LIST=$(curl -sf "$SHOP_SVC/shops/$SHOP_ID/reviews")
+  TOTAL=$(json_field "$REVIEWS_LIST" "total_reviews")
+  if [ "$TOTAL" -ge 1 ] 2>/dev/null; then
+    ok "B16c review appears in list (total_reviews=$TOTAL)"
+  else
+    fail "B16c review in list" "expected ≥1, got: $REVIEWS_LIST"
+  fi
+
+  # Seller cannot duplicate review (second POST same auction should be 409)
+  DUP=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$SHOP_SVC/shops/$SHOP_ID/reviews" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $BUYER_TOKEN" \
+    -d "{\"auction_id\":\"$AUCTION_ID\",\"rating\":3}")
+  if [ "$DUP" = "409" ]; then
+    ok "B16d duplicate review rejected (HTTP 409)"
+  else
+    # 403 also acceptable (payment check fires first)
+    if [ "$DUP" = "403" ]; then
+      ok "B16d duplicate review rejected (HTTP 403)"
+    else
+      fail "B16d duplicate review" "expected 409 or 403, got HTTP $DUP"
+    fi
+  fi
+
+  # Seller replies to the review
+  if [ -n "$REVIEW_ID" ]; then
+    REPLY=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$SHOP_SVC/shops/$SHOP_ID/reviews/$REVIEW_ID/reply" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $SELLER_TOKEN" \
+      -d '{"reply":"Thanks for the kind words!"}')
+    if [ "$REPLY" = "200" ]; then
+      ok "B16e seller reply (HTTP 200)"
+    else
+      fail "B16e seller reply" "expected 200, got HTTP $REPLY"
+    fi
+
+    # Buyer cannot reply
+    BUYER_REPLY=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$SHOP_SVC/shops/$SHOP_ID/reviews/$REVIEW_ID/reply" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $BUYER_TOKEN" \
+      -d '{"reply":"I should not be able to do this"}')
+    if [ "$BUYER_REPLY" = "403" ]; then
+      ok "B16f buyer cannot reply (HTTP 403)"
+    else
+      fail "B16f buyer reply guard" "expected 403, got HTTP $BUYER_REPLY"
+    fi
+  fi
+fi
+
+# B16g: Unauthenticated user cannot submit a review
+UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$SHOP_SVC/shops/$SHOP_ID/reviews" \
+  -H "Content-Type: application/json" \
+  -d "{\"auction_id\":\"$AUCTION_ID\",\"rating\":4}")
+if [ "$UNAUTH" = "401" ]; then
+  ok "B16g unauthenticated review rejected (HTTP 401)"
+else
+  fail "B16g unauthenticated review" "expected 401, got HTTP $UNAUTH"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════"

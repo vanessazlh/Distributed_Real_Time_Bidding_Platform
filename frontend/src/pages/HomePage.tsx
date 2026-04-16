@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Auction } from '@/types'
 import { CATEGORIES } from '@/types'
@@ -19,28 +19,85 @@ const PICKUP_OPTIONS = [
   { value: 'evening',   label: 'Evening' },
 ] as const
 
+const DISTANCE_OPTIONS = [
+  { value: 'any', label: 'Any Distance' },
+  { value: '2',   label: 'Within 2 km' },
+  { value: '5',   label: 'Within 5 km' },
+  { value: '10',  label: 'Within 10 km' },
+] as const
+
 export default function HomePage() {
   const { isSeller } = useAuth()
   const navigate = useNavigate()
   const [auctions, setAuctions] = useState<Auction[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
-  const [filter,       setFilter]       = useState<TabFilter>('All')
-  const [pickupFilter, setPickupFilter] = useState('any')
+  const [filter,         setFilter]         = useState<TabFilter>('All')
+  const [pickupFilter,   setPickupFilter]   = useState('any')
+  const [distanceFilter, setDistanceFilter] = useState('any')
+  const [userCoords,     setUserCoords]     = useState<{ lat: number; lng: number } | null>(null)
+  const [geoLoading,     setGeoLoading]     = useState(false)
+  const [searchQuery,    setSearchQuery]    = useState('')
 
-  useEffect(() => {
-    if (isSeller) { navigate('/seller/dashboard', { replace: true }); return }
-    api.auctions.list()
+  const fetchAuctions = useCallback((opts?: { lat?: number; lng?: number; radius_km?: number }) => {
+    setLoading(true)
+    setError(null)
+    api.auctions.list(opts)
       .then(setAuctions)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load auctions'))
       .finally(() => setLoading(false))
-  }, [isSeller, navigate])
+  }, [])
+
+  useEffect(() => {
+    if (isSeller) { navigate('/seller/dashboard', { replace: true }); return }
+    fetchAuctions()
+    // Silently request location on load so distance badges and filter work immediately
+    navigator.geolocation?.getCurrentPosition(
+      (pos) => setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {}, // denied — distance filter will re-prompt when selected
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
+    )
+  }, [isSeller, navigate, fetchAuctions])
+
+  const handleDistanceFilter = (value: string) => {
+    setDistanceFilter(value)
+    if (value === 'any') {
+      fetchAuctions()
+      return
+    }
+    const radiusKm = parseFloat(value)
+    if (userCoords) {
+      fetchAuctions({ lat: userCoords.lat, lng: userCoords.lng, radius_km: radiusKm })
+    } else {
+      setGeoLoading(true)
+      navigator.geolocation?.getCurrentPosition(
+        (pos) => {
+          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          setUserCoords(coords)
+          setGeoLoading(false)
+          fetchAuctions({ lat: coords.lat, lng: coords.lng, radius_km: radiusKm })
+        },
+        (err) => {
+          setGeoLoading(false)
+          setDistanceFilter('any')
+          setError(
+            err.code === err.TIMEOUT
+              ? 'Location request timed out — please try again.'
+              : 'Location access denied — cannot filter by distance.',
+          )
+        },
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
+      )
+    }
+  }
+
+  const liveAuctions = auctions.filter((a) => a.status !== 'CLOSED' && a.end_time > Date.now())
 
   const byCategory = filter === 'All'
-    ? auctions
-    : auctions.filter((a) => a.category === filter)
+    ? liveAuctions
+    : liveAuctions.filter((a) => a.category === filter)
 
-  const visible = pickupFilter === 'any'
+  const byPickup = pickupFilter === 'any'
     ? byCategory
     : byCategory.filter((a) => {
         if (!a.pickup_start || !a.pickup_end) return false
@@ -49,6 +106,15 @@ export default function HomePage() {
         return pickupOverlaps(a.pickup_start, a.pickup_end, 17, 23) // evening
       })
 
+  const q = searchQuery.trim().toLowerCase()
+  const visible = q === ''
+    ? byPickup
+    : byPickup.filter((a) =>
+        a.item.title.toLowerCase().includes(q) ||
+        a.description.toLowerCase().includes(q) ||
+        a.item.shop_name.toLowerCase().includes(q),
+      )
+
   return (
     <PageContainer>
       {/* Hero */}
@@ -56,9 +122,23 @@ export default function HomePage() {
         <h1 className="font-sans font-semibold text-4xl text-text-primary mb-4">
           Rescue today's surplus.<br />5 minutes to bid.
         </h1>
-        <p className="text-text-secondary text-lg">
+        <p className="text-text-secondary text-lg mb-6">
           Premium unsold goods from local shops, auctioned at deep discounts to prevent food waste.
         </p>
+        <div className="relative">
+          <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-text-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+          </span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search auctions, items, shops…"
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-brand bg-surface text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-brand"
+          />
+        </div>
       </div>
 
       {/* Category tabs + secondary filters */}
@@ -88,6 +168,12 @@ export default function HomePage() {
             value={pickupFilter}
             onChange={setPickupFilter}
           />
+          <FilterDropdown
+            label={geoLoading ? 'Locating…' : 'Nearby'}
+            options={[...DISTANCE_OPTIONS]}
+            value={distanceFilter}
+            onChange={handleDistanceFilter}
+          />
         </div>
       </div>
 
@@ -104,7 +190,7 @@ export default function HomePage() {
       {!loading && !error && visible.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {visible.map((auction) => (
-            <AuctionCard key={auction.auction_id} auction={auction} />
+            <AuctionCard key={auction.auction_id} auction={auction} userCoords={userCoords ?? undefined} />
           ))}
         </div>
       )}

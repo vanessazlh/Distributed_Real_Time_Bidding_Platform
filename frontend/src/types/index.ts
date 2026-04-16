@@ -21,8 +21,10 @@ export interface Shop {
   location: string
   owner_id: string
   logo_url?: string
+  lat?: number
+  lng?: number
 }
-export type BidStatus = 'WINNING' | 'OUTBID' | 'WON' | 'LOST'
+export type BidStatus = 'WINNING' | 'OUTBID' | 'WON'
 
 export interface AuctionItem {
   title: string
@@ -36,6 +38,7 @@ export interface Auction {
   current_highest_bid: number  // cents
   retail_price: number         // cents
   max_price: number            // cents; 0 = no limit
+  min_increment: number        // cents; 0 = no minimum increment
   quantity: number             // number of winners; 1 = standard auction
   end_time: number             // Unix ms
   status: AuctionStatus
@@ -46,6 +49,8 @@ export interface Auction {
   category?: Category
   pickup_start?: number   // Unix ms
   pickup_end?: number     // Unix ms
+  shop_lat?: number
+  shop_lng?: number
 }
 
 export interface User {
@@ -61,6 +66,7 @@ export interface UserBid {
   bid_id: string
   auction_id: string
   item_title: string
+  shop_id: string
   shop_name: string
   amount: number    // cents
   timestamp: number // Unix ms
@@ -136,6 +142,26 @@ export interface StoredNotification {
   amount:     number  // cents
   created_at: number  // Unix ms
   read:       boolean
+}
+
+/** A buyer review of a shop after a completed auction */
+export interface Review {
+  review_id:          string
+  shop_id:            string
+  reviewer_id:        string
+  reviewer_username:  string
+  auction_id:         string
+  rating:             number   // 1–5
+  comment?:           string
+  seller_reply?:      string
+  created_at:         string   // RFC3339
+  updated_at:         string   // RFC3339
+}
+
+export interface ReviewsResponse {
+  reviews:        Review[]
+  average_rating: number
+  total_reviews:  number
 }
 
 /** Wrapper sent over the user-level WebSocket */

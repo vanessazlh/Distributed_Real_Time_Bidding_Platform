@@ -12,13 +12,22 @@
 | My Bids page | Working |
 | Auction enrichment fields | Working |
 | Seller auction management UI | **Done** (per-shop management page at /seller/shops/:shopId with Items + Auctions tabs; dashboard simplified to overview cards with "Manage →") |
-| Automatic auction expiry | **Basic version done** (closer.go polls every 1s, closes OPEN auctions past end_time) |
-| Payment service Redis Streams migration | **Complete** |
-| Auction/notification/bid Redis Streams migration | **Complete** |
+| Automatic auction expiry | **Done** (closer.go handles OPEN→CLOSED and PENDING→OPEN; optional scheduled_start on create) |
+| Payment service Redis Streams migration | **Done** |
+| Auction/notification/bid Redis Streams migration | **Done** |
 | Bid service WON status on close | **Done** (consumer subscribes to auction_closed, marks winner bid as WON) |
 | Per-auction WebSocket notifications | **Done** (broadcasts all bids + auction_closed, frontend WON/CLOSED banners) |
 | Global notification system | **Done** (persistent Redis store, per-user WebSocket, bell + toast UI, capped at 20 with dedup) |
 | Cache reliability (ensureRedisCached) | **Done** (DynamoDB backing store, write-through on create, fallback read with stampede lock, Redis cleanup on close) |
+| Geo support | **Done** (shop lat/lng via browser geolocation, Redis GEOSEARCH, Nearby filter on HomePage, distance badge on AuctionCard) |
+| Image uploads | **Done** (MinIO/S3, POST /uploads, ImageUpload component, nginx proxy) |
+| Quantity auctions | **Done** (top-N winners via Redis Sorted Set, Payment creates one record per winner) |
+| Pickup time windows | **Done** (optional pickup_start/pickup_end on auctions, time-of-day filter on HomePage) |
+| Seller auction detail page | **Done** (SellerAuctionDetailPage at /seller/auctions/:id with bid history, winners, payment status) |
+| Single-account model | **Done** (one email = one account; buyer→seller upgrade flow) |
+| Item categories | **Done** (category saved by shop service, filter on HomePage, inherited by CreateAuctionPage) |
+| Profile/shop editing | **Done** (PUT /users/:id username/avatar, PUT /shops/:id name/location/logo) |
+| Minimum bid increment | **Done** (optional min_increment field, Lua enforcement, ErrBidIncrementTooSmall, BiddingPanel hint) |
 
 ---
 
@@ -101,12 +110,8 @@ Added `quantity` field (default 1) to Auction model, CreateAuctionRequest, Redis
 ### 6. ~~Move optimistic and queue strategies to experimental/~~ **Done**
 Moved `OptimisticStrategy` and `QueueStrategy` to `concurrency/experimental/` package with clear limitation comments. Both reject quantity>1 auctions with descriptive errors. `PessimisticStrategy` (Lua script) is now the default (`CONCURRENCY_STRATEGY` env var defaults to "pessimistic"). Service struct imports experimental package for benchmarking/dev use.
 
-### 7. Geo support (buyer + seller)
-Neither buyers nor sellers have location data. Add `lat`/`lng` or a structured address to the `Shop` model so shops can be surfaced by proximity.
-
-- Seller: structured address on shop creation
-- Buyer: location captured on registration or via browser geolocation
-- Likely requires a geohash GSI in DynamoDB or a dedicated geo service
+### 7. ~~Geo support (buyer + seller)~~ **Done**
+Added `lat`/`lng` (float64) to the `Shop` model, persisted in DynamoDB. Shop create/edit forms have a "📍 Pin my location" button via `navigator.geolocation`. Coordinates are denormalized into each `Auction` at create time (`shop_lat`/`shop_lng`) and written to a Redis `shops:geo` sorted set via `GEOADD`. `GET /auctions?lat=X&lng=Y&radius_km=R` uses `GEOSEARCH` to return only auctions from nearby shops. HomePage has a "Nearby" `FilterDropdown` (Within 2/5/10 km) that triggers geolocation and re-fetches with geo params. `AuctionCard` shows a `~X.Xkm` distance badge when user coords are available. No external geocoding API required.
 
 ### 2. ~~Item categories~~ **Done**
 Category field existed on Item model and frontend but was never saved by the shop service's `CreateItem`. Fixed: `req.Category` now passed through to the Item struct. Frontend `CreateItemPage` already had category dropdown, `HomePage` already filters by category, `CreateAuctionPage` inherits category from the selected item.
@@ -147,11 +152,12 @@ In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`Auc
 
 Added optional `pickup_start` and `pickup_end` (RFC3339) fields to the Auction model, Redis hash, DynamoDB, and API. Backend validates RFC3339 format and that end > start. Frontend: `CreateAuctionPage` has paired datetime-local inputs in a "Pickup Window" field. `AuctionCard` shows "Pickup {date}, {start} – {end}" below the bid info when present. `AuctionDetailPage` shows a prominent pickup window card with clock icon. `SellerAuctionDetailPage` shows pickup window in the Item Details sidebar. `HomePage` has a second filter row (pill buttons): Any Time / Morning (before 12pm) / Afternoon (12–5pm) / Evening (after 5pm), client-side filtering on `pickup_start` hour. Auctions without a pickup window are hidden when a time filter is active.
 
-### 15. Watchlist / favorites
-Allow buyers to save auctions to a watchlist. Persist in DynamoDB (user_id + auction_id). Show a heart/star toggle on AuctionCard and AuctionDetailPage. Dedicated "My Watchlist" page. Optionally notify when a watched auction is about to close.
+### 15. ~~Watchlist / favorites~~ **Done**
 
-### 16. Search
-Full-text search across auction titles, descriptions, and shop names. Options: DynamoDB Scan with `contains` filter (simple, poor scaling), or a lightweight search index (e.g. in-memory inverted index in the auction service, or ElasticSearch/MeiliSearch container for production). Search bar in the homepage header with live results.
+Buyers can save auctions to a watchlist. Persisted as a DynamoDB string-set (`watchlist`) on the Users table — no new table needed; atomic `ADD`/`DELETE` operations. Three new endpoints on the user service (`GET/POST/DELETE /users/:id/watchlist/:auction_id`). `WatchlistContext` loads the list on login and applies optimistic updates on toggle. Heart button on `AuctionCard` (image overlay) and `AuctionDetailPage` (next to title). Dedicated `/watchlist` page fetches full auction details for all saved IDs. Heart icon in the buyer Navbar links to the watchlist page.
+
+### 16. ~~Search~~ **Done**
+Full-text search across auction titles, descriptions, and shop names. Backend: `GET /auctions?q=<term>` applies case-insensitive substring filter (`filterByQuery`) after the Redis fetch — works alongside geo params too. Frontend: search bar in the hero section on HomePage; client-side filtering on already-fetched auctions for instant results (no extra API call). Filter chain: category → pickup time → search query.
 
 ### 17. Recurring auctions
 Allow sellers to create auction templates that auto-generate auctions on a schedule (daily, weekly). Store templates in DynamoDB with cron-like schedule fields. A scheduler goroutine (similar to closer.go) creates new auctions from templates at the configured times. Useful for bakeries and restaurants with predictable daily surplus.
@@ -159,12 +165,18 @@ Allow sellers to create auction templates that auto-generate auctions on a sched
 ### 18. Analytics dashboard
 Seller-facing analytics page: revenue over time, average selling price vs retail price, bidder count trends, top-performing items. Aggregate data from completed auctions and payments. Chart library (e.g. Recharts) for visualizations. Could also include a platform-wide admin view.
 
-### 19. Minimum bid increment
-Add optional `min_increment` field (int64, cents) to Auction model. Lua bid validation script enforces `new_bid >= current_highest + min_increment`. Default to 1 cent if not set. Frontend shows the minimum next bid amount in BiddingPanel. Prevents 1-cent bid wars.
+### 19. ~~Minimum bid increment~~ **Done**
+Added optional `min_increment` field (int64, cents) to Auction model, Redis hash, and DynamoDB. Lua bid validation script (`placeBidLua`) enforces `new_bid >= current_highest + min_increment` for single-winner auctions and per-slot enforcement for multi-winner auctions. `ErrBidIncrementTooSmall` (-5 return code) propagated through service → handler → 400 response. Frontend: optional "Minimum Bid Increment" input on `CreateAuctionPage`, `BiddingPanel` shows minimum next bid based on increment and displays a hint below the input when set.
 
-### 20. Ratings & reviews
-After a completed auction + payment, buyers can rate the pickup experience (1–5 stars + optional text). Store in DynamoDB (reviewer_id, shop_id, auction_id, rating, comment, timestamp). Display average rating on ShopDetailPage and AuctionCard. Sellers can respond to reviews. One review per auction per buyer.
+### 20. ~~Ratings & reviews~~ **Done**
+After a completed auction + payment, buyers can rate the pickup experience (1–5 stars + optional text). Stored in DynamoDB `Reviews` table (PK: `review_id`, GSIs: `shop_id-index` for listing and `auction_id-reviewer-index` for uniqueness). Payment eligibility check via `PAYMENT_SERVICE_URL` env var (skipped when unset for dev). One review per auction per buyer enforced by GSI lookup. Sellers can reply to reviews. Average rating + review count shown on `ShopDetailPage` header and `AuctionDetailPage` shop link. `GET /shops/:id/reviews` is public; `POST` requires buyer auth; reply requires seller auth + shop ownership.
 
 ### 21. Mobile responsive polish
 Audit all pages for small-screen breakpoints. Key areas: homepage grid (single column on mobile), auction detail layout (stack sidebar below main), navbar (hamburger menu), bidding panel (full-width sticky bottom), filter bar (horizontal scroll or collapsible). Tailwind responsive prefixes (`sm:`, `md:`) are already available.
+
+### 22. AI description generator (seller)
+"Generate with AI" button on `CreateItemPage` next to the description textarea. Calls a new `POST /ai/describe` endpoint on the shop service. Backend takes `title`, `category`, and `retail_value`, sends a prompt to an LLM (OpenAI / Gemini / Anthropic — provider configured via env vars), and returns a 2–3 sentence product description. Seller can edit the suggestion before saving. API key stored as an env var (e.g. `AI_API_KEY`); falls back gracefully if not configured.
+
+### 23. AI auction recommendations (buyer)
+"Recommended for You" section on `HomePage` for logged-in buyers. New `GET /auctions/recommendations` endpoint on the auction service fetches OPEN auctions from Redis, passes them to an LLM with user context (categories from bid history, location if available), and returns the top 5–8 auction IDs with a short reason per pick. Frontend renders a horizontal scroll row above the main grid; each card shows a "Why?" tooltip with the reason. Provider and key follow the same env var convention as #22. Falls back silently if the AI call fails or the key is absent.
 

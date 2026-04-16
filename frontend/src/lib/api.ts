@@ -1,4 +1,4 @@
-import type { Auction, AuctionBid, AuctionStatus, Category, User, UserBid, Item, Shop, Payment, StoredNotification } from '@/types'
+import type { Auction, AuctionBid, AuctionStatus, Category, User, UserBid, Item, Shop, Payment, StoredNotification, ReviewsResponse, Review } from '@/types'
 
 // ── Error type ───────────────────────────────────────────────────────────────
 
@@ -78,6 +78,7 @@ interface BackendBid {
   auction_id: string
   user_id:    string
   item_title: string
+  shop_id:    string
   shop_name:  string
   amount:     number
   timestamp:  string  // RFC3339
@@ -89,6 +90,7 @@ function toUserBid(b: BackendBid): UserBid {
     bid_id:     b.bid_id,
     auction_id: b.auction_id,
     item_title: b.item_title ?? '',
+    shop_id:    b.shop_id    ?? '',
     shop_name:  b.shop_name  ?? '',
     amount:     b.amount,
     timestamp:  new Date(b.timestamp).getTime(),
@@ -109,6 +111,7 @@ interface BackendAuction {
   shop_name:           string
   retail_price:        number
   max_price:           number
+  min_increment:       number
   quantity:            number
   image_url:           string
   shop_logo_url:       string
@@ -120,6 +123,8 @@ interface BackendAuction {
   current_highest_bid: number
   bid_count:           number
   status:              string
+  shop_lat?:           number
+  shop_lng?:           number
 }
 
 function toAuction(b: BackendAuction): Auction {
@@ -133,6 +138,7 @@ function toAuction(b: BackendAuction): Auction {
     current_highest_bid: b.current_highest_bid ?? 0,
     retail_price:        b.retail_price        ?? 0,
     max_price:           b.max_price           ?? 0,
+    min_increment:       b.min_increment       ?? 0,
     quantity:            b.quantity && b.quantity > 0 ? b.quantity : 1,
     end_time:            new Date(b.end_time).getTime(),
     status:              (b.status as AuctionStatus) ?? 'OPEN',
@@ -143,6 +149,8 @@ function toAuction(b: BackendAuction): Auction {
     category:            (b.category as Category) || undefined,
     pickup_start:        b.pickup_start ? new Date(b.pickup_start).getTime() : undefined,
     pickup_end:          b.pickup_end   ? new Date(b.pickup_end).getTime()   : undefined,
+    shop_lat:            b.shop_lat,
+    shop_lng:            b.shop_lng,
   }
 }
 
@@ -169,16 +177,21 @@ export const api = {
 
   auctions: {
     /** GET /auctions → { auctions: Auction[] } */
-    list: () =>
-      request<{ auctions: BackendAuction[] }>('/auctions')
-        .then((r) => (r.auctions ?? []).map(toAuction)),
+    list: (opts?: { lat?: number; lng?: number; radius_km?: number }) => {
+      let url = '/auctions'
+      if (opts?.lat !== undefined && opts?.lng !== undefined && opts?.radius_km !== undefined) {
+        url += `?lat=${opts.lat}&lng=${opts.lng}&radius_km=${opts.radius_km}`
+      }
+      return request<{ auctions: BackendAuction[] }>(url)
+        .then((r) => (r.auctions ?? []).map(toAuction))
+    },
 
     /** GET /auctions/:id → Auction */
     get: (id: string) =>
       request<BackendAuction>(`/auctions/${id}`).then(toAuction),
 
     /** POST /auctions → Auction */
-    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; max_price?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string; pickup_start?: string; pickup_end?: string }, token: string) =>
+    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; shop_lat?: number; shop_lng?: number; retail_price: number; max_price?: number; min_increment?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string; pickup_start?: string; pickup_end?: string }, token: string) =>
       request<BackendAuction>('/auctions', {
         method: 'POST',
         headers: jsonHeaders(token),
@@ -240,6 +253,26 @@ export const api = {
       request<{ bids: BackendBid[] }>(`/users/${userId}/bids`, {
         headers: { Authorization: `Bearer ${token}` },
       }).then((r) => (r.bids ?? []).map(toUserBid)),
+
+    /** GET /users/:userId/watchlist → string[] */
+    getWatchlist: (userId: string, token: string) =>
+      request<{ auction_ids: string[] }>(`/users/${userId}/watchlist`, {
+        headers: jsonHeaders(token),
+      }).then((r) => r.auction_ids ?? []),
+
+    /** POST /users/:userId/watchlist/:auctionId */
+    addToWatchlist: (userId: string, auctionId: string, token: string) =>
+      request<{ ok: boolean }>(`/users/${userId}/watchlist/${auctionId}`, {
+        method: 'POST',
+        headers: jsonHeaders(token),
+      }),
+
+    /** DELETE /users/:userId/watchlist/:auctionId */
+    removeFromWatchlist: (userId: string, auctionId: string, token: string) =>
+      request<{ ok: boolean }>(`/users/${userId}/watchlist/${auctionId}`, {
+        method: 'DELETE',
+        headers: jsonHeaders(token),
+      }),
   },
 
   shops: {
@@ -253,7 +286,7 @@ export const api = {
       }).then((r) => r.shops ?? []),
 
     /** POST /shops → Shop */
-    create: (payload: { name: string; location: string; logo_url?: string }, token: string) =>
+    create: (payload: { name: string; location: string; logo_url?: string; lat?: number; lng?: number }, token: string) =>
       request<Shop>('/shops', {
         method: 'POST',
         headers: jsonHeaders(token),
@@ -261,7 +294,7 @@ export const api = {
       }),
 
     /** PUT /shops/:shopId → Shop */
-    update: (shopId: string, payload: { name?: string; location?: string; logo_url?: string }, token: string) =>
+    update: (shopId: string, payload: { name?: string; location?: string; logo_url?: string; lat?: number; lng?: number }, token: string) =>
       request<Shop>(`/shops/${shopId}`, {
         method: 'PUT',
         headers: jsonHeaders(token),
@@ -322,6 +355,28 @@ export const api = {
       const data = await res.json() as { url: string }
       return data.url
     },
+  },
+
+  reviews: {
+    /** GET /shops/:shopId/reviews → ReviewsResponse */
+    list: (shopId: string) =>
+      request<ReviewsResponse>(`/shops/${shopId}/reviews`),
+
+    /** POST /shops/:shopId/reviews → Review */
+    create: (shopId: string, payload: { auction_id: string; rating: number; comment?: string }, token: string) =>
+      request<Review>(`/shops/${shopId}/reviews`, {
+        method: 'POST',
+        headers: jsonHeaders(token),
+        body: JSON.stringify(payload),
+      }),
+
+    /** POST /shops/:shopId/reviews/:reviewId/reply → Review */
+    reply: (shopId: string, reviewId: string, reply: string, token: string) =>
+      request<Review>(`/shops/${shopId}/reviews/${reviewId}/reply`, {
+        method: 'POST',
+        headers: jsonHeaders(token),
+        body: JSON.stringify({ reply }),
+      }),
   },
 
   payments: {

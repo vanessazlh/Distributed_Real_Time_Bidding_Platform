@@ -15,14 +15,16 @@ import (
 // mockRepo is an in-memory implementation of shop.Repo used by unit tests.
 // It lets the service be exercised without DynamoDB or network calls.
 type mockRepo struct {
-	shops map[string]*shop.Shop
-	items map[string]*shop.Item
+	shops   map[string]*shop.Shop
+	items   map[string]*shop.Item
+	reviews map[string]*shop.Review
 }
 
 func newMockRepo() *mockRepo {
 	return &mockRepo{
-		shops: make(map[string]*shop.Shop),
-		items: make(map[string]*shop.Item),
+		shops:   make(map[string]*shop.Shop),
+		items:   make(map[string]*shop.Item),
+		reviews: make(map[string]*shop.Review),
 	}
 }
 
@@ -76,6 +78,54 @@ func (m *mockRepo) FindItemByID(_ context.Context, itemID string) (*shop.Item, e
 	return &cp, nil
 }
 
+func (m *mockRepo) SaveReview(_ context.Context, rev shop.Review) error {
+	if m.reviews == nil {
+		m.reviews = make(map[string]*shop.Review)
+	}
+	cp := rev
+	m.reviews[rev.ReviewID] = &cp
+	return nil
+}
+
+func (m *mockRepo) FindReviewsByShop(_ context.Context, shopID string) ([]shop.Review, error) {
+	var result []shop.Review
+	for _, r := range m.reviews {
+		if r.ShopID == shopID {
+			result = append(result, *r)
+		}
+	}
+	return result, nil
+}
+
+func (m *mockRepo) FindReviewByAuctionAndReviewer(_ context.Context, auctionID, reviewerID string) (*shop.Review, error) {
+	for _, r := range m.reviews {
+		if r.AuctionID == auctionID && r.ReviewerID == reviewerID {
+			cp := *r
+			return &cp, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *mockRepo) FindReviewByID(_ context.Context, reviewID string) (*shop.Review, error) {
+	r, ok := m.reviews[reviewID]
+	if !ok {
+		return nil, errors.New("review not found")
+	}
+	cp := *r
+	return &cp, nil
+}
+
+func (m *mockRepo) UpdateReviewReply(_ context.Context, reviewID, reply, updatedAt string) error {
+	r, ok := m.reviews[reviewID]
+	if !ok {
+		return errors.New("review not found")
+	}
+	r.SellerReply = reply
+	r.UpdatedAt = updatedAt
+	return nil
+}
+
 // mockUploader records upload inputs so UploadImage tests can verify storage
 // behavior without talking to S3.
 type mockUploader struct {
@@ -109,6 +159,8 @@ func TestCreateShop_Success(t *testing.T) {
 	s, err := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "My Shop",
 		Location: "Boston",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -128,6 +180,8 @@ func TestCreateShop_WithLogoURL(t *testing.T) {
 		Name:     "Logo Shop",
 		Location: "Boston",
 		LogoURL:  "https://example.com/logo.png",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -153,6 +207,8 @@ func TestCreateItem_Success(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	item, err := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
@@ -184,6 +240,8 @@ func TestCreateItem_Forbidden(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	_, err := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
@@ -212,6 +270,8 @@ func TestCreateItem_ZeroRetailValue(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	_, err := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
@@ -228,6 +288,8 @@ func TestCreateItem_NegativeRetailValue(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	_, err := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
@@ -244,6 +306,8 @@ func TestGetItem_Success(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 	created, _ := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
 		Title:       "Table",
@@ -276,6 +340,8 @@ func TestListItems(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "LA",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 	_, _ = svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
 		Title:       "A",
@@ -311,14 +377,20 @@ func TestListSellerShops(t *testing.T) {
 	_, _ = svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "A",
 		Location: "Boston",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "seller-1")
 	_, _ = svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "B",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "seller-1")
 	_, _ = svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "C",
 		Location: "LA",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "seller-2")
 
 	shops, err := svc.ListSellerShops(context.Background(), "seller-1")
@@ -335,6 +407,8 @@ func TestUpdateShop_Success(t *testing.T) {
 	created, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Old Name",
 		Location: "Old Location",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	updated, err := svc.UpdateShop(context.Background(), created.ShopID, shop.UpdateShopRequest{
@@ -361,6 +435,8 @@ func TestUpdateShop_Forbidden(t *testing.T) {
 	created, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "Boston",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	_, err := svc.UpdateShop(context.Background(), created.ShopID, shop.UpdateShopRequest{
@@ -432,5 +508,165 @@ func TestUploadImage_Success(t *testing.T) {
 	}
 	if uploader.lastKey == "" {
 		t.Fatal("expected uploader to receive a generated key")
+	}
+}
+
+// --- reviews ---
+
+func newShopWithOwner(t *testing.T, svc *shop.Service, ownerID string) *shop.Shop {
+	t.Helper()
+	s, err := svc.CreateShop(context.Background(), shop.CreateShopRequest{
+		Name: "Test Shop", Location: "Boston", Lat: 42.36, Lng: -71.06,
+	}, ownerID)
+	if err != nil {
+		t.Fatalf("create shop: %v", err)
+	}
+	return s
+}
+
+func TestCreateReview_Success(t *testing.T) {
+	svc := newTestService()
+	s := newShopWithOwner(t, svc, "seller-1")
+
+	rev, err := svc.CreateReview(context.Background(), s.ShopID, shop.CreateReviewRequest{
+		AuctionID: "auction-1",
+		Rating:    4,
+		Comment:   "Great pickup experience!",
+	}, "buyer-1", "alice", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rev.ReviewID == "" {
+		t.Fatal("expected non-empty review_id")
+	}
+	if rev.Rating != 4 {
+		t.Fatalf("rating mismatch: got %d", rev.Rating)
+	}
+	if rev.ReviewerUsername != "alice" {
+		t.Fatalf("reviewer_username mismatch: got %s", rev.ReviewerUsername)
+	}
+}
+
+func TestCreateReview_ShopNotFound(t *testing.T) {
+	svc := newTestService()
+
+	_, err := svc.CreateReview(context.Background(), "ghost-shop", shop.CreateReviewRequest{
+		AuctionID: "a1", Rating: 3,
+	}, "buyer-1", "alice", "")
+	if !errors.Is(err, shop.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestCreateReview_DuplicateRejected(t *testing.T) {
+	svc := newTestService()
+	s := newShopWithOwner(t, svc, "seller-1")
+
+	req := shop.CreateReviewRequest{AuctionID: "auction-1", Rating: 5}
+	if _, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-1", "alice", ""); err != nil {
+		t.Fatalf("first review: %v", err)
+	}
+
+	_, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-1", "alice", "")
+	if !errors.Is(err, shop.ErrAlreadyReviewed) {
+		t.Fatalf("expected ErrAlreadyReviewed, got %v", err)
+	}
+}
+
+func TestCreateReview_DifferentBuyerSameAuction(t *testing.T) {
+	svc := newTestService()
+	s := newShopWithOwner(t, svc, "seller-1")
+
+	req := shop.CreateReviewRequest{AuctionID: "auction-1", Rating: 5}
+	if _, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-1", "alice", ""); err != nil {
+		t.Fatalf("first review: %v", err)
+	}
+
+	// A different buyer reviewing the same auction for the same shop should be allowed.
+	_, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-2", "bob", "")
+	if err != nil {
+		t.Fatalf("second buyer review should succeed, got %v", err)
+	}
+}
+
+func TestListReviews_AverageRating(t *testing.T) {
+	svc := newTestService()
+	s := newShopWithOwner(t, svc, "seller-1")
+
+	for i, r := range []int{5, 4, 3} {
+		if _, err := svc.CreateReview(context.Background(), s.ShopID, shop.CreateReviewRequest{
+			AuctionID: "auction-" + string(rune('0'+i)), Rating: r,
+		}, "buyer-"+string(rune('0'+i)), "user", ""); err != nil {
+			t.Fatalf("create review %d: %v", i, err)
+		}
+	}
+
+	resp, err := svc.ListReviews(context.Background(), s.ShopID)
+	if err != nil {
+		t.Fatalf("list reviews: %v", err)
+	}
+	if resp.TotalReviews != 3 {
+		t.Fatalf("expected 3 reviews, got %d", resp.TotalReviews)
+	}
+	// avg of 5+4+3 = 12/3 = 4.0
+	if resp.AverageRating != 4.0 {
+		t.Fatalf("expected avg 4.0, got %.1f", resp.AverageRating)
+	}
+}
+
+func TestListReviews_EmptyShop(t *testing.T) {
+	svc := newTestService()
+	s := newShopWithOwner(t, svc, "seller-1")
+
+	resp, err := svc.ListReviews(context.Background(), s.ShopID)
+	if err != nil {
+		t.Fatalf("list reviews: %v", err)
+	}
+	if resp.TotalReviews != 0 {
+		t.Fatalf("expected 0 reviews, got %d", resp.TotalReviews)
+	}
+	if resp.AverageRating != 0.0 {
+		t.Fatalf("expected avg 0.0, got %.1f", resp.AverageRating)
+	}
+}
+
+func TestReplyToReview_Success(t *testing.T) {
+	svc := newTestService()
+	s := newShopWithOwner(t, svc, "seller-1")
+
+	rev, _ := svc.CreateReview(context.Background(), s.ShopID, shop.CreateReviewRequest{
+		AuctionID: "auction-1", Rating: 4,
+	}, "buyer-1", "alice", "")
+
+	updated, err := svc.ReplyToReview(context.Background(), s.ShopID, rev.ReviewID, "Thanks for your kind words!", "seller-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updated.SellerReply != "Thanks for your kind words!" {
+		t.Fatalf("seller_reply mismatch: got %q", updated.SellerReply)
+	}
+}
+
+func TestReplyToReview_Forbidden(t *testing.T) {
+	svc := newTestService()
+	s := newShopWithOwner(t, svc, "seller-1")
+
+	rev, _ := svc.CreateReview(context.Background(), s.ShopID, shop.CreateReviewRequest{
+		AuctionID: "auction-1", Rating: 3,
+	}, "buyer-1", "alice", "")
+
+	_, err := svc.ReplyToReview(context.Background(), s.ShopID, rev.ReviewID, "Unauthorized reply", "imposter")
+	if !errors.Is(err, shop.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+}
+
+func TestReplyToReview_ReviewNotFound(t *testing.T) {
+	svc := newTestService()
+	s := newShopWithOwner(t, svc, "seller-1")
+
+	_, err := svc.ReplyToReview(context.Background(), s.ShopID, "no-such-review", "hello", "seller-1")
+	if !errors.Is(err, shop.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

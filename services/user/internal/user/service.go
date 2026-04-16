@@ -39,6 +39,9 @@ type Repo interface {
 	FindByEmail(ctx context.Context, email string) (*User, error)
 	UpdateRole(ctx context.Context, userID, role string) error
 	UpdateProfile(ctx context.Context, userID, username, avatarURL string) error
+	AddToWatchlist(ctx context.Context, userID, auctionID string) error
+	RemoveFromWatchlist(ctx context.Context, userID, auctionID string) error
+	GetWatchlist(ctx context.Context, userID string) ([]string, error)
 }
 
 // Service contains business logic for the user domain.
@@ -152,6 +155,28 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, req UpdatePr
 		return fmt.Errorf("update profile: %w", err)
 	}
 	return nil
+}
+
+// AddToWatchlist saves an auction to the user's watchlist.
+func (s *Service) AddToWatchlist(ctx context.Context, userID, auctionID string) error {
+	if _, err := s.repo.FindByID(ctx, userID); err != nil {
+		return ErrNotFound
+	}
+	return s.repo.AddToWatchlist(ctx, userID, auctionID)
+}
+
+// RemoveFromWatchlist removes an auction from the user's watchlist.
+func (s *Service) RemoveFromWatchlist(ctx context.Context, userID, auctionID string) error {
+	return s.repo.RemoveFromWatchlist(ctx, userID, auctionID)
+}
+
+// GetWatchlist returns the auction IDs on the user's watchlist.
+func (s *Service) GetWatchlist(ctx context.Context, userID string) ([]string, error) {
+	ids, err := s.repo.GetWatchlist(ctx, userID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	return ids, nil
 }
 
 func jwtSecret() []byte {

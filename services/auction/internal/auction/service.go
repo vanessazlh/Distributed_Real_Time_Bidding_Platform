@@ -36,6 +36,9 @@ var ErrBidTooLow = errors.New("bid too low")
 // ErrBidExceedsMax is returned when the bid exceeds the auction's max price.
 var ErrBidExceedsMax = errors.New("bid exceeds max price")
 
+// ErrBidIncrementTooSmall is returned when the bid doesn't meet the minimum increment.
+var ErrBidIncrementTooSmall = errors.New("bid increment too small")
+
 // ErrSelfBid is returned when a seller tries to bid on their own auction.
 var ErrSelfBid = errors.New("sellers cannot bid on their own auction")
 
@@ -54,6 +57,7 @@ type Repo interface {
 	GetByID(ctx context.Context, auctionID string) (*Auction, error)
 	List(ctx context.Context, status string) ([]*Auction, error)
 	ListByShop(ctx context.Context, shopID string) ([]*Auction, error)
+	GetShopIDsNear(ctx context.Context, lat, lng, radiusKm float64) ([]string, error)
 	Open(ctx context.Context, auctionID string) error
 	Close(ctx context.Context, auctionID string) error // Deprecated: use the atomic close methods below
 
@@ -138,6 +142,9 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 	if req.Quantity < 0 {
 		return nil, fmt.Errorf("%w: quantity must be >= 0", ErrValidation)
 	}
+	if req.MinIncrement < 0 {
+		return nil, fmt.Errorf("%w: min_increment must be >= 0", ErrValidation)
+	}
 
 	// Determine start time and status
 	startTime := now
@@ -174,6 +181,9 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 	if !pickupEnd.After(pickupStart) {
 		return nil, fmt.Errorf("%w: pickup_end must be after pickup_start", ErrValidation)
 	}
+	if !pickupStart.After(endTime) {
+		return nil, fmt.Errorf("%w: pickup_start must be after the auction end time", ErrValidation)
+	}
 
 	qty := req.Quantity
 	if qty < 1 {
@@ -187,8 +197,11 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 		ItemTitle:      req.ItemTitle,
 		ShopID:         req.ShopID,
 		ShopName:       req.ShopName,
+		ShopLat:        req.ShopLat,
+		ShopLng:        req.ShopLng,
 		RetailPrice:    req.RetailPrice,
 		MaxPrice:       req.MaxPrice,
+		MinIncrement:   req.MinIncrement,
 		Quantity:       qty,
 		ImageURL:       req.ImageURL,
 		ShopLogoURL:    req.ShopLogoURL,
@@ -244,6 +257,32 @@ func (s *Service) ListAuctionsByShop(ctx context.Context, shopID string) ([]*Auc
 		return nil, fmt.Errorf("list auctions by shop: %w", err)
 	}
 	return auctions, nil
+}
+
+// ListAuctionsNear returns active auctions whose shop is within radiusKm of (lat, lng).
+func (s *Service) ListAuctionsNear(ctx context.Context, lat, lng, radiusKm float64) ([]*Auction, error) {
+	shopIDs, err := s.repo.GetShopIDsNear(ctx, lat, lng, radiusKm)
+	if err != nil {
+		return nil, fmt.Errorf("geo search: %w", err)
+	}
+	if len(shopIDs) == 0 {
+		return []*Auction{}, nil
+	}
+	allowed := make(map[string]bool, len(shopIDs))
+	for _, id := range shopIDs {
+		allowed[id] = true
+	}
+	all, err := s.repo.List(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("list auctions: %w", err)
+	}
+	result := make([]*Auction, 0, len(all))
+	for _, a := range all {
+		if allowed[a.ShopID] {
+			result = append(result, a)
+		}
+	}
+	return result, nil
 }
 
 // PlaceBid places a bid on an auction using the current concurrency strategy.
@@ -304,6 +343,9 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 		if contains(errMsg, "exceeds max price") {
 			return nil, ErrBidExceedsMax
 		}
+		if contains(errMsg, "increment too small") {
+			return nil, ErrBidIncrementTooSmall
+		}
 		return nil, fmt.Errorf("place bid: %w", err)
 	}
 
@@ -324,6 +366,7 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 		BidID:           bidID,
 		ItemID:          a.ItemID,
 		ItemTitle:       a.ItemTitle,
+		ShopID:          a.ShopID,
 		ShopName:        a.ShopName,
 		UserID:          userID,
 		Amount:          amount,

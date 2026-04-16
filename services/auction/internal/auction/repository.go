@@ -95,10 +95,13 @@ type dynamoAuction struct {
 	SellerID       string `dynamodbav:"seller_id"`
 	ItemID         string `dynamodbav:"item_id"`
 	ItemTitle      string `dynamodbav:"item_title"`
-	ShopID         string `dynamodbav:"shop_id"`
-	ShopName       string `dynamodbav:"shop_name"`
-	RetailPrice    int64  `dynamodbav:"retail_price"`
+	ShopID         string  `dynamodbav:"shop_id"`
+	ShopName       string  `dynamodbav:"shop_name"`
+	ShopLat        float64 `dynamodbav:"shop_lat,omitempty"`
+	ShopLng        float64 `dynamodbav:"shop_lng,omitempty"`
+	RetailPrice    int64   `dynamodbav:"retail_price"`
 	MaxPrice       int64  `dynamodbav:"max_price"`
+	MinIncrement   int64  `dynamodbav:"min_increment"`
 	Quantity       int    `dynamodbav:"quantity"`
 	ImageURL       string `dynamodbav:"image_url"`
 	ShopLogoURL    string `dynamodbav:"shop_logo_url"`
@@ -128,8 +131,11 @@ func toDynamo(a *Auction) dynamoAuction {
 		ItemTitle:      a.ItemTitle,
 		ShopID:         a.ShopID,
 		ShopName:       a.ShopName,
+		ShopLat:        a.ShopLat,
+		ShopLng:        a.ShopLng,
 		RetailPrice:    a.RetailPrice,
 		MaxPrice:       a.MaxPrice,
+		MinIncrement:   a.MinIncrement,
 		Quantity:       a.Quantity,
 		ImageURL:       a.ImageURL,
 		ShopLogoURL:    a.ShopLogoURL,
@@ -160,8 +166,11 @@ func fromDynamo(d dynamoAuction) *Auction {
 		ItemTitle:      d.ItemTitle,
 		ShopID:         d.ShopID,
 		ShopName:       d.ShopName,
+		ShopLat:        d.ShopLat,
+		ShopLng:        d.ShopLng,
 		RetailPrice:    d.RetailPrice,
 		MaxPrice:       d.MaxPrice,
+		MinIncrement:   d.MinIncrement,
 		Quantity:       d.Quantity,
 		ImageURL:       d.ImageURL,
 		ShopLogoURL:    d.ShopLogoURL,
@@ -202,6 +211,8 @@ func auctionBidsKey(id string) string      { return "auction:" + id + ":bids" }
 func shopAuctionsKey(shopID string) string { return "shop:" + shopID + ":auctions" }
 func rebuildLockKey(id string) string      { return "rebuild:auction:" + id }
 
+const shopsGeoKey = "shops:geo"
+
 // Create stores a new auction in both Redis and DynamoDB.
 func (r *Repository) Create(ctx context.Context, a *Auction) error {
 	key := auctionKey(a.AuctionID)
@@ -209,6 +220,14 @@ func (r *Repository) Create(ctx context.Context, a *Auction) error {
 	pipe.HSet(ctx, key, auctionToRedisMap(a))
 	pipe.SAdd(ctx, activeSetKey, a.AuctionID)
 	pipe.SAdd(ctx, shopAuctionsKey(a.ShopID), a.AuctionID)
+	if a.ShopLat != 0 || a.ShopLng != 0 {
+		// Redis GEO expects longitude first, then latitude
+		pipe.GeoAdd(ctx, shopsGeoKey, &redis.GeoLocation{
+			Name:      a.ShopID,
+			Longitude: a.ShopLng,
+			Latitude:  a.ShopLat,
+		})
+	}
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("create auction (redis): %w", err)
 	}
@@ -221,6 +240,22 @@ func (r *Repository) Create(ctx context.Context, a *Auction) error {
 	}
 
 	return nil
+}
+
+// GetShopIDsNear returns shop IDs within radiusKm of (lat, lng).
+func (r *Repository) GetShopIDsNear(ctx context.Context, lat, lng, radiusKm float64) ([]string, error) {
+	res, err := r.rdb.GeoSearch(ctx, shopsGeoKey, &redis.GeoSearchQuery{
+		Longitude:  lng,
+		Latitude:   lat,
+		Radius:     radiusKm,
+		RadiusUnit: "km",
+		Sort:       "ASC",
+		Count:      200,
+	}).Result()
+	if err != nil {
+		return nil, fmt.Errorf("geo search: %w", err)
+	}
+	return res, nil
 }
 
 // GetByID retrieves an auction. Tries Redis first; on miss, falls back to
@@ -541,12 +576,16 @@ func (r *Repository) PersistClosedState(ctx context.Context, auctionID string) e
 	return err
 }
 
-// CleanupRedis removes the auction from the active set and deletes the
-// Redis hash and bids ZSET to reclaim memory.
+// closedAuctionTTL is how long a closed auction's Redis hash is kept before expiry.
+// Keeping it alive lets buyers view the result page without a DynamoDB round-trip.
+const closedAuctionTTL = 24 * time.Hour
+
+// CleanupRedis removes the auction from the active set, sets a TTL on the hash
+// so it expires naturally, and deletes the bids ZSET (no longer needed).
 func (r *Repository) CleanupRedis(ctx context.Context, auctionID string) error {
 	pipe := r.rdb.Pipeline()
 	pipe.SRem(ctx, activeSetKey, auctionID)
-	pipe.Del(ctx, auctionKey(auctionID))
+	pipe.Expire(ctx, auctionKey(auctionID), closedAuctionTTL)
 	pipe.Del(ctx, auctionBidsKey(auctionID))
 	_, err := pipe.Exec(ctx)
 	return err
@@ -730,9 +769,12 @@ func auctionToRedisMap(a *Auction) map[string]interface{} {
 		"item_title":      a.ItemTitle,
 		"shop_id":         a.ShopID,
 		"shop_name":       a.ShopName,
+		"shop_lat":        strconv.FormatFloat(a.ShopLat, 'f', 8, 64),
+		"shop_lng":        strconv.FormatFloat(a.ShopLng, 'f', 8, 64),
 		"retail_price":    a.RetailPrice,
 		"max_price":       a.MaxPrice,
-		"quantity":         a.Quantity,
+		"min_increment":   a.MinIncrement,
+		"quantity":        a.Quantity,
 		"image_url":       a.ImageURL,
 		"shop_logo_url":   a.ShopLogoURL,
 		"description":     a.Description,
@@ -759,7 +801,10 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 	bidCount, _ := strconv.ParseInt(vals["bid_count"], 10, 64)
 	retailPrice, _ := strconv.ParseInt(vals["retail_price"], 10, 64)
 	maxPrice, _ := strconv.ParseInt(vals["max_price"], 10, 64)
+	minIncrement, _ := strconv.ParseInt(vals["min_increment"], 10, 64)
 	quantity, _ := strconv.Atoi(vals["quantity"])
+	shopLat, _ := strconv.ParseFloat(vals["shop_lat"], 64)
+	shopLng, _ := strconv.ParseFloat(vals["shop_lng"], 64)
 	if quantity < 1 {
 		quantity = 1
 	}
@@ -771,8 +816,11 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 		ItemTitle:      vals["item_title"],
 		ShopID:         vals["shop_id"],
 		ShopName:       vals["shop_name"],
+		ShopLat:        shopLat,
+		ShopLng:        shopLng,
 		RetailPrice:    retailPrice,
 		MaxPrice:       maxPrice,
+		MinIncrement:   minIncrement,
 		Quantity:       quantity,
 		ImageURL:       vals["image_url"],
 		ShopLogoURL:    vals["shop_logo_url"],

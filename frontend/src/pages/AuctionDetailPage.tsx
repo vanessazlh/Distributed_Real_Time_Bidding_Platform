@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import type { Auction, BidHistoryEntry, BidPlacedEvent, AuctionClosedEvent } from '@/types'
+import type { Auction, BidHistoryEntry, BidPlacedEvent, AuctionClosedEvent, ReviewsResponse } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { useAuctionWebSocket } from '@/hooks/useAuctionWebSocket'
 import { Avatar, Button, Card, EmptyState, Spinner, StatusBanner } from '@/components/ui'
 import { BidHistoryFeed, BiddingPanel } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
-import { ChevronLeftIcon } from '@/components/icons'
+import { ChevronLeftIcon, HeartIcon } from '@/components/icons'
 import { formatPickupWindow } from '@/lib/utils'
+import { useWatchlist } from '@/context/WatchlistContext'
 
 type BannerState = 'WINNING' | 'OUTBID' | 'WON' | 'CLOSED' | null
 
@@ -17,7 +18,9 @@ export default function AuctionDetailPage() {
   const navigate        = useNavigate()
   const { user, token } = useAuth()
 
+  const { isWatched, toggle } = useWatchlist()
   const [auction,    setAuction]    = useState<Auction | null>(null)
+  const [shopRating, setShopRating] = useState<ReviewsResponse | null>(null)
   const [loading,    setLoading]    = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [bidError,   setBidError]   = useState<string | null>(null)
@@ -36,6 +39,8 @@ export default function AuctionDetailPage() {
         setAuction(a)
         setHighestBid(a.current_highest_bid)
         setBidCount(a.bid_count)
+        // Load shop ratings in parallel (non-blocking)
+        api.reviews.list(a.item.shop_id).then(setShopRating).catch(() => {/* ignore */})
       })
       .catch((err) => setFetchError(err instanceof Error ? err.message : 'Failed to load auction'))
       .finally(() => setLoading(false))
@@ -156,16 +161,45 @@ export default function AuctionDetailPage() {
             <div className="p-8">
               <div className="flex items-center gap-3 mb-4">
                 <Avatar src={auction.shop_logo_url} alt={auction.item.shop_name} size="lg" />
-                <Link
-                  to={`/shop/${auction.item.shop_id}`}
-                  className="text-brand font-semibold text-lg hover:underline"
-                >
-                  {auction.item.shop_name}
-                </Link>
+                <div>
+                  <Link
+                    to={`/shop/${auction.item.shop_id}`}
+                    className="text-brand font-semibold text-lg hover:underline"
+                  >
+                    {auction.item.shop_name}
+                  </Link>
+                  {shopRating && (
+                    shopRating.total_reviews > 0 ? (
+                      <p className="text-sm text-text-secondary mt-0.5">
+                        {'★'.repeat(Math.round(shopRating.average_rating))}{'☆'.repeat(5 - Math.round(shopRating.average_rating))}{' '}
+                        <span className="font-medium text-text-primary">{shopRating.average_rating.toFixed(1)}</span>
+                        {' '}({shopRating.total_reviews})
+                      </p>
+                    ) : (
+                      <p className="text-sm text-text-secondary mt-0.5">No ratings yet</p>
+                    )
+                  )}
+                </div>
               </div>
-              <h1 className="font-sans font-semibold text-3xl text-text-primary mb-4">
-                {auction.item.title}
-              </h1>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <h1 className="font-sans font-semibold text-3xl text-text-primary">
+                  {auction.item.title}
+                </h1>
+                {user && (
+                  <button
+                    onClick={() => toggle(auction.auction_id)}
+                    className={[
+                      'shrink-0 mt-1 p-2 rounded-full border transition-colors',
+                      isWatched(auction.auction_id)
+                        ? 'text-red-500 border-red-200 bg-red-50'
+                        : 'text-text-secondary border-border hover:text-red-400 hover:border-red-200',
+                    ].join(' ')}
+                    aria-label={isWatched(auction.auction_id) ? 'Remove from watchlist' : 'Save to watchlist'}
+                  >
+                    <HeartIcon filled={isWatched(auction.auction_id)} width={20} height={20} />
+                  </button>
+                )}
+              </div>
               <p className="text-text-secondary text-lg leading-relaxed">{auction.description}</p>
 
               {auction.pickup_start && auction.pickup_end && (
