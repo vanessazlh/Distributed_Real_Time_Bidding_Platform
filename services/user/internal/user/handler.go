@@ -129,6 +129,71 @@ func (h *Handler) GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, u)
 }
 
+// AddToWatchlist godoc
+// POST /users/:user_id/watchlist/:auction_id
+func (h *Handler) AddToWatchlist(c *gin.Context) {
+	userID := c.Param("user_id")
+	callerID, _ := c.Get("user_id")
+	if userID != callerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	auctionID := c.Param("auction_id")
+	if auctionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "auction_id is required"})
+		return
+	}
+	if err := h.svc.AddToWatchlist(c.Request.Context(), userID, auctionID); err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// RemoveFromWatchlist godoc
+// DELETE /users/:user_id/watchlist/:auction_id
+func (h *Handler) RemoveFromWatchlist(c *gin.Context) {
+	userID := c.Param("user_id")
+	callerID, _ := c.Get("user_id")
+	if userID != callerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	auctionID := c.Param("auction_id")
+	if err := h.svc.RemoveFromWatchlist(c.Request.Context(), userID, auctionID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// GetWatchlist godoc
+// GET /users/:user_id/watchlist
+func (h *Handler) GetWatchlist(c *gin.Context) {
+	userID := c.Param("user_id")
+	callerID, _ := c.Get("user_id")
+	if userID != callerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	ids, err := h.svc.GetWatchlist(c.Request.Context(), userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"auction_ids": ids})
+}
+
 // GetBids godoc
 // GET /users/:user_id/bids — proxied to the bid service
 func (h *Handler) GetBids(c *gin.Context) {

@@ -38,7 +38,14 @@ The buyer enters a bid amount in the bidding panel. On submission:
 
 For **quantity auctions** (multiple winners), the bidding panel shows a "X winners" badge and the label changes to "Minimum Bid to Win" — the floor price to secure a winning slot. When all slots are full, a new bid must exceed the lowest winner's amount; the evicted bidder is notified as outbid.
 
-### 5. Notifications
+### 5. Watchlist
+A buyer can save any auction to their personal watchlist by clicking the **heart icon** on an auction card or detail page. The heart fills red immediately (optimistic update) and is synced to the backend.
+
+The buyer's watchlist is accessible from the **heart icon in the navbar** (links to `/watchlist`) or by navigating directly. The watchlist page shows the same auction card grid as the homepage — active auctions can be bid on directly from there. Closed or removed auctions are still shown so the buyer can review their saved history.
+
+The watchlist persists across sessions (stored in DynamoDB). Removing an auction from the watchlist is instant — click the heart again to unsave.
+
+### 6. Notifications
 Buyers receive real-time notifications regardless of which page they are on:
 - **Outbid** — when another buyer places a higher bid on an auction the buyer previously bid on
 - **Won** — when an auction the buyer is winning closes
@@ -49,7 +56,7 @@ Notifications are delivered two ways:
 
 Notifications are stored in Redis (capped at 20 per user with same-auction dedup, 7-day TTL) so they persist across page refreshes and browser sessions.
 
-### 6. Auction Close
+### 7. Auction Close
 When the countdown reaches zero (or the seller closes the auction early), the system resolves the winner(s) using a reliable close sequence:
 - A Lua script **atomically** marks the auction as CLOSED and reads the winner(s) from a Redis Sorted Set — top-N for quantity auctions (with DynamoDB fallback if Redis data is unavailable)
 - An `auction_closed` event is published to the Redis Stream — if publishing fails, the status is **rolled back to OPEN** and the closer retries on the next tick, preventing dead states
@@ -58,7 +65,7 @@ When the countdown reaches zero (or the seller closes the auction early), the sy
 - Winners see a **Won** banner on the auction page and receive a global notification
 - Other participants see a **Closed** banner
 
-### 7. Profile & History
+### 8. Profile & History
 The buyer's profile page (`/profile`) is a sidebar-tabbed account hub with three sections:
 - **Account** — view and edit username (inline save), see email and role badge. Buyers see an "Upgrade to Seller" CTA; sellers see a link to the Seller Dashboard.
 - **My Bids** (`/profile/bids`) — full bid history across all auctions, with status (Winning / Outbid / Won / Lost), item title, shop name, and a link to the payment record for won auctions
@@ -173,3 +180,4 @@ Auction closes (seller closes or timer expires via closer.go)
 | Image upload | **Done** — MinIO/S3 file upload via `POST /uploads`, `ImageUpload` component with drag-and-drop and URL-paste fallback |
 | Minimum bid increment | **Done** — optional per-auction `min_increment` field; enforced atomically in Lua, surfaced in `BiddingPanel` |
 | Search | **Done** — keyword search across item titles, descriptions, and shop names; instant client-side results; composable with all other filters |
+| Watchlist / favorites | **Done** — heart toggle on auction cards and detail page; `/watchlist` page; DynamoDB-persisted; optimistic UI updates |

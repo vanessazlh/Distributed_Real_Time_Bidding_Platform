@@ -152,8 +152,9 @@ In `SellerAuctionPage`, auction titles previously linked to `/auction/:id` (`Auc
 
 Added optional `pickup_start` and `pickup_end` (RFC3339) fields to the Auction model, Redis hash, DynamoDB, and API. Backend validates RFC3339 format and that end > start. Frontend: `CreateAuctionPage` has paired datetime-local inputs in a "Pickup Window" field. `AuctionCard` shows "Pickup {date}, {start} – {end}" below the bid info when present. `AuctionDetailPage` shows a prominent pickup window card with clock icon. `SellerAuctionDetailPage` shows pickup window in the Item Details sidebar. `HomePage` has a second filter row (pill buttons): Any Time / Morning (before 12pm) / Afternoon (12–5pm) / Evening (after 5pm), client-side filtering on `pickup_start` hour. Auctions without a pickup window are hidden when a time filter is active.
 
-### 15. Watchlist / favorites
-Allow buyers to save auctions to a watchlist. Persist in DynamoDB (user_id + auction_id). Show a heart/star toggle on AuctionCard and AuctionDetailPage. Dedicated "My Watchlist" page. Optionally notify when a watched auction is about to close.
+### 15. ~~Watchlist / favorites~~ **Done**
+
+Buyers can save auctions to a watchlist. Persisted as a DynamoDB string-set (`watchlist`) on the Users table — no new table needed; atomic `ADD`/`DELETE` operations. Three new endpoints on the user service (`GET/POST/DELETE /users/:id/watchlist/:auction_id`). `WatchlistContext` loads the list on login and applies optimistic updates on toggle. Heart button on `AuctionCard` (image overlay) and `AuctionDetailPage` (next to title). Dedicated `/watchlist` page fetches full auction details for all saved IDs. Heart icon in the buyer Navbar links to the watchlist page.
 
 ### 16. ~~Search~~ **Done**
 Full-text search across auction titles, descriptions, and shop names. Backend: `GET /auctions?q=<term>` applies case-insensitive substring filter (`filterByQuery`) after the Redis fetch — works alongside geo params too. Frontend: search bar in the hero section on HomePage; client-side filtering on already-fetched auctions for instant results (no extra API call). Filter chain: category → pickup time → search query.

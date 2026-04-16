@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from '@/context/AuthContext'
 import { NotificationProvider } from '@/context/NotificationContext'
+import { WatchlistProvider } from '@/context/WatchlistContext'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Navbar } from '@/components/layout'
 import { NotificationToast } from '@/components/ui/Toast'
@@ -16,6 +17,7 @@ import SellerShopPage              from '@/pages/SellerShopPage'
 import SellerAuctionDetailPage    from '@/pages/SellerAuctionDetailPage'
 import PaymentPage            from '@/pages/PaymentPage'
 import ProfilePage            from '@/pages/ProfilePage'
+import WatchlistPage          from '@/pages/WatchlistPage'
 
 export default function App() {
   return (
@@ -23,6 +25,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <NotificationProvider>
+        <WatchlistProvider>
         <div className="min-h-screen flex flex-col font-sans selection:bg-brand/20">
           <Navbar />
           <NotificationToast />
@@ -34,6 +37,7 @@ export default function App() {
               <Route path="/register"                  element={<AuthPage type="register" />} />
               <Route path="/profile"                    element={<ProfilePage />} />
               <Route path="/profile/:tab"               element={<ProfilePage />} />
+              <Route path="/watchlist"                  element={<WatchlistPage />} />
               <Route path="/shop/:id"                  element={<ShopDetailPage />} />
               <Route path="/shops/new"                 element={<CreateShopPage />} />
               <Route path="/shops/:shopId/items/new"   element={<CreateItemPage />} />
@@ -48,6 +52,7 @@ export default function App() {
             </Routes>
           </main>
         </div>
+        </WatchlistProvider>
         </NotificationProvider>
       </BrowserRouter>
     </AuthProvider>

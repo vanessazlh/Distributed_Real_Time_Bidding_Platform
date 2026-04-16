@@ -35,6 +35,9 @@ func main() {
 		protected.GET("/users/:user_id", h.GetProfile)
 		protected.PUT("/users/:user_id", h.UpdateProfile)
 		protected.GET("/users/:user_id/bids", h.GetBids)
+		protected.GET("/users/:user_id/watchlist", h.GetWatchlist)
+		protected.POST("/users/:user_id/watchlist/:auction_id", h.AddToWatchlist)
+		protected.DELETE("/users/:user_id/watchlist/:auction_id", h.RemoveFromWatchlist)
 	}
 
 	addr := envOr("SERVER_ADDR", ":8082")

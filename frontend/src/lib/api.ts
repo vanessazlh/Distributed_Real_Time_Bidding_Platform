@@ -251,6 +251,26 @@ export const api = {
       request<{ bids: BackendBid[] }>(`/users/${userId}/bids`, {
         headers: { Authorization: `Bearer ${token}` },
       }).then((r) => (r.bids ?? []).map(toUserBid)),
+
+    /** GET /users/:userId/watchlist → string[] */
+    getWatchlist: (userId: string, token: string) =>
+      request<{ auction_ids: string[] }>(`/users/${userId}/watchlist`, {
+        headers: jsonHeaders(token),
+      }).then((r) => r.auction_ids ?? []),
+
+    /** POST /users/:userId/watchlist/:auctionId */
+    addToWatchlist: (userId: string, auctionId: string, token: string) =>
+      request<{ ok: boolean }>(`/users/${userId}/watchlist/${auctionId}`, {
+        method: 'POST',
+        headers: jsonHeaders(token),
+      }),
+
+    /** DELETE /users/:userId/watchlist/:auctionId */
+    removeFromWatchlist: (userId: string, auctionId: string, token: string) =>
+      request<{ ok: boolean }>(`/users/${userId}/watchlist/${auctionId}`, {
+        method: 'DELETE',
+        headers: jsonHeaders(token),
+      }),
   },
 
   shops: {

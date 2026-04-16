@@ -85,6 +85,9 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 | `GET` | `/users/:id` | ✓ | Get profile |
 | `PUT` | `/users/:id` | ✓ | Update profile (username) — owner only |
 | `GET` | `/users/:id/bids` | ✓ | List user's bids (proxied to Bid Service) |
+| `GET` | `/users/:id/watchlist` | ✓ | Get watchlisted auction IDs — owner only |
+| `POST` | `/users/:id/watchlist/:auctionId` | ✓ | Add auction to watchlist — owner only |
+| `DELETE` | `/users/:id/watchlist/:auctionId` | ✓ | Remove auction from watchlist — owner only |
 
 ### Shops + Items — Shop Service
 
@@ -234,6 +237,16 @@ Auctions support an optional `min_increment` field (int64, cents) that sets the 
 `GET /auctions?q=<term>` filters the auction list by a case-insensitive substring match across **item title**, **description**, and **shop name**. The filter is applied in-memory (`filterByQuery` in `handler.go`) after the Redis fetch and is composable with all other query params — e.g. `?q=sourdough&lat=X&lng=Y&radius_km=5` returns nearby sourdough auctions.
 
 On the frontend, the HomePage hero contains a search bar that applies the same substring filter client-side on the already-fetched auction list for instant, zero-latency results. The filter chain is: category tab → pickup time → search query.
+
+### Watchlist / Favorites
+
+Buyers can save any auction to a personal watchlist with a heart toggle.
+
+- Persisted as a DynamoDB `StringSet` attribute (`watchlist`) on the existing `Users` item — no separate table; atomic `ADD`/`DELETE` updates
+- `WatchlistContext` loads the set on login and exposes an optimistic `toggle()` — state updates instantly in the UI and rolls back on API failure
+- **Heart button** on `AuctionCard` (top-right image overlay) and `AuctionDetailPage` (next to the title)
+- **`/watchlist` page** — fetches full auction details in parallel for all saved IDs; shows the same `AuctionCard` grid as the homepage
+- **Heart icon** in the buyer navbar links to the watchlist page
 
 ### Geo Support (Proximity Search)
 

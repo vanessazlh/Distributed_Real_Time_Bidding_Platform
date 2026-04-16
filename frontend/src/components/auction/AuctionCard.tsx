@@ -2,10 +2,12 @@ import { useNavigate } from 'react-router-dom'
 import type { Auction } from '@/types'
 import { Button } from '@/components/ui'
 import { Avatar } from '@/components/ui'
-import { ArrowRightIcon } from '@/components/icons'
+import { ArrowRightIcon, HeartIcon } from '@/components/icons'
 import { CountdownTimer } from './CountdownTimer'
 import { PriceDisplay } from './PriceDisplay'
 import { formatPickupWindow, haversineKm } from '@/lib/utils'
+import { useAuth } from '@/context/AuthContext'
+import { useWatchlist } from '@/context/WatchlistContext'
 
 interface AuctionCardProps {
   auction: Auction
@@ -14,6 +16,9 @@ interface AuctionCardProps {
 
 export function AuctionCard({ auction, userCoords }: AuctionCardProps) {
   const navigate  = useNavigate()
+  const { user }  = useAuth()
+  const { isWatched, toggle } = useWatchlist()
+  const watched   = isWatched(auction.auction_id)
   const distanceKm =
     userCoords && auction.shop_lat && auction.shop_lng
       ? haversineKm(userCoords.lat, userCoords.lng, auction.shop_lat, auction.shop_lng)
@@ -44,12 +49,26 @@ export function AuctionCard({ auction, userCoords }: AuctionCardProps) {
       )}
 
       {/* Image */}
-      <div className="h-48 overflow-hidden bg-surface">
+      <div className="h-48 overflow-hidden bg-surface relative">
         <img
           src={auction.image_url}
           alt={auction.item.title}
           className="w-full h-full object-cover mix-blend-multiply opacity-90 transition-transform duration-500 group-hover:scale-105"
         />
+        {user && (
+          <button
+            onClick={(e) => { e.stopPropagation(); toggle(auction.auction_id) }}
+            className={[
+              'absolute top-2 right-2 z-20 p-1.5 rounded-full transition-colors',
+              watched
+                ? 'text-red-500 bg-white/90'
+                : 'text-white/70 bg-black/20 hover:text-red-400 hover:bg-white/80',
+            ].join(' ')}
+            aria-label={watched ? 'Remove from watchlist' : 'Add to watchlist'}
+          >
+            <HeartIcon filled={watched} width={18} height={18} />
+          </button>
+        )}
       </div>
 
       {/* Body */}

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui'
-import { UserIcon } from '@/components/icons'
+import { UserIcon, HeartIcon } from '@/components/icons'
 import { NotificationBell } from './NotificationBell'
 
 export function Navbar() {
@@ -43,6 +43,13 @@ export function Navbar() {
               </>
             ) : (
               <>
+                <Link
+                  to="/watchlist"
+                  className="text-text-secondary hover:text-red-500 transition-colors"
+                  title="My Watchlist"
+                >
+                  <HeartIcon width={20} height={20} />
+                </Link>
                 <NotificationBell />
                 <button
                   onClick={handleLogout}

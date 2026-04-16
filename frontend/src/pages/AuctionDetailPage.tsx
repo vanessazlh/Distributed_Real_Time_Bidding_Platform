@@ -7,8 +7,9 @@ import { useAuctionWebSocket } from '@/hooks/useAuctionWebSocket'
 import { Avatar, Button, Card, EmptyState, Spinner, StatusBanner } from '@/components/ui'
 import { BidHistoryFeed, BiddingPanel } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
-import { ChevronLeftIcon } from '@/components/icons'
+import { ChevronLeftIcon, HeartIcon } from '@/components/icons'
 import { formatPickupWindow } from '@/lib/utils'
+import { useWatchlist } from '@/context/WatchlistContext'
 
 type BannerState = 'WINNING' | 'OUTBID' | 'WON' | 'CLOSED' | null
 
@@ -17,6 +18,7 @@ export default function AuctionDetailPage() {
   const navigate        = useNavigate()
   const { user, token } = useAuth()
 
+  const { isWatched, toggle } = useWatchlist()
   const [auction,    setAuction]    = useState<Auction | null>(null)
   const [loading,    setLoading]    = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -163,9 +165,25 @@ export default function AuctionDetailPage() {
                   {auction.item.shop_name}
                 </Link>
               </div>
-              <h1 className="font-sans font-semibold text-3xl text-text-primary mb-4">
-                {auction.item.title}
-              </h1>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <h1 className="font-sans font-semibold text-3xl text-text-primary">
+                  {auction.item.title}
+                </h1>
+                {user && (
+                  <button
+                    onClick={() => toggle(auction.auction_id)}
+                    className={[
+                      'shrink-0 mt-1 p-2 rounded-full border transition-colors',
+                      isWatched(auction.auction_id)
+                        ? 'text-red-500 border-red-200 bg-red-50'
+                        : 'text-text-secondary border-border hover:text-red-400 hover:border-red-200',
+                    ].join(' ')}
+                    aria-label={isWatched(auction.auction_id) ? 'Remove from watchlist' : 'Save to watchlist'}
+                  >
+                    <HeartIcon filled={isWatched(auction.auction_id)} width={20} height={20} />
+                  </button>
+                )}
+              </div>
               <p className="text-text-secondary text-lg leading-relaxed">{auction.description}</p>
 
               {auction.pickup_start && auction.pickup_end && (

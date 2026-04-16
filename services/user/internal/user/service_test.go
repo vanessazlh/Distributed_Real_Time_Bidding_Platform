@@ -66,6 +66,22 @@ func (m *mockRepo) UpdateRole(_ context.Context, userID, role string) error {
 	return nil
 }
 
+func (m *mockRepo) AddToWatchlist(_ context.Context, userID, auctionID string) error {
+	if _, ok := m.users[userID]; !ok {
+		return errors.New("user not found")
+	}
+	return nil
+}
+
+func (m *mockRepo) RemoveFromWatchlist(_ context.Context, _, _ string) error { return nil }
+
+func (m *mockRepo) GetWatchlist(_ context.Context, userID string) ([]string, error) {
+	if _, ok := m.users[userID]; !ok {
+		return nil, errors.New("user not found")
+	}
+	return []string{}, nil
+}
+
 func decodeTokenClaims(t *testing.T, token string) map[string]any {
 	t.Helper()
 	parts := strings.Split(token, ".")
