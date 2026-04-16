@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Auction } from '@/types'
 import { CATEGORIES } from '@/types'
@@ -19,22 +19,70 @@ const PICKUP_OPTIONS = [
   { value: 'evening',   label: 'Evening' },
 ] as const
 
+const DISTANCE_OPTIONS = [
+  { value: 'any', label: 'Any Distance' },
+  { value: '2',   label: 'Within 2 km' },
+  { value: '5',   label: 'Within 5 km' },
+  { value: '10',  label: 'Within 10 km' },
+] as const
+
 export default function HomePage() {
   const { isSeller } = useAuth()
   const navigate = useNavigate()
   const [auctions, setAuctions] = useState<Auction[]>([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState<string | null>(null)
-  const [filter,       setFilter]       = useState<TabFilter>('All')
-  const [pickupFilter, setPickupFilter] = useState('any')
+  const [filter,         setFilter]         = useState<TabFilter>('All')
+  const [pickupFilter,   setPickupFilter]   = useState('any')
+  const [distanceFilter, setDistanceFilter] = useState('any')
+  const [userCoords,     setUserCoords]     = useState<{ lat: number; lng: number } | null>(null)
+  const [geoLoading,     setGeoLoading]     = useState(false)
 
-  useEffect(() => {
-    if (isSeller) { navigate('/seller/dashboard', { replace: true }); return }
-    api.auctions.list()
+  const fetchAuctions = useCallback((opts?: { lat?: number; lng?: number; radius_km?: number }) => {
+    setLoading(true)
+    setError(null)
+    api.auctions.list(opts)
       .then(setAuctions)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load auctions'))
       .finally(() => setLoading(false))
-  }, [isSeller, navigate])
+  }, [])
+
+  useEffect(() => {
+    if (isSeller) { navigate('/seller/dashboard', { replace: true }); return }
+    fetchAuctions()
+    // Silently request location on load so distance badges and filter work immediately
+    navigator.geolocation?.getCurrentPosition(
+      (pos) => setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {}, // denied — distance filter will re-prompt when selected
+    )
+  }, [isSeller, navigate, fetchAuctions])
+
+  const handleDistanceFilter = (value: string) => {
+    setDistanceFilter(value)
+    if (value === 'any') {
+      fetchAuctions()
+      return
+    }
+    const radiusKm = parseFloat(value)
+    if (userCoords) {
+      fetchAuctions({ lat: userCoords.lat, lng: userCoords.lng, radius_km: radiusKm })
+    } else {
+      setGeoLoading(true)
+      navigator.geolocation?.getCurrentPosition(
+        (pos) => {
+          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          setUserCoords(coords)
+          setGeoLoading(false)
+          fetchAuctions({ lat: coords.lat, lng: coords.lng, radius_km: radiusKm })
+        },
+        () => {
+          setGeoLoading(false)
+          setDistanceFilter('any')
+          setError('Location access denied — cannot filter by distance.')
+        },
+      )
+    }
+  }
 
   const byCategory = filter === 'All'
     ? auctions
@@ -88,6 +136,12 @@ export default function HomePage() {
             value={pickupFilter}
             onChange={setPickupFilter}
           />
+          <FilterDropdown
+            label={geoLoading ? 'Locating…' : 'Nearby'}
+            options={[...DISTANCE_OPTIONS]}
+            value={distanceFilter}
+            onChange={handleDistanceFilter}
+          />
         </div>
       </div>
 
@@ -104,7 +158,7 @@ export default function HomePage() {
       {!loading && !error && visible.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {visible.map((auction) => (
-            <AuctionCard key={auction.auction_id} auction={auction} />
+            <AuctionCard key={auction.auction_id} auction={auction} userCoords={userCoords ?? undefined} />
           ))}
         </div>
       )}

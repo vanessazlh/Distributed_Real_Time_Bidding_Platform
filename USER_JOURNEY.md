@@ -7,7 +7,12 @@ SurpriseAuction is a real-time surplus auction platform where local stores list 
 ## Buyer Journey
 
 ### 1. Discovery
-A buyer lands on the homepage and sees a live feed of active auctions, filterable by category (Bakery, Meals, Groceries, and more). A second row of pill-shaped buttons lets the buyer filter by **pickup time** — Any Time, Morning (before 12 pm), Afternoon (12–5 pm), or Evening (after 5 pm) — so they can find auctions that fit their schedule. Each card shows the item photo, the shop it comes from, the current highest bid, a live countdown to closing, and (if set) the pickup window. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
+A buyer lands on the homepage and sees a live feed of active auctions, filterable by:
+- **Category** — Bakery, Meals, Groceries, Others (tab bar)
+- **Pickup time** — Any Time, Morning (before 12 pm), Afternoon (12–5 pm), Evening (after 5 pm)
+- **Nearby** — Within 2 km / 5 km / 10 km. The browser requests location permission automatically when the homepage loads. Once granted, distance badges (`~X.Xkm`) appear on each auction card immediately. Selecting a distance filter re-fetches only auctions from shops within that radius.
+
+Each card shows the item photo, the shop it comes from, the current highest bid, a live countdown to closing, and (if set) the pickup window. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
 
 ### 2. Account
 The buyer registers or logs in at `/login` — the single entry point for all users. A **Buyer / Seller toggle** at the top of the page determines the session role; buyers leave it on **Buyer**. Authentication is JWT-based; no session state is stored server-side. The platform uses a **single-account model**: one email = one account. A buyer can later upgrade to a seller (see Seller Journey, step 1) without creating a second account — they simply re-register with the same email and Seller selected.
@@ -78,7 +83,11 @@ After login the seller lands on `/seller/dashboard`. The dashboard shows:
 - A "Manage →" link per shop leading to the per-shop management page
 
 ### 3. Create a Shop
-The seller fills in a shop name and location at `/shops/new`. The shop is saved in DynamoDB and immediately appears on the dashboard.
+The seller fills in a shop name and display address at `/shops/new`. A **Shop Location** field (required) provides two ways to set GPS coordinates:
+- **📍 Use my location** — auto-detects via browser geolocation
+- **🗺 Pin on map** — opens an interactive OpenStreetMap where the seller clicks or drags a pin to their exact location
+
+Coordinates are required to submit the form and enable proximity filtering for buyers. They can be updated later via the Edit Shop form.
 
 ### 4. Add an Item
 From a shop page, the seller adds a surplus item via `/shops/:id/items/new`, providing a title, description, retail value, and optional image URL. Items are saved to DynamoDB under the shop.
@@ -153,5 +162,5 @@ Auction closes (seller closes or timer expires via closer.go)
 | Payment gateway | Simulated (90% success rate mock) — no real Stripe integration yet |
 | Shop settlement | Payment records `shop_id` but does not disburse funds to the seller |
 | Message delivery guarantee | Redis Streams with consumer groups — durable, replayable, with automatic pending-message recovery via XAutoClaim |
-| Geo / location filtering | No geo-based search or proximity filtering |
-| Image upload | No file upload — sellers must paste external image URLs manually |
+| Geo / location filtering | **Done** — Redis GEOSEARCH proximity filter, browser geolocation, distance badges |
+| Image upload | **Done** — MinIO/S3 file upload via `POST /uploads`, `ImageUpload` component with drag-and-drop and URL-paste fallback |

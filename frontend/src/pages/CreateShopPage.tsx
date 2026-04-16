@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
-import { Card, Button, FormField, TextInput, StatusBanner, EmptyState, ImageUpload } from '@/components/ui'
+import { Card, Button, FormField, TextInput, StatusBanner, EmptyState, ImageUpload, LocationPicker } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
 
@@ -16,6 +16,8 @@ export default function CreateShopPage() {
   const [logoUrl,  setLogoUrl]  = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
+  const [lat,      setLat]      = useState<number | null>(null)
+  const [lng,      setLng]      = useState<number | null>(null)
 
   if (!user || !isSeller) {
     return (
@@ -33,7 +35,13 @@ export default function CreateShopPage() {
     setError(null)
     setLoading(true)
     try {
-      await api.shops.create({ name, location, logo_url: logoUrl || undefined }, token!)
+      await api.shops.create({
+        name,
+        location,
+        logo_url: logoUrl || undefined,
+        lat: lat ?? undefined,
+        lng: lng ?? undefined,
+      }, token!)
       navigate('/seller/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -74,13 +82,21 @@ export default function CreateShopPage() {
             />
           </FormField>
 
-          <FormField label="Location">
+          <FormField label="Display Address">
             <TextInput
               type="text"
               required
-              placeholder="Paris, 2nd arrondissement"
+              placeholder="123 Main St, Vancouver, BC"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
+            />
+          </FormField>
+
+          <FormField label="Shop Location *">
+            <LocationPicker
+              lat={lat}
+              lng={lng}
+              onChange={(la, ln) => { setLat(la); setLng(ln) }}
             />
           </FormField>
 
@@ -93,8 +109,8 @@ export default function CreateShopPage() {
             />
           </FormField>
 
-          <Button variant="primary" size="lg" type="submit" fullWidth disabled={loading} className="mt-2">
-            {loading ? 'Creating…' : 'Create Shop'}
+          <Button variant="primary" size="lg" type="submit" fullWidth disabled={loading || !lat || !lng} className="mt-2">
+            {loading ? 'Creating…' : !lat || !lng ? 'Set location to continue' : 'Create Shop'}
           </Button>
         </form>
       </Card>

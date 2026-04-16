@@ -2,11 +2,13 @@ package shop
 
 // Shop represents a seller's shop.
 type Shop struct {
-	ShopID   string `dynamodbav:"shop_id" json:"shop_id"`
-	Name     string `dynamodbav:"name" json:"name"`
-	Location string `dynamodbav:"location" json:"location"`
-	OwnerID  string `dynamodbav:"owner_id" json:"owner_id"`
-	LogoURL  string `dynamodbav:"logo_url,omitempty" json:"logo_url,omitempty"`
+	ShopID   string  `dynamodbav:"shop_id" json:"shop_id"`
+	Name     string  `dynamodbav:"name" json:"name"`
+	Location string  `dynamodbav:"location" json:"location"`
+	OwnerID  string  `dynamodbav:"owner_id" json:"owner_id"`
+	LogoURL  string  `dynamodbav:"logo_url,omitempty" json:"logo_url,omitempty"`
+	Lat      float64 `dynamodbav:"lat,omitempty" json:"lat,omitempty"`
+	Lng      float64 `dynamodbav:"lng,omitempty" json:"lng,omitempty"`
 }
 
 // Item represents a product listed in a shop.
@@ -22,16 +24,20 @@ type Item struct {
 
 // CreateShopRequest is the payload for POST /shops.
 type CreateShopRequest struct {
-	Name     string `json:"name" binding:"required,min=2"`
-	Location string `json:"location" binding:"required"`
-	LogoURL  string `json:"logo_url"`
+	Name     string  `json:"name" binding:"required,min=2"`
+	Location string  `json:"location" binding:"required"`
+	LogoURL  string  `json:"logo_url"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
 }
 
 // UpdateShopRequest is the payload for PUT /shops/:shop_id.
 type UpdateShopRequest struct {
-	Name     string `json:"name"`
-	Location string `json:"location"`
-	LogoURL  string `json:"logo_url"`
+	Name     string  `json:"name"`
+	Location string  `json:"location"`
+	LogoURL  string  `json:"logo_url"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
 }
 
 // CreateItemRequest is the payload for POST /shops/:shop_id/items.

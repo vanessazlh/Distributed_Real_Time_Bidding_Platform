@@ -120,6 +120,8 @@ interface BackendAuction {
   current_highest_bid: number
   bid_count:           number
   status:              string
+  shop_lat?:           number
+  shop_lng?:           number
 }
 
 function toAuction(b: BackendAuction): Auction {
@@ -143,6 +145,8 @@ function toAuction(b: BackendAuction): Auction {
     category:            (b.category as Category) || undefined,
     pickup_start:        b.pickup_start ? new Date(b.pickup_start).getTime() : undefined,
     pickup_end:          b.pickup_end   ? new Date(b.pickup_end).getTime()   : undefined,
+    shop_lat:            b.shop_lat,
+    shop_lng:            b.shop_lng,
   }
 }
 
@@ -169,16 +173,21 @@ export const api = {
 
   auctions: {
     /** GET /auctions → { auctions: Auction[] } */
-    list: () =>
-      request<{ auctions: BackendAuction[] }>('/auctions')
-        .then((r) => (r.auctions ?? []).map(toAuction)),
+    list: (opts?: { lat?: number; lng?: number; radius_km?: number }) => {
+      let url = '/auctions'
+      if (opts?.lat !== undefined && opts?.lng !== undefined && opts?.radius_km !== undefined) {
+        url += `?lat=${opts.lat}&lng=${opts.lng}&radius_km=${opts.radius_km}`
+      }
+      return request<{ auctions: BackendAuction[] }>(url)
+        .then((r) => (r.auctions ?? []).map(toAuction))
+    },
 
     /** GET /auctions/:id → Auction */
     get: (id: string) =>
       request<BackendAuction>(`/auctions/${id}`).then(toAuction),
 
     /** POST /auctions → Auction */
-    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; retail_price: number; max_price?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string; pickup_start?: string; pickup_end?: string }, token: string) =>
+    create: (payload: { item_id: string; item_title: string; shop_id: string; shop_name: string; shop_lat?: number; shop_lng?: number; retail_price: number; max_price?: number; quantity?: number; image_url: string; shop_logo_url: string; description: string; category?: string; duration_minutes: number; start_bid: number; scheduled_start?: string; pickup_start?: string; pickup_end?: string }, token: string) =>
       request<BackendAuction>('/auctions', {
         method: 'POST',
         headers: jsonHeaders(token),
@@ -253,7 +262,7 @@ export const api = {
       }).then((r) => r.shops ?? []),
 
     /** POST /shops → Shop */
-    create: (payload: { name: string; location: string; logo_url?: string }, token: string) =>
+    create: (payload: { name: string; location: string; logo_url?: string; lat?: number; lng?: number }, token: string) =>
       request<Shop>('/shops', {
         method: 'POST',
         headers: jsonHeaders(token),
@@ -261,7 +270,7 @@ export const api = {
       }),
 
     /** PUT /shops/:shopId → Shop */
-    update: (shopId: string, payload: { name?: string; location?: string; logo_url?: string }, token: string) =>
+    update: (shopId: string, payload: { name?: string; location?: string; logo_url?: string; lat?: number; lng?: number }, token: string) =>
       request<Shop>(`/shops/${shopId}`, {
         method: 'PUT',
         headers: jsonHeaders(token),

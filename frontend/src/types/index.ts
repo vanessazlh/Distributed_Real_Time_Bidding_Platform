@@ -21,6 +21,8 @@ export interface Shop {
   location: string
   owner_id: string
   logo_url?: string
+  lat?: number
+  lng?: number
 }
 export type BidStatus = 'WINNING' | 'OUTBID' | 'WON' | 'LOST'
 
@@ -46,6 +48,8 @@ export interface Auction {
   category?: Category
   pickup_start?: number   // Unix ms
   pickup_end?: number     // Unix ms
+  shop_lat?: number
+  shop_lng?: number
 }
 
 export interface User {

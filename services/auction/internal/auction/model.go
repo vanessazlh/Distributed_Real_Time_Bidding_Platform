@@ -10,6 +10,8 @@ type Auction struct {
 	SellerID       string    `json:"seller_id"`
 	ShopID         string    `json:"shop_id"`
 	ShopName       string    `json:"shop_name"`
+	ShopLat        float64   `json:"shop_lat,omitempty"`
+	ShopLng        float64   `json:"shop_lng,omitempty"`
 	RetailPrice    int64     `json:"retail_price"`
 	MaxPrice       int64     `json:"max_price,omitempty"` // bid ceiling; 0 = no limit
 	Quantity       int       `json:"quantity"`            // number of winners; 1 = standard auction
@@ -33,9 +35,11 @@ type Auction struct {
 type CreateAuctionRequest struct {
 	ItemID      string `json:"item_id" binding:"required"`
 	ItemTitle   string `json:"item_title"`
-	ShopID      string `json:"shop_id" binding:"required"`
-	ShopName    string `json:"shop_name"`
-	RetailPrice int64  `json:"retail_price"`
+	ShopID      string  `json:"shop_id" binding:"required"`
+	ShopName    string  `json:"shop_name"`
+	ShopLat     float64 `json:"shop_lat"`
+	ShopLng     float64 `json:"shop_lng"`
+	RetailPrice int64   `json:"retail_price"`
 	MaxPrice    int64  `json:"max_price"`      // bid ceiling; 0 = no limit
 	Quantity    int    `json:"quantity"`       // number of winners; default 1
 	ImageURL    string `json:"image_url"`

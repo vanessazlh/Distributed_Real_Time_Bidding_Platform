@@ -12,13 +12,21 @@
 | My Bids page | Working |
 | Auction enrichment fields | Working |
 | Seller auction management UI | **Done** (per-shop management page at /seller/shops/:shopId with Items + Auctions tabs; dashboard simplified to overview cards with "Manage →") |
-| Automatic auction expiry | **Basic version done** (closer.go polls every 1s, closes OPEN auctions past end_time) |
-| Payment service Redis Streams migration | **Complete** |
-| Auction/notification/bid Redis Streams migration | **Complete** |
+| Automatic auction expiry | **Done** (closer.go handles OPEN→CLOSED and PENDING→OPEN; optional scheduled_start on create) |
+| Payment service Redis Streams migration | **Done** |
+| Auction/notification/bid Redis Streams migration | **Done** |
 | Bid service WON status on close | **Done** (consumer subscribes to auction_closed, marks winner bid as WON) |
 | Per-auction WebSocket notifications | **Done** (broadcasts all bids + auction_closed, frontend WON/CLOSED banners) |
 | Global notification system | **Done** (persistent Redis store, per-user WebSocket, bell + toast UI, capped at 20 with dedup) |
 | Cache reliability (ensureRedisCached) | **Done** (DynamoDB backing store, write-through on create, fallback read with stampede lock, Redis cleanup on close) |
+| Geo support | **Done** (shop lat/lng via browser geolocation, Redis GEOSEARCH, Nearby filter on HomePage, distance badge on AuctionCard) |
+| Image uploads | **Done** (MinIO/S3, POST /uploads, ImageUpload component, nginx proxy) |
+| Quantity auctions | **Done** (top-N winners via Redis Sorted Set, Payment creates one record per winner) |
+| Pickup time windows | **Done** (optional pickup_start/pickup_end on auctions, time-of-day filter on HomePage) |
+| Seller auction detail page | **Done** (SellerAuctionDetailPage at /seller/auctions/:id with bid history, winners, payment status) |
+| Single-account model | **Done** (one email = one account; buyer→seller upgrade flow) |
+| Item categories | **Done** (category saved by shop service, filter on HomePage, inherited by CreateAuctionPage) |
+| Profile/shop editing | **Done** (PUT /users/:id username/avatar, PUT /shops/:id name/location/logo) |
 
 ---
 
@@ -101,12 +109,8 @@ Added `quantity` field (default 1) to Auction model, CreateAuctionRequest, Redis
 ### 6. ~~Move optimistic and queue strategies to experimental/~~ **Done**
 Moved `OptimisticStrategy` and `QueueStrategy` to `concurrency/experimental/` package with clear limitation comments. Both reject quantity>1 auctions with descriptive errors. `PessimisticStrategy` (Lua script) is now the default (`CONCURRENCY_STRATEGY` env var defaults to "pessimistic"). Service struct imports experimental package for benchmarking/dev use.
 
-### 7. Geo support (buyer + seller)
-Neither buyers nor sellers have location data. Add `lat`/`lng` or a structured address to the `Shop` model so shops can be surfaced by proximity.
-
-- Seller: structured address on shop creation
-- Buyer: location captured on registration or via browser geolocation
-- Likely requires a geohash GSI in DynamoDB or a dedicated geo service
+### 7. ~~Geo support (buyer + seller)~~ **Done**
+Added `lat`/`lng` (float64) to the `Shop` model, persisted in DynamoDB. Shop create/edit forms have a "📍 Pin my location" button via `navigator.geolocation`. Coordinates are denormalized into each `Auction` at create time (`shop_lat`/`shop_lng`) and written to a Redis `shops:geo` sorted set via `GEOADD`. `GET /auctions?lat=X&lng=Y&radius_km=R` uses `GEOSEARCH` to return only auctions from nearby shops. HomePage has a "Nearby" `FilterDropdown` (Within 2/5/10 km) that triggers geolocation and re-fetches with geo params. `AuctionCard` shows a `~X.Xkm` distance badge when user coords are available. No external geocoding API required.
 
 ### 2. ~~Item categories~~ **Done**
 Category field existed on Item model and frontend but was never saved by the shop service's `CreateItem`. Fixed: `req.Category` now passed through to the Item struct. Frontend `CreateItemPage` already had category dropdown, `HomePage` already filters by category, `CreateAuctionPage` inherits category from the selected item.

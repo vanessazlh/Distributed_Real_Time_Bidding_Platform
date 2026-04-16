@@ -56,12 +56,17 @@ func NewService(repo Repo, uploader Uploader, publicURL string) *Service {
 
 // CreateShop creates a new shop owned by ownerID.
 func (s *Service) CreateShop(ctx context.Context, req CreateShopRequest, ownerID string) (*Shop, error) {
+	if req.Lat == 0 && req.Lng == 0 {
+		return nil, fmt.Errorf("%w: shop location coordinates are required — use the Pin my location button", ErrInvalidInput)
+	}
 	shop := Shop{
 		ShopID:   uuid.NewString(),
 		Name:     req.Name,
 		Location: req.Location,
 		OwnerID:  ownerID,
 		LogoURL:  req.LogoURL,
+		Lat:      req.Lat,
+		Lng:      req.Lng,
 	}
 	if err := s.repo.SaveShop(ctx, shop); err != nil {
 		return nil, fmt.Errorf("save shop: %w", err)
@@ -87,6 +92,10 @@ func (s *Service) UpdateShop(ctx context.Context, shopID string, req UpdateShopR
 	}
 	// LogoURL can be set to empty to clear it, so always apply if present in request
 	shop.LogoURL = req.LogoURL
+	if req.Lat != 0 || req.Lng != 0 {
+		shop.Lat = req.Lat
+		shop.Lng = req.Lng
+	}
 
 	if err := s.repo.SaveShop(ctx, *shop); err != nil {
 		return nil, fmt.Errorf("update shop: %w", err)

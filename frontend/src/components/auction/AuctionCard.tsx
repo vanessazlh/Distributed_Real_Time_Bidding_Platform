@@ -5,14 +5,19 @@ import { Avatar } from '@/components/ui'
 import { ArrowRightIcon } from '@/components/icons'
 import { CountdownTimer } from './CountdownTimer'
 import { PriceDisplay } from './PriceDisplay'
-import { formatPickupWindow } from '@/lib/utils'
+import { formatPickupWindow, haversineKm } from '@/lib/utils'
 
 interface AuctionCardProps {
   auction: Auction
+  userCoords?: { lat: number; lng: number }
 }
 
-export function AuctionCard({ auction }: AuctionCardProps) {
+export function AuctionCard({ auction, userCoords }: AuctionCardProps) {
   const navigate  = useNavigate()
+  const distanceKm =
+    userCoords && auction.shop_lat && auction.shop_lng
+      ? haversineKm(userCoords.lat, userCoords.lng, auction.shop_lat, auction.shop_lng)
+      : null
   const isPending = auction.status === 'PENDING'
   const isClosed  = auction.status === 'CLOSED' || (!isPending && auction.end_time < Date.now())
   const detailUrl = `/auction/${auction.auction_id}`
@@ -54,6 +59,11 @@ export function AuctionCard({ auction }: AuctionCardProps) {
           <span className="text-brand text-xs font-semibold uppercase tracking-wider">
             {auction.item.shop_name}
           </span>
+          {distanceKm !== null && (
+            <span className="ml-auto text-text-secondary text-xs">
+              ~{distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`}
+            </span>
+          )}
         </div>
 
         <h3 className="font-sans font-semibold text-lg text-text-primary leading-tight mb-3">

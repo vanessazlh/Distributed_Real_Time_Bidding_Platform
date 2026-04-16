@@ -85,6 +85,8 @@ export default function CreateAuctionPage() {
         item_title:       selectedItem.title,
         shop_id:          shopId,
         shop_name:        shop?.name             ?? '',
+        shop_lat:         shop?.lat,
+        shop_lng:         shop?.lng,
         retail_price:     selectedItem.retail_value,
         image_url:        selectedItem.image_url ?? '',
         shop_logo_url:    shop?.logo_url         ?? '',

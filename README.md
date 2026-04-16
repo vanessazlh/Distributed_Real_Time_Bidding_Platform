@@ -90,18 +90,20 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/shops` | ✓ seller | Create shop |
+| `POST` | `/shops` | ✓ seller | Create shop (optional: `lat`, `lng` for geo proximity) |
 | `GET` | `/shops/:id` | — | Get shop |
+| `PUT` | `/shops/:id` | ✓ seller | Update shop name, location, logo, lat/lng — owner only |
 | `GET` | `/sellers/:userId/shops` | ✓ | List shops owned by a seller |
 | `POST` | `/shops/:id/items` | ✓ seller | Add item to shop |
 | `GET` | `/shops/:id/items` | — | List items in a shop |
+| `POST` | `/uploads` | ✓ seller | Upload image (JPEG/PNG/WebP/GIF, max 5 MB) → public URL |
 
 ### Auctions — Auction Service
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/auctions` | ✓ | Create auction (optional: `scheduled_start`, `pickup_start`, `pickup_end`) |
-| `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`) |
+| `POST` | `/auctions` | ✓ | Create auction (optional: `scheduled_start`, `pickup_start`, `pickup_end`, `shop_lat`, `shop_lng`) |
+| `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`; geo filter: `?lat=X&lng=Y&radius_km=R`) |
 | `GET` | `/auctions/:id` | — | Get auction details |
 | `POST` | `/auctions/:id/bid` | ✓ | Place bid |
 | `POST` | `/auctions/:id/close` | ✓ | Close auction early (owner only) |
@@ -218,6 +220,15 @@ Auctions support an optional **pickup window** (`pickup_start` and `pickup_end`,
 - The homepage offers a second filter row — **Any Time / Morning / Afternoon / Evening** — that filters auctions by the hour of `pickup_start`. Auctions without a pickup window are hidden when a time filter is active.
 - Auction cards show the pickup window below the bid info; the detail page displays it prominently with a clock icon
 
+### Geo Support (Proximity Search)
+
+Shops can store a physical location as `lat`/`lng` coordinates. These are captured via the browser Geolocation API ("📍 Pin my location" button) on the shop create/edit form.
+
+- Coordinates are denormalized into each auction at creation time (`shop_lat`, `shop_lng`) and written to a Redis `shops:geo` sorted set via `GEOADD`
+- `GET /auctions?lat=X&lng=Y&radius_km=R` runs a Redis `GEOSEARCH` to return only auctions from shops within the given radius — O(N+log M) at query time
+- The homepage **Nearby** filter (Within 2 / 5 / 10 km) requests browser geolocation and re-fetches with geo params; user coords are cached so switching radii doesn't re-prompt
+- Auction cards show a `~X.Xkm` distance badge when the user's location is known
+
 ---
 
 ## Environment Variables
@@ -233,6 +244,11 @@ Auctions support an optional **pickup window** (`pickup_start` and `pickup_end`,
 | `BID_WORKERS` | `10` | Bid (stream consumer concurrency) |
 | `NOTIF_WORKERS` | `10` | Notification (stream consumer concurrency) |
 | `PAYMENT_WORKERS` | `10` | Payment (stream consumer concurrency) |
+| `S3_ENDPOINT` | — | Shop (MinIO/S3 for image uploads; omit for real S3) |
+| `S3_BUCKET` | `uploads` | Shop |
+| `S3_ACCESS_KEY` | `minioadmin` | Shop |
+| `S3_SECRET_KEY` | `minioadmin` | Shop |
+| `S3_PUBLIC_URL` | `http://localhost:3000/uploads` | Shop (base URL for served images) |
 
 All defaults are pre-configured in `docker-compose.yml`.
 

@@ -3,6 +3,7 @@ package auction
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -80,9 +81,28 @@ func (h *Handler) GetAuction(c *gin.Context) {
 
 // ListAuctions godoc
 // GET /auctions
+// Optional geo filter: ?lat=<float>&lng=<float>&radius_km=<float>
 func (h *Handler) ListAuctions(c *gin.Context) {
-	status := c.Query("status")
+	latStr := c.Query("lat")
+	lngStr := c.Query("lng")
+	radiusStr := c.Query("radius_km")
 
+	if latStr != "" && lngStr != "" && radiusStr != "" {
+		lat, errLat := strconv.ParseFloat(latStr, 64)
+		lng, errLng := strconv.ParseFloat(lngStr, 64)
+		radius, errR := strconv.ParseFloat(radiusStr, 64)
+		if errLat == nil && errLng == nil && errR == nil && radius > 0 {
+			auctions, err := h.svc.ListAuctionsNear(c.Request.Context(), lat, lng, radius)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"auctions": auctions})
+			return
+		}
+	}
+
+	status := c.Query("status")
 	auctions, err := h.svc.ListAuctions(c.Request.Context(), status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})

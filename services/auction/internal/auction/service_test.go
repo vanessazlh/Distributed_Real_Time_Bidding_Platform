@@ -57,6 +57,10 @@ func (m *mockAuctionRepo) List(_ context.Context, status string) ([]*auction.Auc
 	return result, nil
 }
 
+func (m *mockAuctionRepo) GetShopIDsNear(_ context.Context, _, _, _ float64) ([]string, error) {
+	return nil, nil
+}
+
 func (m *mockAuctionRepo) ListByShop(_ context.Context, shopID string) ([]*auction.Auction, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

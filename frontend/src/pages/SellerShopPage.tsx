@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { Shop, Auction, Item } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Spinner, EmptyState, StatCard, FormField, TextInput, StatusBanner, ImageUpload } from '@/components/ui'
+import { Card, Badge, Button, Spinner, EmptyState, StatCard, FormField, TextInput, StatusBanner, ImageUpload, LocationPicker } from '@/components/ui'
 import { CountdownTimer } from '@/components/auction'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
@@ -33,12 +33,16 @@ export default function SellerShopPage() {
   const [editLogo,    setEditLogo]    = useState('')
   const [editSaving,  setEditSaving]  = useState(false)
   const [editError,   setEditError]   = useState<string | null>(null)
+  const [editLat,     setEditLat]     = useState<number | null>(null)
+  const [editLng,     setEditLng]     = useState<number | null>(null)
 
   const startEditing = () => {
     if (!shop) return
     setEditName(shop.name)
     setEditLocation(shop.location)
     setEditLogo(shop.logo_url ?? '')
+    setEditLat(shop.lat ?? null)
+    setEditLng(shop.lng ?? null)
     setEditError(null)
     setEditing(true)
   }
@@ -52,6 +56,8 @@ export default function SellerShopPage() {
         name: editName,
         location: editLocation,
         logo_url: editLogo,
+        lat: editLat ?? undefined,
+        lng: editLng ?? undefined,
       }, token)
       setShop(updated)
       setEditing(false)
@@ -146,8 +152,15 @@ export default function SellerShopPage() {
             <FormField label="Shop Name">
               <TextInput value={editName} onChange={(e) => setEditName(e.target.value)} required />
             </FormField>
-            <FormField label="Location">
+            <FormField label="Display Address">
               <TextInput value={editLocation} onChange={(e) => setEditLocation(e.target.value)} required />
+            </FormField>
+            <FormField label="Shop Location *">
+              <LocationPicker
+                lat={editLat}
+                lng={editLng}
+                onChange={(la, ln) => { setEditLat(la); setEditLng(ln) }}
+              />
             </FormField>
             <FormField label="Shop Logo (optional)">
               <ImageUpload
@@ -158,8 +171,8 @@ export default function SellerShopPage() {
               />
             </FormField>
             <div className="flex gap-3">
-              <Button variant="primary" disabled={editSaving || !editName || !editLocation} onClick={handleSaveShop}>
-                {editSaving ? 'Saving...' : 'Save'}
+              <Button variant="primary" disabled={editSaving || !editName || !editLocation || !editLat || !editLng} onClick={handleSaveShop}>
+                {editSaving ? 'Saving...' : !editLat || !editLng ? 'Pin location to save' : 'Save'}
               </Button>
               <Button variant="outline" disabled={editSaving} onClick={() => setEditing(false)}>
                 Cancel

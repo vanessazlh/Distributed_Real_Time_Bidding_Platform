@@ -54,6 +54,7 @@ type Repo interface {
 	GetByID(ctx context.Context, auctionID string) (*Auction, error)
 	List(ctx context.Context, status string) ([]*Auction, error)
 	ListByShop(ctx context.Context, shopID string) ([]*Auction, error)
+	GetShopIDsNear(ctx context.Context, lat, lng, radiusKm float64) ([]string, error)
 	Open(ctx context.Context, auctionID string) error
 	Close(ctx context.Context, auctionID string) error // Deprecated: use the atomic close methods below
 
@@ -187,6 +188,8 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 		ItemTitle:      req.ItemTitle,
 		ShopID:         req.ShopID,
 		ShopName:       req.ShopName,
+		ShopLat:        req.ShopLat,
+		ShopLng:        req.ShopLng,
 		RetailPrice:    req.RetailPrice,
 		MaxPrice:       req.MaxPrice,
 		Quantity:       qty,
@@ -244,6 +247,32 @@ func (s *Service) ListAuctionsByShop(ctx context.Context, shopID string) ([]*Auc
 		return nil, fmt.Errorf("list auctions by shop: %w", err)
 	}
 	return auctions, nil
+}
+
+// ListAuctionsNear returns active auctions whose shop is within radiusKm of (lat, lng).
+func (s *Service) ListAuctionsNear(ctx context.Context, lat, lng, radiusKm float64) ([]*Auction, error) {
+	shopIDs, err := s.repo.GetShopIDsNear(ctx, lat, lng, radiusKm)
+	if err != nil {
+		return nil, fmt.Errorf("geo search: %w", err)
+	}
+	if len(shopIDs) == 0 {
+		return []*Auction{}, nil
+	}
+	allowed := make(map[string]bool, len(shopIDs))
+	for _, id := range shopIDs {
+		allowed[id] = true
+	}
+	all, err := s.repo.List(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("list auctions: %w", err)
+	}
+	result := make([]*Auction, 0, len(all))
+	for _, a := range all {
+		if allowed[a.ShopID] {
+			result = append(result, a)
+		}
+	}
+	return result, nil
 }
 
 // PlaceBid places a bid on an auction using the current concurrency strategy.
