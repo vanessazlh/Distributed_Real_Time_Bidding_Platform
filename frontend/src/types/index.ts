@@ -24,7 +24,7 @@ export interface Shop {
   lat?: number
   lng?: number
 }
-export type BidStatus = 'WINNING' | 'OUTBID' | 'WON' | 'LOST'
+export type BidStatus = 'WINNING' | 'OUTBID' | 'WON'
 
 export interface AuctionItem {
   title: string

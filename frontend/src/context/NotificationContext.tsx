@@ -10,6 +10,7 @@ interface NotificationContextValue {
   unreadCount:   number
   latestToast:   StoredNotification | null
   markAllRead:   () => void
+  markOneRead:   (id: string) => void
   dismissToast:  () => void
 }
 
@@ -61,13 +62,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     api.notifications.markAllRead(token).catch(() => { /* silent */ })
   }, [token])
 
+  const markOneRead = useCallback((id: string) => {
+    if (!token) return
+    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n))
+    setUnreadCount((prev) => Math.max(0, prev - 1))
+    // Backend only supports mark-all; fire it so the server stays in sync
+    api.notifications.markAllRead(token).catch(() => { /* silent */ })
+  }, [token])
+
   const dismissToast = useCallback(() => {
     setLatestToast(null)
     clearTimeout(toastTimer.current)
   }, [])
 
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, latestToast, markAllRead, dismissToast }}>
+    <NotificationContext.Provider value={{ notifications, unreadCount, latestToast, markAllRead, markOneRead, dismissToast }}>
       {children}
     </NotificationContext.Provider>
   )

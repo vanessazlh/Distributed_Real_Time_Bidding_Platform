@@ -5,7 +5,7 @@ import { BellIcon } from '@/components/icons'
 import { formatCurrency } from '@/lib/utils'
 
 export function NotificationBell() {
-  const { notifications, unreadCount, markAllRead } = useNotifications()
+  const { notifications, unreadCount, markAllRead, markOneRead } = useNotifications()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
@@ -22,15 +22,16 @@ export function NotificationBell() {
   }, [open])
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative inline-flex items-center">
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        className="relative inline-flex items-center text-text-secondary hover:text-brand transition-colors"
         aria-label="Notifications"
+        title="Notifications"
       >
         <BellIcon width={20} height={20} />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-0.5">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -58,6 +59,7 @@ export function NotificationBell() {
                 <button
                   key={n.id + n.created_at}
                   onClick={() => {
+                    markOneRead(n.id)
                     setOpen(false)
                     navigate(n.link)
                   }}
