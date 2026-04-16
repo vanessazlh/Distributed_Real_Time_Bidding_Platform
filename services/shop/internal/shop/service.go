@@ -2,9 +2,12 @@ package shop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -55,10 +58,10 @@ type Repo interface {
 
 // Service contains business logic for the shop domain.
 type Service struct {
-	repo           Repo
-	uploader       Uploader
-	publicURL      string
-	paymentSvcURL  string
+	repo          Repo
+	uploader      Uploader
+	publicURL     string
+	paymentSvcURL string
 }
 
 // NewService creates a new Service. uploader may be nil if S3 is not configured.
@@ -187,6 +190,137 @@ func (s *Service) ListItems(ctx context.Context, shopID string) ([]Item, error) 
 		return nil, fmt.Errorf("list items: %w", err)
 	}
 	return items, nil
+}
+
+// CreateReview allows a buyer to leave a review after completing payment.
+// Enforces one review per auction per buyer.
+func (s *Service) CreateReview(ctx context.Context, shopID string, req CreateReviewRequest, reviewerID, reviewerUsername string) (*Review, error) {
+	// Verify the shop exists.
+	if _, err := s.repo.FindShopByID(ctx, shopID); err != nil {
+		return nil, ErrNotFound
+	}
+
+	// Check completed payment if payment service is configured.
+	if s.paymentSvcURL != "" {
+		eligible, err := s.hasCompletedPayment(ctx, req.AuctionID, reviewerID)
+		if err != nil {
+			return nil, fmt.Errorf("eligibility check: %w", err)
+		}
+		if !eligible {
+			return nil, ErrPaymentNotCompleted
+		}
+	}
+
+	// Enforce one review per auction per buyer.
+	existing, err := s.repo.FindReviewByAuctionAndReviewer(ctx, req.AuctionID, reviewerID)
+	if err != nil {
+		return nil, fmt.Errorf("check duplicate review: %w", err)
+	}
+	if existing != nil {
+		return nil, ErrAlreadyReviewed
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	rev := Review{
+		ReviewID:         uuid.NewString(),
+		ShopID:           shopID,
+		ReviewerID:       reviewerID,
+		ReviewerUsername: reviewerUsername,
+		AuctionID:        req.AuctionID,
+		Rating:           req.Rating,
+		Comment:          req.Comment,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	if err := s.repo.SaveReview(ctx, rev); err != nil {
+		return nil, fmt.Errorf("save review: %w", err)
+	}
+	return &rev, nil
+}
+
+// ListReviews returns all reviews for a shop with computed aggregate stats.
+func (s *Service) ListReviews(ctx context.Context, shopID string) (*ReviewsResponse, error) {
+	if _, err := s.repo.FindShopByID(ctx, shopID); err != nil {
+		return nil, ErrNotFound
+	}
+	reviews, err := s.repo.FindReviewsByShop(ctx, shopID)
+	if err != nil {
+		return nil, fmt.Errorf("list reviews: %w", err)
+	}
+
+	var sum int
+	for _, r := range reviews {
+		sum += r.Rating
+	}
+	var avg float64
+	if len(reviews) > 0 {
+		avg = float64(sum) / float64(len(reviews))
+		avg = float64(int(avg*10+0.5)) / 10 // round to 1 decimal
+	}
+
+	return &ReviewsResponse{
+		Reviews:       reviews,
+		AverageRating: avg,
+		TotalReviews:  len(reviews),
+	}, nil
+}
+
+// ReplyToReview allows the shop owner to respond to a review.
+func (s *Service) ReplyToReview(ctx context.Context, shopID, reviewID, reply, callerID string) (*Review, error) {
+	shop, err := s.repo.FindShopByID(ctx, shopID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	if shop.OwnerID != callerID {
+		return nil, ErrForbidden
+	}
+
+	rev, err := s.repo.FindReviewByID(ctx, reviewID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	if rev.ShopID != shopID {
+		return nil, ErrNotFound
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := s.repo.UpdateReviewReply(ctx, reviewID, reply, now); err != nil {
+		return nil, fmt.Errorf("save reply: %w", err)
+	}
+	rev.SellerReply = reply
+	rev.UpdatedAt = now
+	return rev, nil
+}
+
+// hasCompletedPayment calls the payment service to check if this buyer has a
+// completed payment for the given auction.
+func (s *Service) hasCompletedPayment(ctx context.Context, auctionID, userID string) (bool, error) {
+	url := fmt.Sprintf("%s/auctions/%s/payment", s.paymentSvcURL, auctionID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("payment service returned %d", resp.StatusCode)
+	}
+
+	var p struct {
+		UserID string `json:"user_id"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		return false, err
+	}
+	return p.UserID == userID && p.Status == "completed", nil
 }
 
 var allowedMIMETypes = map[string]string{

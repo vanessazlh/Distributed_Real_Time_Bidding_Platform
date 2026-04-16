@@ -168,9 +168,15 @@ Seller-facing analytics page: revenue over time, average selling price vs retail
 ### 19. ~~Minimum bid increment~~ **Done**
 Added optional `min_increment` field (int64, cents) to Auction model, Redis hash, and DynamoDB. Lua bid validation script (`placeBidLua`) enforces `new_bid >= current_highest + min_increment` for single-winner auctions and per-slot enforcement for multi-winner auctions. `ErrBidIncrementTooSmall` (-5 return code) propagated through service → handler → 400 response. Frontend: optional "Minimum Bid Increment" input on `CreateAuctionPage`, `BiddingPanel` shows minimum next bid based on increment and displays a hint below the input when set.
 
-### 20. Ratings & reviews
-After a completed auction + payment, buyers can rate the pickup experience (1–5 stars + optional text). Store in DynamoDB (reviewer_id, shop_id, auction_id, rating, comment, timestamp). Display average rating on ShopDetailPage and AuctionCard. Sellers can respond to reviews. One review per auction per buyer.
+### 20. ~~Ratings & reviews~~ **Done**
+After a completed auction + payment, buyers can rate the pickup experience (1–5 stars + optional text). Stored in DynamoDB `Reviews` table (PK: `review_id`, GSIs: `shop_id-index` for listing and `auction_id-reviewer-index` for uniqueness). Payment eligibility check via `PAYMENT_SERVICE_URL` env var (skipped when unset for dev). One review per auction per buyer enforced by GSI lookup. Sellers can reply to reviews. Average rating + review count shown on `ShopDetailPage` header and `AuctionDetailPage` shop link. `GET /shops/:id/reviews` is public; `POST` requires buyer auth; reply requires seller auth + shop ownership.
 
 ### 21. Mobile responsive polish
 Audit all pages for small-screen breakpoints. Key areas: homepage grid (single column on mobile), auction detail layout (stack sidebar below main), navbar (hamburger menu), bidding panel (full-width sticky bottom), filter bar (horizontal scroll or collapsible). Tailwind responsive prefixes (`sm:`, `md:`) are already available.
+
+### 22. AI description generator (seller)
+"Generate with AI" button on `CreateItemPage` next to the description textarea. Calls a new `POST /ai/describe` endpoint on the shop service. Backend takes `title`, `category`, and `retail_value`, sends a prompt to an LLM (OpenAI / Gemini / Anthropic — provider configured via env vars), and returns a 2–3 sentence product description. Seller can edit the suggestion before saving. API key stored as an env var (e.g. `AI_API_KEY`); falls back gracefully if not configured.
+
+### 23. AI auction recommendations (buyer)
+"Recommended for You" section on `HomePage` for logged-in buyers. New `GET /auctions/recommendations` endpoint on the auction service fetches OPEN auctions from Redis, passes them to an LLM with user context (categories from bid history, location if available), and returns the top 5–8 auction IDs with a short reason per pick. Frontend renders a horizontal scroll row above the main grid; each card shows a "Why?" tooltip with the reason. Provider and key follow the same env var convention as #22. Falls back silently if the AI call fails or the key is absent.
 

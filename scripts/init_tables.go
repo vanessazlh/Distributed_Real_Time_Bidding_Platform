@@ -43,6 +43,12 @@ func main() {
 	} else {
 		fmt.Println("created Payments table")
 	}
+
+	if err := createReviewsTable(ctx, db); err != nil {
+		log.Printf("Reviews table: %v", err)
+	} else {
+		fmt.Println("created Reviews table")
+	}
 }
 
 func createUsersTable(ctx context.Context, db *dynamodb.Client) error {
@@ -167,6 +173,55 @@ func createPaymentsTable(ctx context.Context, db *dynamodb.Client) error {
 				KeySchema: []types.KeySchemaElement{
 					{AttributeName: aws.String("user_id"), KeyType: types.KeyTypeHash},
 					{AttributeName: aws.String("created_at"), KeyType: types.KeyTypeRange},
+				},
+				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
+				ProvisionedThroughput: &types.ProvisionedThroughput{
+					ReadCapacityUnits:  aws.Int64(5),
+					WriteCapacityUnits: aws.Int64(5),
+				},
+			},
+		},
+		ProvisionedThroughput: &types.ProvisionedThroughput{
+			ReadCapacityUnits:  aws.Int64(5),
+			WriteCapacityUnits: aws.Int64(5),
+		},
+	})
+	return err
+}
+
+func createReviewsTable(ctx context.Context, db *dynamodb.Client) error {
+	_, err := db.CreateTable(ctx, &dynamodb.CreateTableInput{
+		TableName: aws.String("Reviews"),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{AttributeName: aws.String("review_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("shop_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("auction_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("reviewer_id"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("created_at"), AttributeType: types.ScalarAttributeTypeS},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{AttributeName: aws.String("review_id"), KeyType: types.KeyTypeHash},
+		},
+		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
+			{
+				// List reviews for a shop, sorted newest first
+				IndexName: aws.String("shop_id-index"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("shop_id"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("created_at"), KeyType: types.KeyTypeRange},
+				},
+				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
+				ProvisionedThroughput: &types.ProvisionedThroughput{
+					ReadCapacityUnits:  aws.Int64(5),
+					WriteCapacityUnits: aws.Int64(5),
+				},
+			},
+			{
+				// Enforce one review per auction per reviewer
+				IndexName: aws.String("auction_id-reviewer-index"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("auction_id"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("reviewer_id"), KeyType: types.KeyTypeRange},
 				},
 				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
 				ProvisionedThroughput: &types.ProvisionedThroughput{

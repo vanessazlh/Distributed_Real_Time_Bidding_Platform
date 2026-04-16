@@ -143,6 +143,26 @@ export interface StoredNotification {
   read:       boolean
 }
 
+/** A buyer review of a shop after a completed auction */
+export interface Review {
+  review_id:          string
+  shop_id:            string
+  reviewer_id:        string
+  reviewer_username:  string
+  auction_id:         string
+  rating:             number   // 1–5
+  comment?:           string
+  seller_reply?:      string
+  created_at:         string   // RFC3339
+  updated_at:         string   // RFC3339
+}
+
+export interface ReviewsResponse {
+  reviews:        Review[]
+  average_rating: number
+  total_reviews:  number
+}
+
 /** Wrapper sent over the user-level WebSocket */
 export interface UserNotificationEvent {
   type: 'notification'

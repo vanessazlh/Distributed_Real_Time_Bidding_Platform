@@ -31,6 +31,13 @@ func callerRole(c *gin.Context) string {
 	return r
 }
 
+// callerUsername extracts the username claim set by the JWT middleware.
+func callerUsername(c *gin.Context) string {
+	v, _ := c.Get("username")
+	u, _ := v.(string)
+	return u
+}
+
 // CreateShop godoc
 // POST /shops
 func (h *Handler) CreateShop(c *gin.Context) {
@@ -202,6 +209,88 @@ func (h *Handler) UploadImage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// CreateReview godoc
+// POST /shops/:shop_id/reviews
+func (h *Handler) CreateReview(c *gin.Context) {
+	shopID := c.Param("shop_id")
+
+	var req CreateReviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	reviewerID := callerID(c)
+	reviewerUsername := callerUsername(c)
+
+	rev, err := h.svc.CreateReview(c.Request.Context(), shopID, req, reviewerID, reviewerUsername)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "shop not found"})
+		case errors.Is(err, ErrAlreadyReviewed):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		case errors.Is(err, ErrPaymentNotCompleted):
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusCreated, rev)
+}
+
+// ListReviews godoc
+// GET /shops/:shop_id/reviews
+func (h *Handler) ListReviews(c *gin.Context) {
+	shopID := c.Param("shop_id")
+	resp, err := h.svc.ListReviews(c.Request.Context(), shopID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "shop not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// ReplyToReview godoc
+// POST /shops/:shop_id/reviews/:review_id/reply
+func (h *Handler) ReplyToReview(c *gin.Context) {
+	if callerRole(c) != "seller" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only sellers can reply to reviews"})
+		return
+	}
+
+	shopID := c.Param("shop_id")
+	reviewID := c.Param("review_id")
+
+	var req ReplyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	rev, err := h.svc.ReplyToReview(c.Request.Context(), shopID, reviewID, req.Reply, callerID(c))
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "review not found"})
+		case errors.Is(err, ErrForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the shop owner can reply to reviews"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, rev)
 }
 
 // ListItems godoc

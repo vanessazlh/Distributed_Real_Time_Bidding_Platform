@@ -53,3 +53,36 @@ type CreateItemRequest struct {
 type UploadResponse struct {
 	URL string `json:"url"`
 }
+
+// Review represents a buyer's rating of a shop after a completed auction.
+type Review struct {
+	ReviewID         string `dynamodbav:"review_id" json:"review_id"`
+	ShopID           string `dynamodbav:"shop_id" json:"shop_id"`
+	ReviewerID       string `dynamodbav:"reviewer_id" json:"reviewer_id"`
+	ReviewerUsername string `dynamodbav:"reviewer_username" json:"reviewer_username"`
+	AuctionID        string `dynamodbav:"auction_id" json:"auction_id"`
+	Rating           int    `dynamodbav:"rating" json:"rating"`
+	Comment          string `dynamodbav:"comment,omitempty" json:"comment,omitempty"`
+	SellerReply      string `dynamodbav:"seller_reply,omitempty" json:"seller_reply,omitempty"`
+	CreatedAt        string `dynamodbav:"created_at" json:"created_at"`
+	UpdatedAt        string `dynamodbav:"updated_at" json:"updated_at"`
+}
+
+// CreateReviewRequest is the payload for POST /shops/:shop_id/reviews.
+type CreateReviewRequest struct {
+	AuctionID string `json:"auction_id" binding:"required"`
+	Rating    int    `json:"rating" binding:"required,min=1,max=5"`
+	Comment   string `json:"comment"`
+}
+
+// ReplyRequest is the payload for POST /shops/:shop_id/reviews/:review_id/reply.
+type ReplyRequest struct {
+	Reply string `json:"reply" binding:"required,min=1"`
+}
+
+// ReviewsResponse is returned by GET /shops/:shop_id/reviews.
+type ReviewsResponse struct {
+	Reviews       []Review `json:"reviews"`
+	AverageRating float64  `json:"average_rating"`
+	TotalReviews  int      `json:"total_reviews"`
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import type { Auction, BidHistoryEntry, BidPlacedEvent, AuctionClosedEvent } from '@/types'
+import type { Auction, BidHistoryEntry, BidPlacedEvent, AuctionClosedEvent, ReviewsResponse } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { useAuctionWebSocket } from '@/hooks/useAuctionWebSocket'
@@ -20,6 +20,7 @@ export default function AuctionDetailPage() {
 
   const { isWatched, toggle } = useWatchlist()
   const [auction,    setAuction]    = useState<Auction | null>(null)
+  const [shopRating, setShopRating] = useState<ReviewsResponse | null>(null)
   const [loading,    setLoading]    = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [bidError,   setBidError]   = useState<string | null>(null)
@@ -38,6 +39,8 @@ export default function AuctionDetailPage() {
         setAuction(a)
         setHighestBid(a.current_highest_bid)
         setBidCount(a.bid_count)
+        // Load shop ratings in parallel (non-blocking)
+        api.reviews.list(a.item.shop_id).then(setShopRating).catch(() => {/* ignore */})
       })
       .catch((err) => setFetchError(err instanceof Error ? err.message : 'Failed to load auction'))
       .finally(() => setLoading(false))
@@ -158,12 +161,25 @@ export default function AuctionDetailPage() {
             <div className="p-8">
               <div className="flex items-center gap-3 mb-4">
                 <Avatar src={auction.shop_logo_url} alt={auction.item.shop_name} size="lg" />
-                <Link
-                  to={`/shop/${auction.item.shop_id}`}
-                  className="text-brand font-semibold text-lg hover:underline"
-                >
-                  {auction.item.shop_name}
-                </Link>
+                <div>
+                  <Link
+                    to={`/shop/${auction.item.shop_id}`}
+                    className="text-brand font-semibold text-lg hover:underline"
+                  >
+                    {auction.item.shop_name}
+                  </Link>
+                  {shopRating && (
+                    shopRating.total_reviews > 0 ? (
+                      <p className="text-sm text-text-secondary mt-0.5">
+                        {'★'.repeat(Math.round(shopRating.average_rating))}{'☆'.repeat(5 - Math.round(shopRating.average_rating))}{' '}
+                        <span className="font-medium text-text-primary">{shopRating.average_rating.toFixed(1)}</span>
+                        {' '}({shopRating.total_reviews})
+                      </p>
+                    ) : (
+                      <p className="text-sm text-text-secondary mt-0.5">No ratings yet</p>
+                    )
+                  )}
+                </div>
               </div>
               <div className="flex items-start justify-between gap-4 mb-4">
                 <h1 className="font-sans font-semibold text-3xl text-text-primary">

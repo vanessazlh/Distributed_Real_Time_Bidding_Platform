@@ -115,6 +115,7 @@ services:
       - S3_ACCESS_KEY=minioadmin
       - S3_SECRET_KEY=minioadmin
       - S3_PUBLIC_URL=http://localhost:3000/uploads
+      - PAYMENT_SERVICE_URL=http://payment:8085
     depends_on:
       dynamodb-local:
         condition: service_healthy

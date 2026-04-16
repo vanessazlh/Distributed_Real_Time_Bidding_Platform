@@ -37,12 +37,16 @@ func main() {
 	}
 
 	svc := shop.NewService(repo, uploader, publicURL)
+	if paymentURL := os.Getenv("PAYMENT_SERVICE_URL"); paymentURL != "" {
+		svc.WithPaymentServiceURL(paymentURL)
+	}
 	h := shop.NewHandler(svc)
 
 	r := gin.Default()
 
 	r.GET("/shops/:shop_id", h.GetShop)
 	r.GET("/shops/:shop_id/items", h.ListItems)
+	r.GET("/shops/:shop_id/reviews", h.ListReviews)
 	r.GET("/items/:item_id", h.GetItem)
 
 	protected := r.Group("/", middleware.Auth())
@@ -50,6 +54,8 @@ func main() {
 		protected.POST("/shops", h.CreateShop)
 		protected.PUT("/shops/:shop_id", h.UpdateShop)
 		protected.POST("/shops/:shop_id/items", h.CreateItem)
+		protected.POST("/shops/:shop_id/reviews", h.CreateReview)
+		protected.POST("/shops/:shop_id/reviews/:review_id/reply", h.ReplyToReview)
 		protected.GET("/sellers/:user_id/shops", h.ListSellerShops)
 		protected.POST("/uploads", h.UploadImage)
 	}

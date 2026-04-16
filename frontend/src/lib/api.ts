@@ -1,4 +1,4 @@
-import type { Auction, AuctionBid, AuctionStatus, Category, User, UserBid, Item, Shop, Payment, StoredNotification } from '@/types'
+import type { Auction, AuctionBid, AuctionStatus, Category, User, UserBid, Item, Shop, Payment, StoredNotification, ReviewsResponse, Review } from '@/types'
 
 // ── Error type ───────────────────────────────────────────────────────────────
 
@@ -353,6 +353,28 @@ export const api = {
       const data = await res.json() as { url: string }
       return data.url
     },
+  },
+
+  reviews: {
+    /** GET /shops/:shopId/reviews → ReviewsResponse */
+    list: (shopId: string) =>
+      request<ReviewsResponse>(`/shops/${shopId}/reviews`),
+
+    /** POST /shops/:shopId/reviews → Review */
+    create: (shopId: string, payload: { auction_id: string; rating: number; comment?: string }, token: string) =>
+      request<Review>(`/shops/${shopId}/reviews`, {
+        method: 'POST',
+        headers: jsonHeaders(token),
+        body: JSON.stringify(payload),
+      }),
+
+    /** POST /shops/:shopId/reviews/:reviewId/reply → Review */
+    reply: (shopId: string, reviewId: string, reply: string, token: string) =>
+      request<Review>(`/shops/${shopId}/reviews/${reviewId}/reply`, {
+        method: 'POST',
+        headers: jsonHeaders(token),
+        body: JSON.stringify({ reply }),
+      }),
   },
 
   payments: {

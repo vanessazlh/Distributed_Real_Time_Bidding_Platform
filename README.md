@@ -89,7 +89,7 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 | `POST` | `/users/:id/watchlist/:auctionId` | ✓ | Add auction to watchlist — owner only |
 | `DELETE` | `/users/:id/watchlist/:auctionId` | ✓ | Remove auction from watchlist — owner only |
 
-### Shops + Items — Shop Service
+### Shops + Items + Reviews — Shop Service
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
@@ -99,6 +99,9 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 | `GET` | `/sellers/:userId/shops` | ✓ | List shops owned by a seller |
 | `POST` | `/shops/:id/items` | ✓ seller | Add item to shop |
 | `GET` | `/shops/:id/items` | — | List items in a shop |
+| `GET` | `/shops/:id/reviews` | — | List reviews + average rating + total count |
+| `POST` | `/shops/:id/reviews` | ✓ buyer | Submit review (1–5 stars, optional comment; one per auction per buyer) |
+| `POST` | `/shops/:id/reviews/:reviewId/reply` | ✓ seller | Shop owner replies to a review |
 | `POST` | `/uploads` | ✓ seller | Upload image (JPEG/PNG/WebP/GIF, max 5 MB) → public URL |
 
 ### Auctions — Auction Service
@@ -238,6 +241,17 @@ Auctions support an optional `min_increment` field (int64, cents) that sets the 
 
 On the frontend, the HomePage hero contains a search bar that applies the same substring filter client-side on the already-fetched auction list for instant, zero-latency results. The filter chain is: category tab → pickup time → search query.
 
+### Ratings & Reviews
+
+After completing a purchase, buyers can rate their pickup experience on a 1–5 star scale with an optional text comment.
+
+- Stored in a dedicated DynamoDB `Reviews` table (PK: `review_id`, two GSIs: `shop_id-index` for listing and `auction_id-reviewer-index` for duplicate enforcement)
+- **One review per auction per buyer** — the service queries `auction_id-reviewer-index` before saving; duplicate attempts return 409 Conflict
+- **Payment eligibility check** — when `PAYMENT_SERVICE_URL` is configured (i.e., in production Docker Compose), the shop service calls the payment service to verify the buyer has a `completed` payment for the given auction before accepting a review; skipped when unset (local dev without payment wiring)
+- Sellers can post a single reply to any review via `POST /shops/:id/reviews/:reviewId/reply` (ownership-checked; only the shop owner can reply)
+- `GET /shops/:id/reviews` returns the full review list, `average_rating` (rounded to 1 decimal), and `total_reviews`
+- **Frontend:** `ShopDetailPage` shows the star average + review count in the shop header, followed by a write-a-review form (for logged-in buyers) and the review list with seller reply UI. `AuctionDetailPage` shows the shop's average rating and review count below the shop name link.
+
 ### Watchlist / Favorites
 
 Buyers can save any auction to a personal watchlist with a heart toggle.
@@ -277,6 +291,7 @@ Shops can store a physical location as `lat`/`lng` coordinates. These are captur
 | `S3_ACCESS_KEY` | `minioadmin` | Shop |
 | `S3_SECRET_KEY` | `minioadmin` | Shop |
 | `S3_PUBLIC_URL` | `http://localhost:3000/uploads` | Shop (base URL for served images) |
+| `PAYMENT_SERVICE_URL` | — | Shop (payment eligibility check for reviews; omit to skip check in dev) |
 
 All defaults are pre-configured in `docker-compose.yml`.
 

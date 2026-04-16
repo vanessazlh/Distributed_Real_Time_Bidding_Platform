@@ -32,8 +32,11 @@ chmod +x tests/smoke_test.sh
 | B13 | Auction auto-close     | Wait for `end_time` to pass                                         | Status → `CLOSED`                              |
 | B14 | Payment auto-triggered | `GET /auctions/:id/payment` after close                             | Payment record in `completed` or `failed`      |
 | B15 | Strategy switch        | `PUT /admin/strategy` → `pessimistic`, place bid, switch back       | Bids work under all 3 strategies               |
+| B16 | Ratings & reviews      | `POST /shops/:id/reviews`, list, seller reply, duplicate guard, auth | Review stored; average shown; reply protected  |
 
-**Last run: 2026-03-29 — 20/20 passed ✅**
+**Last run: 2026-03-29 — 20/20 passed ✅** (B16 added 2026-04-16, not yet run against live stack)
+
+**Unit tests:** `go test ./...` — all packages pass. Shop service has 19 unit tests covering shop/item CRUD, upload validation, review creation, duplicate enforcement, average rating, and seller reply access control.
 
 ---
 
