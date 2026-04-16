@@ -320,7 +320,7 @@ function BidsTab({ user, token }: { user: { user_id: string }; token: string | n
                   )}
                   {bid.status === 'OUTBID' && (
                     <Link to={`/auction/${bid.auction_id}`} className="text-brand text-sm font-medium hover:underline">
-                      Bid Again →
+                      View Auction →
                     </Link>
                   )}
                   {bid.status === 'WON' && (

@@ -91,9 +91,11 @@ export default function HomePage() {
     }
   }
 
+  const liveAuctions = auctions.filter((a) => a.status !== 'CLOSED' && a.end_time > Date.now())
+
   const byCategory = filter === 'All'
-    ? auctions
-    : auctions.filter((a) => a.category === filter)
+    ? liveAuctions
+    : liveAuctions.filter((a) => a.category === filter)
 
   const byPickup = pickupFilter === 'any'
     ? byCategory
