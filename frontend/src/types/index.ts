@@ -38,6 +38,7 @@ export interface Auction {
   current_highest_bid: number  // cents
   retail_price: number         // cents
   max_price: number            // cents; 0 = no limit
+  min_increment: number        // cents; 0 = no minimum increment
   quantity: number             // number of winners; 1 = standard auction
   end_time: number             // Unix ms
   status: AuctionStatus

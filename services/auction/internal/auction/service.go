@@ -36,6 +36,9 @@ var ErrBidTooLow = errors.New("bid too low")
 // ErrBidExceedsMax is returned when the bid exceeds the auction's max price.
 var ErrBidExceedsMax = errors.New("bid exceeds max price")
 
+// ErrBidIncrementTooSmall is returned when the bid doesn't meet the minimum increment.
+var ErrBidIncrementTooSmall = errors.New("bid increment too small")
+
 // ErrSelfBid is returned when a seller tries to bid on their own auction.
 var ErrSelfBid = errors.New("sellers cannot bid on their own auction")
 
@@ -139,6 +142,9 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 	if req.Quantity < 0 {
 		return nil, fmt.Errorf("%w: quantity must be >= 0", ErrValidation)
 	}
+	if req.MinIncrement < 0 {
+		return nil, fmt.Errorf("%w: min_increment must be >= 0", ErrValidation)
+	}
 
 	// Determine start time and status
 	startTime := now
@@ -192,6 +198,7 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 		ShopLng:        req.ShopLng,
 		RetailPrice:    req.RetailPrice,
 		MaxPrice:       req.MaxPrice,
+		MinIncrement:   req.MinIncrement,
 		Quantity:       qty,
 		ImageURL:       req.ImageURL,
 		ShopLogoURL:    req.ShopLogoURL,
@@ -332,6 +339,9 @@ func (s *Service) PlaceBid(ctx context.Context, auctionID string, userID string,
 		}
 		if contains(errMsg, "exceeds max price") {
 			return nil, ErrBidExceedsMax
+		}
+		if contains(errMsg, "increment too small") {
+			return nil, ErrBidIncrementTooSmall
 		}
 		return nil, fmt.Errorf("place bid: %w", err)
 	}

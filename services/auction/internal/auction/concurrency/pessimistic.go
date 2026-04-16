@@ -32,6 +32,7 @@ import (
 //	{'-2', '', '0'}           auction is not open
 //	{'-3', '', threshold}     bid too low (threshold = price to beat)
 //	{'-4', '', maxPrice}      bid exceeds max price
+//	{'-5', '', minNext}       increment too small (minNext = current + min_increment)
 var placeBidLua = redis.NewScript(`
 local key = KEYS[1]
 local bidsKey = KEYS[2]
@@ -52,6 +53,7 @@ if maxPrice > 0 and amount > maxPrice then
 end
 
 local current = tonumber(redis.call('HGET', key, 'current_highest')) or 0
+local minIncrement = tonumber(redis.call('HGET', key, 'min_increment')) or 0
 local quantity = tonumber(redis.call('HGET', key, 'quantity')) or 1
 local cardCount = redis.call('ZCARD', bidsKey)
 
@@ -60,13 +62,24 @@ if quantity <= 1 then
 	if amount <= current then
 		return {'-3', '', tostring(current)}
 	end
+	-- Enforce minimum increment (only when there is already a bid above start_bid)
+	if minIncrement > 0 and current > 0 then
+		local minNext = current + minIncrement
+		if amount < minNext then
+			return {'-5', '', tostring(minNext)}
+		end
+	end
 else
 	-- Multi-winner slot management
 	local existingScore = redis.call('ZSCORE', bidsKey, bidder)
 	if existingScore ~= false then
 		-- Bidder already holds a slot: must improve on their own bid
-		if amount <= tonumber(existingScore) then
+		local prevBid = tonumber(existingScore)
+		if amount <= prevBid then
 			return {'-3', '', tostring(existingScore)}
+		end
+		if minIncrement > 0 and amount < prevBid + minIncrement then
+			return {'-5', '', tostring(prevBid + minIncrement)}
 		end
 	elseif cardCount >= quantity then
 		-- All slots full: must beat the floor (lowest current winner)
@@ -75,6 +88,9 @@ else
 			local floorAmount = tonumber(floor[2])
 			if amount <= floorAmount then
 				return {'-3', '', tostring(floorAmount)}
+			end
+			if minIncrement > 0 and amount < floorAmount + minIncrement then
+				return {'-5', '', tostring(floorAmount + minIncrement)}
 			end
 		end
 	else
@@ -173,6 +189,9 @@ func (p *Pessimistic) TryPlaceBid(ctx context.Context, auctionID string, amount 
 	case -4:
 		return nil, fmt.Errorf("bid amount %d exceeds max price %s",
 			amount, threshold)
+	case -5:
+		return nil, fmt.Errorf("bid increment too small: minimum next bid is %s",
+			threshold)
 	default:
 		floor, _ := strconv.ParseInt(threshold, 10, 64)
 		return &BidPlacement{

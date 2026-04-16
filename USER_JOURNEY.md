@@ -32,6 +32,7 @@ The buyer enters a bid amount in the bidding panel. On submission:
 - If accepted, the buyer's panel shows a **Winning** banner and the price updates across all connected clients instantly
 - If outbid by someone else, the banner switches to **Outbid** and the new price is broadcast to all watchers
 - Sellers cannot bid on their own auctions (403 Forbidden)
+- If the auction has a **minimum bid increment**, the panel shows the minimum next bid amount and a "Minimum raise: $X.XX per bid" hint. Bids that don't meet the increment are rejected with a clear error.
 
 For **quantity auctions** (multiple winners), the bidding panel shows a "X winners" badge and the label changes to "Minimum Bid to Win" — the floor price to secure a winning slot. When all slots are full, a new bid must exceed the lowest winner's amount; the evicted bidder is notified as outbid.
 
@@ -93,12 +94,16 @@ Coordinates are required to submit the form and enable proximity filtering for b
 From a shop page, the seller adds a surplus item via `/shops/:id/items/new`, providing a title, description, retail value, and optional image URL. Items are saved to DynamoDB under the shop.
 
 ### 5. Publish an Auction
-The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, optionally a max price (bid ceiling), a **quantity** (number of winners, default 1), optionally schedule a future start time, and optionally set a **pickup window** (start and end datetime for when winners can collect the item). On submission:
+The seller navigates to `/auction/new?shopId=:id`. They select an item from the shop's inventory, set the duration (in minutes), a starting bid, and a **pickup window** (required — start and end datetime for when winners can collect the item). Optional fields include:
+- **Max price** — a bid ceiling above which bids are rejected
+- **Minimum bid increment** — the minimum raise a bidder must make over the current highest bid; prevents 1-cent bid wars. If left empty, any raise above the current bid is accepted.
+- **Quantity** — number of winners (default 1); for quantity > 1, the top N bidders each win a copy of the item
+- **Scheduled start** — a future start time; if set, the auction is created as **PENDING** and automatically transitions to OPEN when the time arrives. Leave empty to go live immediately.
+
+On submission:
 - Auction enrichment data (shop name, retail price, item image, description) is captured at creation time and stored in Redis
 - If no schedule time is set, the auction immediately goes live (**OPEN**) and is visible to all buyers
-- If a future start time is set, the auction is created as **PENDING** and automatically transitions to OPEN when the scheduled time arrives
-- For **quantity > 1**, the auction becomes a multi-winner auction where the top N bidders each win a copy of the item
-- Input validation enforces: start_bid >= 0, duration 1–10080 minutes, scheduled_start must be in the future
+- Input validation enforces: start_bid >= 0, duration 1–10080 minutes, min_increment >= 0, scheduled_start must be in the future
 
 ### 6. Monitor & Close
 The seller manages each shop from `/seller/shops/:shopId`, a tabbed page with two sections:
@@ -109,7 +114,7 @@ Clicking an auction row opens the **Seller Auction Detail** page at `/seller/auc
 - **Header** — item image, title, status badge, quantity badge (for multi-winner auctions), and a "Close Auction" button for OPEN auctions
 - **Stats row** — current bid, retail price, total bids, max price (if set), and a live countdown timer
 - **Bid history table** — every bid placed, showing masked bidder ID, amount, status (Winning / Outbid / Won), and relative time. Updates in real time via WebSocket as new bids arrive.
-- **Item details sidebar** — description, category, quantity, bid ceiling, and pickup window (if set)
+- **Item details sidebar** — description, category, quantity, bid ceiling, minimum bid increment (if set), and pickup window (if set)
 - **Winners card** (closed auctions) — lists each winner with their winning bid amount
 - **Payment status card** (closed auctions) — shows payment status (Pending / Completed / Failed / Refunded) and amount
 
@@ -164,3 +169,4 @@ Auction closes (seller closes or timer expires via closer.go)
 | Message delivery guarantee | Redis Streams with consumer groups — durable, replayable, with automatic pending-message recovery via XAutoClaim |
 | Geo / location filtering | **Done** — Redis GEOSEARCH proximity filter, browser geolocation, distance badges |
 | Image upload | **Done** — MinIO/S3 file upload via `POST /uploads`, `ImageUpload` component with drag-and-drop and URL-paste fallback |
+| Minimum bid increment | **Done** — optional per-auction `min_increment` field; enforced atomically in Lua, surfaced in `BiddingPanel` |

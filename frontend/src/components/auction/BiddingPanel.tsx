@@ -36,7 +36,11 @@ export function BiddingPanel({
   onPlaceBid,
   onSignIn,
 }: BiddingPanelProps) {
-  const minNextBid = highestBid + 50
+  // Minimum next bid: if min_increment is set and there is an existing bid, enforce it.
+  // Otherwise allow any amount strictly above current (1 cent above).
+  const minNextBid = auction.min_increment > 0 && highestBid > 0
+    ? highestBid + auction.min_increment
+    : highestBid + 1
 
   return (
     <Card padding="p-8">
@@ -118,6 +122,11 @@ export function BiddingPanel({
             placeholder={(minNextBid / 100).toFixed(2)}
             prefix="$"
           />
+          {auction.min_increment > 0 && (
+            <p className="text-xs text-text-secondary mt-1">
+              Minimum raise: {formatCurrency(auction.min_increment)} per bid
+            </p>
+          )}
         </FormField>
 
         {user ? (

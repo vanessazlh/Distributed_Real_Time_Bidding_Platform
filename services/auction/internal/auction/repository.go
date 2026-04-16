@@ -101,6 +101,7 @@ type dynamoAuction struct {
 	ShopLng        float64 `dynamodbav:"shop_lng,omitempty"`
 	RetailPrice    int64   `dynamodbav:"retail_price"`
 	MaxPrice       int64  `dynamodbav:"max_price"`
+	MinIncrement   int64  `dynamodbav:"min_increment"`
 	Quantity       int    `dynamodbav:"quantity"`
 	ImageURL       string `dynamodbav:"image_url"`
 	ShopLogoURL    string `dynamodbav:"shop_logo_url"`
@@ -134,6 +135,7 @@ func toDynamo(a *Auction) dynamoAuction {
 		ShopLng:        a.ShopLng,
 		RetailPrice:    a.RetailPrice,
 		MaxPrice:       a.MaxPrice,
+		MinIncrement:   a.MinIncrement,
 		Quantity:       a.Quantity,
 		ImageURL:       a.ImageURL,
 		ShopLogoURL:    a.ShopLogoURL,
@@ -168,6 +170,7 @@ func fromDynamo(d dynamoAuction) *Auction {
 		ShopLng:        d.ShopLng,
 		RetailPrice:    d.RetailPrice,
 		MaxPrice:       d.MaxPrice,
+		MinIncrement:   d.MinIncrement,
 		Quantity:       d.Quantity,
 		ImageURL:       d.ImageURL,
 		ShopLogoURL:    d.ShopLogoURL,
@@ -766,7 +769,8 @@ func auctionToRedisMap(a *Auction) map[string]interface{} {
 		"shop_lng":        strconv.FormatFloat(a.ShopLng, 'f', 8, 64),
 		"retail_price":    a.RetailPrice,
 		"max_price":       a.MaxPrice,
-		"quantity":         a.Quantity,
+		"min_increment":   a.MinIncrement,
+		"quantity":        a.Quantity,
 		"image_url":       a.ImageURL,
 		"shop_logo_url":   a.ShopLogoURL,
 		"description":     a.Description,
@@ -793,6 +797,7 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 	bidCount, _ := strconv.ParseInt(vals["bid_count"], 10, 64)
 	retailPrice, _ := strconv.ParseInt(vals["retail_price"], 10, 64)
 	maxPrice, _ := strconv.ParseInt(vals["max_price"], 10, 64)
+	minIncrement, _ := strconv.ParseInt(vals["min_increment"], 10, 64)
 	quantity, _ := strconv.Atoi(vals["quantity"])
 	shopLat, _ := strconv.ParseFloat(vals["shop_lat"], 64)
 	shopLng, _ := strconv.ParseFloat(vals["shop_lng"], 64)
@@ -811,6 +816,7 @@ func parseAuction(vals map[string]string) (*Auction, error) {
 		ShopLng:        shopLng,
 		RetailPrice:    retailPrice,
 		MaxPrice:       maxPrice,
+		MinIncrement:   minIncrement,
 		Quantity:       quantity,
 		ImageURL:       vals["image_url"],
 		ShopLogoURL:    vals["shop_logo_url"],

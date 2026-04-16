@@ -27,6 +27,7 @@
 | Single-account model | **Done** (one email = one account; buyer→seller upgrade flow) |
 | Item categories | **Done** (category saved by shop service, filter on HomePage, inherited by CreateAuctionPage) |
 | Profile/shop editing | **Done** (PUT /users/:id username/avatar, PUT /shops/:id name/location/logo) |
+| Minimum bid increment | **Done** (optional min_increment field, Lua enforcement, ErrBidIncrementTooSmall, BiddingPanel hint) |
 
 ---
 
@@ -163,8 +164,8 @@ Allow sellers to create auction templates that auto-generate auctions on a sched
 ### 18. Analytics dashboard
 Seller-facing analytics page: revenue over time, average selling price vs retail price, bidder count trends, top-performing items. Aggregate data from completed auctions and payments. Chart library (e.g. Recharts) for visualizations. Could also include a platform-wide admin view.
 
-### 19. Minimum bid increment
-Add optional `min_increment` field (int64, cents) to Auction model. Lua bid validation script enforces `new_bid >= current_highest + min_increment`. Default to 1 cent if not set. Frontend shows the minimum next bid amount in BiddingPanel. Prevents 1-cent bid wars.
+### 19. ~~Minimum bid increment~~ **Done**
+Added optional `min_increment` field (int64, cents) to Auction model, Redis hash, and DynamoDB. Lua bid validation script (`placeBidLua`) enforces `new_bid >= current_highest + min_increment` for single-winner auctions and per-slot enforcement for multi-winner auctions. `ErrBidIncrementTooSmall` (-5 return code) propagated through service → handler → 400 response. Frontend: optional "Minimum Bid Increment" input on `CreateAuctionPage`, `BiddingPanel` shows minimum next bid based on increment and displays a hint below the input when set.
 
 ### 20. Ratings & reviews
 After a completed auction + payment, buyers can rate the pickup experience (1–5 stars + optional text). Store in DynamoDB (reviewer_id, shop_id, auction_id, rating, comment, timestamp). Display average rating on ShopDetailPage and AuctionCard. Sellers can respond to reviews. One review per auction per buyer.

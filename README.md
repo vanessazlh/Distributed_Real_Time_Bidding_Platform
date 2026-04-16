@@ -102,7 +102,7 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/auctions` | ✓ | Create auction (optional: `scheduled_start`, `pickup_start`, `pickup_end`, `shop_lat`, `shop_lng`) |
+| `POST` | `/auctions` | ✓ | Create auction (optional: `scheduled_start`, `pickup_start`, `pickup_end`, `shop_lat`, `shop_lng`, `max_price`, `min_increment`, `quantity`) |
 | `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`; geo filter: `?lat=X&lng=Y&radius_km=R`) |
 | `GET` | `/auctions/:id` | — | Get auction details |
 | `POST` | `/auctions/:id/bid` | ✓ | Place bid |
@@ -219,6 +219,15 @@ Auctions support an optional **pickup window** (`pickup_start` and `pickup_end`,
 - Sellers set the pickup window when creating an auction (or leave it empty to arrange separately)
 - The homepage offers a second filter row — **Any Time / Morning / Afternoon / Evening** — that filters auctions by the hour of `pickup_start`. Auctions without a pickup window are hidden when a time filter is active.
 - Auction cards show the pickup window below the bid info; the detail page displays it prominently with a clock icon
+
+### Minimum Bid Increment
+
+Auctions support an optional `min_increment` field (int64, cents) that sets the minimum raise a bidder must make over the current highest bid. Prevents 1-cent bid wars without needing a hard price ceiling.
+
+- Sellers set the increment when creating an auction; leaving it empty (or 0) means any raise above the current bid is accepted
+- The Lua bid script (`placeBidLua`) enforces the constraint atomically — bids below `current_highest + min_increment` are rejected with a `-5` code, mapped to HTTP 400
+- For multi-winner auctions the same rule applies per slot: a bidder improving their own slot bid must also meet the increment
+- `BiddingPanel` derives the minimum input value from `min_increment` and shows a "Minimum raise: $X.XX per bid" hint when the field is set
 
 ### Geo Support (Proximity Search)
 
