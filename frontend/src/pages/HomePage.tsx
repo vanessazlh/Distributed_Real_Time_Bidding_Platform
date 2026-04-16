@@ -37,6 +37,7 @@ export default function HomePage() {
   const [distanceFilter, setDistanceFilter] = useState('any')
   const [userCoords,     setUserCoords]     = useState<{ lat: number; lng: number } | null>(null)
   const [geoLoading,     setGeoLoading]     = useState(false)
+  const [searchQuery,    setSearchQuery]    = useState('')
 
   const fetchAuctions = useCallback((opts?: { lat?: number; lng?: number; radius_km?: number }) => {
     setLoading(true)
@@ -94,7 +95,7 @@ export default function HomePage() {
     ? auctions
     : auctions.filter((a) => a.category === filter)
 
-  const visible = pickupFilter === 'any'
+  const byPickup = pickupFilter === 'any'
     ? byCategory
     : byCategory.filter((a) => {
         if (!a.pickup_start || !a.pickup_end) return false
@@ -103,6 +104,15 @@ export default function HomePage() {
         return pickupOverlaps(a.pickup_start, a.pickup_end, 17, 23) // evening
       })
 
+  const q = searchQuery.trim().toLowerCase()
+  const visible = q === ''
+    ? byPickup
+    : byPickup.filter((a) =>
+        a.item.title.toLowerCase().includes(q) ||
+        a.description.toLowerCase().includes(q) ||
+        a.item.shop_name.toLowerCase().includes(q),
+      )
+
   return (
     <PageContainer>
       {/* Hero */}
@@ -110,9 +120,23 @@ export default function HomePage() {
         <h1 className="font-sans font-semibold text-4xl text-text-primary mb-4">
           Rescue today's surplus.<br />5 minutes to bid.
         </h1>
-        <p className="text-text-secondary text-lg">
+        <p className="text-text-secondary text-lg mb-6">
           Premium unsold goods from local shops, auctioned at deep discounts to prevent food waste.
         </p>
+        <div className="relative">
+          <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-text-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+          </span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search auctions, items, shops…"
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-surface text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
+          />
+        </div>
       </div>
 
       {/* Category tabs + secondary filters */}

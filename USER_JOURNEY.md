@@ -7,10 +7,12 @@ SurpriseAuction is a real-time surplus auction platform where local stores list 
 ## Buyer Journey
 
 ### 1. Discovery
-A buyer lands on the homepage and sees a live feed of active auctions, filterable by:
+A buyer lands on the homepage and sees a live feed of active auctions. A **search bar** at the top of the hero lets them type any keyword — results update instantly as they type, matching against item titles, descriptions, and shop names. The feed is also filterable by:
 - **Category** — Bakery, Meals, Groceries, Others (tab bar)
 - **Pickup time** — Any Time, Morning (before 12 pm), Afternoon (12–5 pm), Evening (after 5 pm)
 - **Nearby** — Within 2 km / 5 km / 10 km. The browser requests location permission automatically when the homepage loads. Once granted, distance badges (`~X.Xkm`) appear on each auction card immediately. Selecting a distance filter re-fetches only auctions from shops within that radius.
+
+All filters compose: a buyer can search for "sourdough", filter by "Morning" pickup, and restrict to "Within 5 km" simultaneously.
 
 Each card shows the item photo, the shop it comes from, the current highest bid, a live countdown to closing, and (if set) the pickup window. Scheduled auctions that haven't started yet appear with a "Starting Soon" overlay.
 
@@ -170,3 +172,4 @@ Auction closes (seller closes or timer expires via closer.go)
 | Geo / location filtering | **Done** — Redis GEOSEARCH proximity filter, browser geolocation, distance badges |
 | Image upload | **Done** — MinIO/S3 file upload via `POST /uploads`, `ImageUpload` component with drag-and-drop and URL-paste fallback |
 | Minimum bid increment | **Done** — optional per-auction `min_increment` field; enforced atomically in Lua, surfaced in `BiddingPanel` |
+| Search | **Done** — keyword search across item titles, descriptions, and shop names; instant client-side results; composable with all other filters |

@@ -155,8 +155,8 @@ Added optional `pickup_start` and `pickup_end` (RFC3339) fields to the Auction m
 ### 15. Watchlist / favorites
 Allow buyers to save auctions to a watchlist. Persist in DynamoDB (user_id + auction_id). Show a heart/star toggle on AuctionCard and AuctionDetailPage. Dedicated "My Watchlist" page. Optionally notify when a watched auction is about to close.
 
-### 16. Search
-Full-text search across auction titles, descriptions, and shop names. Options: DynamoDB Scan with `contains` filter (simple, poor scaling), or a lightweight search index (e.g. in-memory inverted index in the auction service, or ElasticSearch/MeiliSearch container for production). Search bar in the homepage header with live results.
+### 16. ~~Search~~ **Done**
+Full-text search across auction titles, descriptions, and shop names. Backend: `GET /auctions?q=<term>` applies case-insensitive substring filter (`filterByQuery`) after the Redis fetch — works alongside geo params too. Frontend: search bar in the hero section on HomePage; client-side filtering on already-fetched auctions for instant results (no extra API call). Filter chain: category → pickup time → search query.
 
 ### 17. Recurring auctions
 Allow sellers to create auction templates that auto-generate auctions on a schedule (daily, weekly). Store templates in DynamoDB with cron-like schedule fields. A scheduler goroutine (similar to closer.go) creates new auctions from templates at the configured times. Useful for bakeries and restaurants with predictable daily surplus.

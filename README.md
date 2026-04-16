@@ -103,7 +103,7 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `POST` | `/auctions` | ✓ | Create auction (optional: `scheduled_start`, `pickup_start`, `pickup_end`, `shop_lat`, `shop_lng`, `max_price`, `min_increment`, `quantity`) |
-| `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`; geo filter: `?lat=X&lng=Y&radius_km=R`) |
+| `GET` | `/auctions` | — | List auctions (optional `?status=OPEN`; geo filter: `?lat=X&lng=Y&radius_km=R`; search: `?q=<term>`) |
 | `GET` | `/auctions/:id` | — | Get auction details |
 | `POST` | `/auctions/:id/bid` | ✓ | Place bid |
 | `POST` | `/auctions/:id/close` | ✓ | Close auction early (owner only) |
@@ -228,6 +228,12 @@ Auctions support an optional `min_increment` field (int64, cents) that sets the 
 - The Lua bid script (`placeBidLua`) enforces the constraint atomically — bids below `current_highest + min_increment` are rejected with a `-5` code, mapped to HTTP 400
 - For multi-winner auctions the same rule applies per slot: a bidder improving their own slot bid must also meet the increment
 - `BiddingPanel` derives the minimum input value from `min_increment` and shows a "Minimum raise: $X.XX per bid" hint when the field is set
+
+### Search
+
+`GET /auctions?q=<term>` filters the auction list by a case-insensitive substring match across **item title**, **description**, and **shop name**. The filter is applied in-memory (`filterByQuery` in `handler.go`) after the Redis fetch and is composable with all other query params — e.g. `?q=sourdough&lat=X&lng=Y&radius_km=5` returns nearby sourdough auctions.
+
+On the frontend, the HomePage hero contains a search bar that applies the same substring filter client-side on the already-fetched auction list for instant, zero-latency results. The filter chain is: category tab → pickup time → search query.
 
 ### Geo Support (Proximity Search)
 
