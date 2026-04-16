@@ -181,6 +181,9 @@ func (s *Service) CreateAuction(ctx context.Context, req CreateAuctionRequest, s
 	if !pickupEnd.After(pickupStart) {
 		return nil, fmt.Errorf("%w: pickup_end must be after pickup_start", ErrValidation)
 	}
+	if !pickupStart.After(endTime) {
+		return nil, fmt.Errorf("%w: pickup_start must be after the auction end time", ErrValidation)
+	}
 
 	qty := req.Quantity
 	if qty < 1 {

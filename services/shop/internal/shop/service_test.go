@@ -76,6 +76,22 @@ func (m *mockRepo) FindItemByID(_ context.Context, itemID string) (*shop.Item, e
 	return &cp, nil
 }
 
+func (m *mockRepo) SaveReview(_ context.Context, _ shop.Review) error { return nil }
+
+func (m *mockRepo) FindReviewsByShop(_ context.Context, _ string) ([]shop.Review, error) {
+	return []shop.Review{}, nil
+}
+
+func (m *mockRepo) FindReviewByAuctionAndReviewer(_ context.Context, _, _ string) (*shop.Review, error) {
+	return nil, errors.New("not found")
+}
+
+func (m *mockRepo) FindReviewByID(_ context.Context, _ string) (*shop.Review, error) {
+	return nil, errors.New("not found")
+}
+
+func (m *mockRepo) UpdateReviewReply(_ context.Context, _, _, _ string) error { return nil }
+
 // mockUploader records upload inputs so UploadImage tests can verify storage
 // behavior without talking to S3.
 type mockUploader struct {

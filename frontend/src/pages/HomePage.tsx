@@ -134,7 +134,7 @@ export default function HomePage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search auctions, items, shops…"
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border bg-surface text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand"
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-brand bg-surface text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>
       </div>

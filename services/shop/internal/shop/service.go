@@ -21,6 +21,12 @@ var ErrInvalidInput = errors.New("invalid input")
 // ErrUploadNotConfigured is returned when S3 is not configured.
 var ErrUploadNotConfigured = errors.New("upload not configured")
 
+// ErrAlreadyReviewed is returned when a buyer tries to review an auction they already reviewed.
+var ErrAlreadyReviewed = errors.New("you have already reviewed this auction")
+
+// ErrPaymentNotCompleted is returned when the buyer hasn't completed payment for the auction.
+var ErrPaymentNotCompleted = errors.New("payment not completed for this auction")
+
 // ErrFileTooLarge is returned when the upload exceeds the size limit.
 var ErrFileTooLarge = errors.New("file exceeds 5MB limit")
 
@@ -40,18 +46,29 @@ type Repo interface {
 	SaveItem(ctx context.Context, item Item) error
 	FindItemsByShop(ctx context.Context, shopID string) ([]Item, error)
 	FindItemByID(ctx context.Context, itemID string) (*Item, error)
+	SaveReview(ctx context.Context, rev Review) error
+	FindReviewsByShop(ctx context.Context, shopID string) ([]Review, error)
+	FindReviewByAuctionAndReviewer(ctx context.Context, auctionID, reviewerID string) (*Review, error)
+	FindReviewByID(ctx context.Context, reviewID string) (*Review, error)
+	UpdateReviewReply(ctx context.Context, reviewID, reply, updatedAt string) error
 }
 
 // Service contains business logic for the shop domain.
 type Service struct {
-	repo      Repo
-	uploader  Uploader
-	publicURL string
+	repo           Repo
+	uploader       Uploader
+	publicURL      string
+	paymentSvcURL  string
 }
 
 // NewService creates a new Service. uploader may be nil if S3 is not configured.
 func NewService(repo Repo, uploader Uploader, publicURL string) *Service {
 	return &Service{repo: repo, uploader: uploader, publicURL: publicURL}
+}
+
+// WithPaymentServiceURL sets the payment service base URL for eligibility checks.
+func (s *Service) WithPaymentServiceURL(url string) {
+	s.paymentSvcURL = url
 }
 
 // CreateShop creates a new shop owned by ownerID.

@@ -103,6 +103,18 @@ export default function CreateAuctionPage() {
         payload.scheduled_start = new Date(scheduledStart).toISOString()
       }
       if (pickupStart && pickupEnd) {
+        if (new Date(pickupEnd) <= new Date(pickupStart)) {
+          setError('Pickup end time must be after start time.')
+          setLoading(false)
+          return
+        }
+        const auctionStartMs = scheduledStart ? new Date(scheduledStart).getTime() : Date.now()
+        const auctionEndMs = auctionStartMs + parseInt(duration, 10) * 60 * 1000
+        if (new Date(pickupStart).getTime() <= auctionEndMs) {
+          setError('Pickup start time must be after the auction ends.')
+          setLoading(false)
+          return
+        }
         payload.pickup_start = new Date(pickupStart).toISOString()
         payload.pickup_end = new Date(pickupEnd).toISOString()
       }
