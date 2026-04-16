@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import type { Auction, Shop, Review, ReviewsResponse } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api, ApiError } from '@/lib/api'
@@ -40,30 +40,6 @@ function RatingSummary({ data }: { data: ReviewsResponse | null }) {
       <span className="text-text-secondary text-sm">
         ({data.total_reviews} {data.total_reviews === 1 ? 'review' : 'reviews'})
       </span>
-    </div>
-  )
-}
-
-// ── Interactive star input ────────────────────────────────────────────────────
-
-function StarInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const [hovered, setHovered] = useState(0)
-  const active = hovered || value
-  return (
-    <div className="flex gap-1">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <button
-          key={i}
-          type="button"
-          onMouseEnter={() => setHovered(i)}
-          onMouseLeave={() => setHovered(0)}
-          onClick={() => onChange(i)}
-          className={`text-2xl transition-colors ${i <= active ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-300'}`}
-          aria-label={`Rate ${i} star${i !== 1 ? 's' : ''}`}
-        >
-          ★
-        </button>
-      ))}
     </div>
   )
 }
@@ -173,20 +149,15 @@ export default function ShopDetailPage() {
   const { id }          = useParams<{ id: string }>()
   const { user, token } = useAuth()
   const navigate        = useNavigate()
+  const location        = useLocation()
+
+  const reviewSubmitted = (location.state as { reviewSubmitted?: boolean } | null)?.reviewSubmitted ?? false
 
   const [shop,       setShop]       = useState<Shop | null>(null)
   const [auctions,   setAuctions]   = useState<Auction[]>([])
   const [reviewData, setReviewData] = useState<ReviewsResponse | null>(null)
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState<string | null>(null)
-
-  // Review form state — all hooks at top level
-  const [auctionId,   setAuctionId]   = useState('')
-  const [rating,      setRating]      = useState(0)
-  const [comment,     setComment]     = useState('')
-  const [submitting,  setSubmitting]  = useState(false)
-  const [reviewErr,   setReviewErr]   = useState<string | null>(null)
-  const [reviewOk,    setReviewOk]    = useState(false)
 
   // Pagination
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
@@ -224,36 +195,6 @@ export default function ShopDetailPage() {
   const reviews = reviewData?.reviews ?? []
   const visibleReviews = reviews.slice(0, visibleCount)
   const hasMore = visibleCount < reviews.length
-
-  const submitReview = async () => {
-    if (!id || !token || rating === 0) return
-    setSubmitting(true)
-    setReviewErr(null)
-    try {
-      const newReview = await api.reviews.create(id, {
-        auction_id: auctionId,
-        rating,
-        comment: comment.trim() || undefined,
-      }, token)
-      setReviewData((prev) => prev
-        ? {
-            ...prev,
-            reviews: [newReview, ...prev.reviews],
-            total_reviews: prev.total_reviews + 1,
-            average_rating: calcAvg([newReview, ...prev.reviews]),
-          }
-        : prev
-      )
-      setAuctionId('')
-      setRating(0)
-      setComment('')
-      setReviewOk(true)
-    } catch (e) {
-      setReviewErr(e instanceof ApiError ? e.message : 'Failed to submit review')
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   const handleReplyPosted = (updated: Review) => {
     setReviewData((prev) => prev
@@ -334,49 +275,20 @@ export default function ShopDetailPage() {
           )}
         </h2>
 
-        {/* Write a review — buyers only, not the shop owner */}
+        {reviewSubmitted && (
+          <p className="text-green-600 text-sm mb-4 font-medium">Review submitted. Thank you!</p>
+        )}
+
+        {/* Prompt buyers to leave a review via My Bids */}
         {user && !isOwner && (
-          <Card className="mb-6 p-6">
-            <h3 className="font-sans font-semibold text-base text-text-primary mb-4">Write a Review</h3>
-
-            <div className="mb-3">
-              <label className="block text-sm text-text-secondary mb-1">Auction ID</label>
-              <input
-                type="text"
-                value={auctionId}
-                onChange={(e) => setAuctionId(e.target.value)}
-                placeholder="Paste the auction ID from your winning bid"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40"
-              />
-            </div>
-
-            <div className="mb-3">
-              <label className="block text-sm text-text-secondary mb-1">Rating</label>
-              <StarInput value={rating} onChange={setRating} />
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm text-text-secondary mb-1">Comment (optional)</label>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={3}
-                maxLength={500}
-                placeholder="Share your experience…"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand/40"
-              />
-            </div>
-
-            {reviewErr && <p className="text-red-500 text-sm mb-3">{reviewErr}</p>}
-            {reviewOk  && <p className="text-green-600 text-sm mb-3">Review submitted. Thank you!</p>}
-
-            <Button
-              variant="primary"
-              onClick={submitReview}
-              disabled={submitting || rating === 0 || !auctionId.trim()}
+          <Card className="mb-6 p-5 flex items-center justify-between">
+            <p className="text-text-secondary text-sm">Won an auction here? Share your experience.</p>
+            <Link
+              to="/mybids"
+              className="text-brand text-sm font-medium hover:underline shrink-0 ml-4"
             >
-              {submitting ? 'Submitting…' : 'Submit Review'}
-            </Button>
+              Go to My Bids →
+            </Link>
           </Card>
         )}
 
@@ -414,8 +326,3 @@ export default function ShopDetailPage() {
   )
 }
 
-function calcAvg(reviews: Review[]): number {
-  if (!reviews.length) return 0
-  const sum = reviews.reduce((s, r) => s + r.rating, 0)
-  return Math.round((sum / reviews.length) * 10) / 10
-}

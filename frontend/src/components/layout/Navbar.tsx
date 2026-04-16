@@ -44,6 +44,12 @@ export function Navbar() {
             ) : (
               <>
                 <Link
+                  to="/mybids"
+                  className="text-text-secondary hover:text-brand transition-colors text-base"
+                >
+                  My Bids
+                </Link>
+                <Link
                   to="/watchlist"
                   className="text-text-secondary hover:text-red-500 transition-colors"
                   title="My Watchlist"

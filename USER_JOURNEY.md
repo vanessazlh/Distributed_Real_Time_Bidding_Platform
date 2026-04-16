@@ -68,10 +68,21 @@ When the countdown reaches zero (or the seller closes the auction early), the sy
 ### 8. Profile & History
 The buyer's profile page (`/profile`) is a sidebar-tabbed account hub with three sections:
 - **Account** — view and edit username (inline save), see email and role badge. Buyers see an "Upgrade to Seller" CTA; sellers see a link to the Seller Dashboard.
-- **My Bids** (`/profile/bids`) — full bid history across all auctions, with status (Winning / Outbid / Won / Lost), item title, shop name, and a link to the payment record for won auctions
+- **My Bids** — full bid history across all auctions, with status (Winning / Outbid / Won / Lost), item title, shop name, and links to payment and review actions for won auctions. Accessible from the **My Bids** text link in the navbar (buyers only) at `/mybids`.
 - **Payments** (`/profile/payments`) — all payment records with status (Completed / Failed / Pending) and total spent
 
 The profile is accessible by clicking the username in the navbar. Individual payment details are at `/payment/auction/:id`.
+
+### 9. Ratings & Reviews
+After winning an auction, buyers can leave a review for the shop:
+
+1. Navigate to **My Bids** via the navbar link
+2. Find a **WON** bid and click **Leave a Review →**
+3. The review form at `/reviews/new?auction_id=<id>` pre-fills the shop name and item title automatically — no manual ID entry needed
+4. Select a star rating (1–5), optionally add a comment (up to 500 characters), and submit
+5. On success the buyer is redirected to the shop page where the new review appears with a confirmation banner
+
+Reviews are scoped per auction (one per buyer per auction). Shop owners can reply to any review from the shop detail page. Average rating and total review count are displayed in the shop header.
 
 ---
 
@@ -181,3 +192,4 @@ Auction closes (seller closes or timer expires via closer.go)
 | Minimum bid increment | **Done** — optional per-auction `min_increment` field; enforced atomically in Lua, surfaced in `BiddingPanel` |
 | Search | **Done** — keyword search across item titles, descriptions, and shop names; instant client-side results; composable with all other filters |
 | Watchlist / favorites | **Done** — heart toggle on auction cards and detail page; `/watchlist` page; DynamoDB-persisted; optimistic UI updates |
+| Ratings & reviews | **Done** — dedicated `/reviews/new` page reached from My Bids; shop_id and item title resolved automatically from the auction; no copy-paste required |

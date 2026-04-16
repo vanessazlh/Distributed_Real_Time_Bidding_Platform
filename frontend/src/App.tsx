@@ -18,6 +18,8 @@ import SellerAuctionDetailPage    from '@/pages/SellerAuctionDetailPage'
 import PaymentPage            from '@/pages/PaymentPage'
 import ProfilePage            from '@/pages/ProfilePage'
 import WatchlistPage          from '@/pages/WatchlistPage'
+import MyBidsPage             from '@/pages/MyBidsPage'
+import WriteReviewPage        from '@/pages/WriteReviewPage'
 
 export default function App() {
   return (
@@ -49,6 +51,8 @@ export default function App() {
               <Route path="/seller/shops/:shopId/:tab"     element={<SellerShopPage />} />
               <Route path="/seller/shops/:shopId"          element={<Navigate to="items" replace />} />
               <Route path="/payment/auction/:auctionId"   element={<PaymentPage />} />
+              <Route path="/mybids"                        element={<MyBidsPage />} />
+              <Route path="/reviews/new"                   element={<WriteReviewPage />} />
             </Routes>
           </main>
         </div>
