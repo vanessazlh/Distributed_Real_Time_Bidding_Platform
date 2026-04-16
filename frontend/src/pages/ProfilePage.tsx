@@ -300,44 +300,51 @@ function BidsTab({ user, token }: { user: { user_id: string }; token: string | n
         <Card>
           {bids.map((bid, i) => {
             const paymentStatus = bid.status === 'WON' ? paymentsByAuction.get(bid.auction_id) : undefined
+            const hasActions = bid.status === 'WON'
             return (
-              <div
+              <Link
                 key={bid.bid_id}
-                className={`p-5 flex items-center justify-between ${i !== 0 ? 'border-t border-border' : ''}`}
+                to={`/auction/${bid.auction_id}`}
+                className={`px-5 pt-5 ${hasActions ? 'pb-4' : 'pb-5'} flex flex-col cursor-pointer transition-colors hover:bg-brand/5 ${i !== 0 ? 'border-t border-border' : ''}`}
               >
-                <div>
-                  <p className="text-brand text-sm font-semibold mb-1">{bid.shop_name}</p>
-                  <p className="font-sans font-medium text-lg text-text-primary mb-1">{bid.item_title}</p>
-                  <p className="text-text-secondary text-base">{timeAgo(bid.timestamp)}</p>
+                {/* Main row */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Badge status={bid.status} />
+                    <p className="text-brand text-sm font-semibold mt-1.5 mb-1">{bid.shop_name}</p>
+                    <p className="font-sans font-medium text-lg text-text-primary mb-1">{bid.item_title}</p>
+                    <p className="text-text-secondary text-base">{timeAgo(bid.timestamp)}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <p className="font-display text-2xl text-text-primary">{formatCurrency(bid.amount)}</p>
+                    {paymentStatus && (
+                      <span className={`text-sm font-medium ${PAYMENT_STATUS_STYLE[paymentStatus]}`}>
+                        {PAYMENT_STATUS_LABEL[paymentStatus]}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-2">
-                  <p className="font-display text-2xl text-text-primary">{formatCurrency(bid.amount)}</p>
-                  <Badge status={bid.status} />
-                  {paymentStatus && (
-                    <span className={`text-sm font-medium ${PAYMENT_STATUS_STYLE[paymentStatus]}`}>
-                      {PAYMENT_STATUS_LABEL[paymentStatus]}
-                    </span>
-                  )}
-                  {bid.status === 'OUTBID' && (
-                    <Link to={`/auction/${bid.auction_id}`} className="text-brand text-sm font-medium hover:underline">
-                      View Auction →
+
+                {/* Actions footer */}
+                {hasActions && (
+                  <div className="flex items-center gap-2 mt-3">
+                    <Link
+                      to={`/payment/auction/${bid.auction_id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="px-3 py-1.5 text-sm font-medium border border-border rounded-lg text-text-primary hover:border-brand hover:text-brand transition-colors"
+                    >
+                      View Payment
                     </Link>
-                  )}
-                  {bid.status === 'WON' && (
-                    <Link to={`/payment/auction/${bid.auction_id}`} className="text-brand text-sm font-medium hover:underline">
-                      View Payment →
-                    </Link>
-                  )}
-                  {bid.status === 'WON' && (
                     <Link
                       to={`/reviews/new?auction_id=${bid.auction_id}`}
-                      className="text-text-secondary text-sm font-medium hover:text-brand hover:underline transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                      className="px-3 py-1.5 text-sm font-medium border border-border rounded-lg text-text-primary hover:border-brand hover:text-brand transition-colors"
                     >
-                      Leave a Review →
+                      Leave a Review
                     </Link>
-                  )}
-                </div>
-              </div>
+                  </div>
+                )}
+              </Link>
             )
           })}
         </Card>
