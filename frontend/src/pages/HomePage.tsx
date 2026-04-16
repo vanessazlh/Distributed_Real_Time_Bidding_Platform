@@ -54,6 +54,7 @@ export default function HomePage() {
     navigator.geolocation?.getCurrentPosition(
       (pos) => setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       () => {}, // denied — distance filter will re-prompt when selected
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
     )
   }, [isSeller, navigate, fetchAuctions])
 
@@ -75,11 +76,16 @@ export default function HomePage() {
           setGeoLoading(false)
           fetchAuctions({ lat: coords.lat, lng: coords.lng, radius_km: radiusKm })
         },
-        () => {
+        (err) => {
           setGeoLoading(false)
           setDistanceFilter('any')
-          setError('Location access denied — cannot filter by distance.')
+          setError(
+            err.code === err.TIMEOUT
+              ? 'Location request timed out — please try again.'
+              : 'Location access denied — cannot filter by distance.',
+          )
         },
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
       )
     }
   }

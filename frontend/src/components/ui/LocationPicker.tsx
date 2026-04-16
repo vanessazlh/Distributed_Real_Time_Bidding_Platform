@@ -1,19 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
+import { useRef, useState } from 'react'
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 // Fix Leaflet's default marker icon broken by Vite's asset pipeline
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
-
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconUrl: markerIcon,
-  iconRetinaUrl: markerIcon2x,
-  shadowUrl: markerShadow,
+const defaultIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
 })
+L.Marker.prototype.options.icon = defaultIcon
 
 // Default centre when geolocation is unavailable (Vancouver, Canada)
 const DEFAULT_CENTER: [number, number] = [49.2827, -123.1207]
@@ -25,20 +25,7 @@ interface Props {
   onChange: (lat: number, lng: number) => void
 }
 
-/** Moves the map view when coords change externally (e.g. after auto-detect). */
-function FlyTo({ lat, lng }: { lat: number | null; lng: number | null }) {
-  const map = useMap()
-  const didFly = useRef(false)
-  useEffect(() => {
-    if (lat !== null && lng !== null && !didFly.current) {
-      map.flyTo([lat, lng], DEFAULT_ZOOM)
-      didFly.current = true
-    }
-  }, [lat, lng, map])
-  return null
-}
-
-/** Captures click/drag events on the map to update the pin. */
+/** Captures click events on the map to drop a pin. */
 function ClickHandler({ onChange }: { onChange: (lat: number, lng: number) => void }) {
   useMapEvents({
     click(e) {
@@ -50,15 +37,19 @@ function ClickHandler({ onChange }: { onChange: (lat: number, lng: number) => vo
 
 /** Draggable marker — updates coords when dragged. */
 function DraggableMarker({ lat, lng, onChange }: { lat: number; lng: number; onChange: (lat: number, lng: number) => void }) {
+  const markerRef = useRef<L.Marker>(null)
   return (
     <Marker
       position={[lat, lng]}
       draggable
+      ref={markerRef}
       eventHandlers={{
-        dragend(e) {
-          const m = e.target as L.Marker
-          const pos = m.getLatLng()
-          onChange(pos.lat, pos.lng)
+        dragend() {
+          const marker = markerRef.current
+          if (marker) {
+            const pos = marker.getLatLng()
+            onChange(pos.lat, pos.lng)
+          }
         },
       }}
     />
@@ -66,10 +57,12 @@ function DraggableMarker({ lat, lng, onChange }: { lat: number; lng: number; onC
 }
 
 export function LocationPicker({ lat, lng, onChange }: Props) {
-  const [geoStatus, setGeoStatus] = useState<'idle' | 'loading' | 'set' | 'denied'>(() =>
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'loading' | 'set' | 'denied' | 'timeout'>(() =>
     lat !== null && lng !== null ? 'set' : 'idle'
   )
   const [showMap, setShowMap] = useState(lat !== null && lng !== null)
+  // mapKey forces MapContainer to remount at the detected location after auto-detect
+  const [mapKey, setMapKey] = useState(0)
 
   const detectLocation = () => {
     if (!navigator.geolocation) { setGeoStatus('denied'); setShowMap(true); return }
@@ -79,13 +72,17 @@ export function LocationPicker({ lat, lng, onChange }: Props) {
         onChange(pos.coords.latitude, pos.coords.longitude)
         setGeoStatus('set')
         setShowMap(true)
+        setMapKey((k) => k + 1) // remount map centred on detected location
       },
-      () => {
-        setGeoStatus('denied')
+      (err) => {
+        setGeoStatus(err.code === err.TIMEOUT ? 'timeout' : 'denied')
         setShowMap(true)
       },
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 },
     )
   }
+
+  const mapCenter: [number, number] = lat !== null && lng !== null ? [lat, lng] : DEFAULT_CENTER
 
   return (
     <div className="flex flex-col gap-3">
@@ -95,11 +92,11 @@ export function LocationPicker({ lat, lng, onChange }: Props) {
           type="button"
           onClick={detectLocation}
           disabled={geoStatus === 'loading'}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-brand text-brand text-sm font-medium hover:bg-brand/5 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-border text-text-secondary text-sm font-medium hover:border-brand/50 hover:text-brand transition-colors disabled:opacity-50"
         >
           {geoStatus === 'loading' ? (
             <>
-              <span className="inline-block w-3 h-3 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+              <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
               Detecting…
             </>
           ) : (
@@ -126,6 +123,11 @@ export function LocationPicker({ lat, lng, onChange }: Props) {
           Location access denied — use the map below to pin your shop manually.
         </p>
       )}
+      {geoStatus === 'timeout' && (
+        <p className="text-xs text-red-500">
+          Location request timed out — use the map below to pin your shop manually.
+        </p>
+      )}
       {geoStatus === 'idle' && (
         <p className="text-xs text-text-secondary">
           Required for proximity search. Use auto-detect or pin on the map.
@@ -136,7 +138,8 @@ export function LocationPicker({ lat, lng, onChange }: Props) {
       {showMap && (
         <div className="rounded-xl overflow-hidden border border-border" style={{ height: 280 }}>
           <MapContainer
-            center={lat !== null && lng !== null ? [lat, lng] : DEFAULT_CENTER}
+            key={mapKey}
+            center={mapCenter}
             zoom={DEFAULT_ZOOM}
             style={{ height: '100%', width: '100%' }}
           >
@@ -144,7 +147,6 @@ export function LocationPicker({ lat, lng, onChange }: Props) {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <FlyTo lat={lat} lng={lng} />
             <ClickHandler onChange={(la, ln) => { onChange(la, ln); setGeoStatus('set') }} />
             {lat !== null && lng !== null && (
               <DraggableMarker lat={lat} lng={lng} onChange={(la, ln) => { onChange(la, ln); setGeoStatus('set') }} />

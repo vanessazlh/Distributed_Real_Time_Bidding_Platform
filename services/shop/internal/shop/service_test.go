@@ -109,6 +109,8 @@ func TestCreateShop_Success(t *testing.T) {
 	s, err := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "My Shop",
 		Location: "Boston",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -128,6 +130,8 @@ func TestCreateShop_WithLogoURL(t *testing.T) {
 		Name:     "Logo Shop",
 		Location: "Boston",
 		LogoURL:  "https://example.com/logo.png",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -153,6 +157,8 @@ func TestCreateItem_Success(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	item, err := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
@@ -184,6 +190,8 @@ func TestCreateItem_Forbidden(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	_, err := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
@@ -212,6 +220,8 @@ func TestCreateItem_ZeroRetailValue(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	_, err := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
@@ -228,6 +238,8 @@ func TestCreateItem_NegativeRetailValue(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	_, err := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
@@ -244,6 +256,8 @@ func TestGetItem_Success(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 	created, _ := svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
 		Title:       "Table",
@@ -276,6 +290,8 @@ func TestListItems(t *testing.T) {
 	s, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "LA",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 	_, _ = svc.CreateItem(context.Background(), s.ShopID, shop.CreateItemRequest{
 		Title:       "A",
@@ -311,14 +327,20 @@ func TestListSellerShops(t *testing.T) {
 	_, _ = svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "A",
 		Location: "Boston",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "seller-1")
 	_, _ = svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "B",
 		Location: "NYC",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "seller-1")
 	_, _ = svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "C",
 		Location: "LA",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "seller-2")
 
 	shops, err := svc.ListSellerShops(context.Background(), "seller-1")
@@ -335,6 +357,8 @@ func TestUpdateShop_Success(t *testing.T) {
 	created, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Old Name",
 		Location: "Old Location",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	updated, err := svc.UpdateShop(context.Background(), created.ShopID, shop.UpdateShopRequest{
@@ -361,6 +385,8 @@ func TestUpdateShop_Forbidden(t *testing.T) {
 	created, _ := svc.CreateShop(context.Background(), shop.CreateShopRequest{
 		Name:     "Store",
 		Location: "Boston",
+		Lat:      49.2827,
+		Lng:      -123.1207,
 	}, "owner-1")
 
 	_, err := svc.UpdateShop(context.Background(), created.ShopID, shop.UpdateShopRequest{
