@@ -44,7 +44,7 @@ export function Navbar() {
             ) : (
               <>
                 <Link
-                  to="/mybids"
+                  to="/profile/bids"
                   className="text-text-secondary hover:text-brand transition-colors text-base"
                 >
                   My Bids

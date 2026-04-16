@@ -284,7 +284,7 @@ export default function ShopDetailPage() {
           <Card className="mb-6 p-5 flex items-center justify-between">
             <p className="text-text-secondary text-sm">Won an auction here? Share your experience.</p>
             <Link
-              to="/mybids"
+              to="/profile/bids"
               className="text-brand text-sm font-medium hover:underline shrink-0 ml-4"
             >
               Go to My Bids →

@@ -328,6 +328,14 @@ function BidsTab({ user, token }: { user: { user_id: string }; token: string | n
                       View Payment →
                     </Link>
                   )}
+                  {bid.status === 'WON' && (
+                    <Link
+                      to={`/reviews/new?auction_id=${bid.auction_id}`}
+                      className="text-text-secondary text-sm font-medium hover:text-brand hover:underline transition-colors"
+                    >
+                      Leave a Review →
+                    </Link>
+                  )}
                 </div>
               </div>
             )

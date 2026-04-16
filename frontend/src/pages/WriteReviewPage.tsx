@@ -95,7 +95,7 @@ export default function WriteReviewPage() {
   return (
     <PageContainer narrow>
       <Link
-        to="/mybids"
+        to="/profile/bids"
         className="inline-flex items-center gap-1 text-text-secondary hover:text-brand text-base font-medium transition-colors mb-8"
       >
         <ChevronLeftIcon /> My Bids
@@ -151,7 +151,7 @@ export default function WriteReviewPage() {
             >
               {submitting ? 'Submitting…' : 'Submit Review'}
             </Button>
-            <Button variant="ghost" onClick={() => navigate('/mybids')}>
+            <Button variant="ghost" onClick={() => navigate('/profile/bids')}>
               Cancel
             </Button>
           </div>
