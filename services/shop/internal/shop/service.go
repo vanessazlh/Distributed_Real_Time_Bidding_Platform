@@ -194,7 +194,7 @@ func (s *Service) ListItems(ctx context.Context, shopID string) ([]Item, error) 
 
 // CreateReview allows a buyer to leave a review after completing payment.
 // Enforces one review per auction per buyer.
-func (s *Service) CreateReview(ctx context.Context, shopID string, req CreateReviewRequest, reviewerID, reviewerUsername string) (*Review, error) {
+func (s *Service) CreateReview(ctx context.Context, shopID string, req CreateReviewRequest, reviewerID, reviewerUsername, authToken string) (*Review, error) {
 	// Verify the shop exists.
 	if _, err := s.repo.FindShopByID(ctx, shopID); err != nil {
 		return nil, ErrNotFound
@@ -202,7 +202,7 @@ func (s *Service) CreateReview(ctx context.Context, shopID string, req CreateRev
 
 	// Check completed payment if payment service is configured.
 	if s.paymentSvcURL != "" {
-		eligible, err := s.hasCompletedPayment(ctx, req.AuctionID, reviewerID)
+		eligible, err := s.hasCompletedPayment(ctx, req.AuctionID, reviewerID, authToken)
 		if err != nil {
 			return nil, fmt.Errorf("eligibility check: %w", err)
 		}
@@ -294,11 +294,14 @@ func (s *Service) ReplyToReview(ctx context.Context, shopID, reviewID, reply, ca
 
 // hasCompletedPayment calls the payment service to check if this buyer has a
 // completed payment for the given auction.
-func (s *Service) hasCompletedPayment(ctx context.Context, auctionID, userID string) (bool, error) {
+func (s *Service) hasCompletedPayment(ctx context.Context, auctionID, userID, authToken string) (bool, error) {
 	url := fmt.Sprintf("%s/auctions/%s/payment", s.paymentSvcURL, auctionID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, err
+	}
+	if authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

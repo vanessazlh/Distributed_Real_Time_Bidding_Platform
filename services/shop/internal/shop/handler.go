@@ -3,6 +3,7 @@ package shop
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -224,8 +225,10 @@ func (h *Handler) CreateReview(c *gin.Context) {
 
 	reviewerID := callerID(c)
 	reviewerUsername := callerUsername(c)
+	authHeader := c.GetHeader("Authorization")
+	token := strings.TrimPrefix(authHeader, "Bearer ")
 
-	rev, err := h.svc.CreateReview(c.Request.Context(), shopID, req, reviewerID, reviewerUsername)
+	rev, err := h.svc.CreateReview(c.Request.Context(), shopID, req, reviewerID, reviewerUsername, token)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrNotFound):

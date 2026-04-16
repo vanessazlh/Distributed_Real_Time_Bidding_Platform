@@ -532,7 +532,7 @@ func TestCreateReview_Success(t *testing.T) {
 		AuctionID: "auction-1",
 		Rating:    4,
 		Comment:   "Great pickup experience!",
-	}, "buyer-1", "alice")
+	}, "buyer-1", "alice", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -552,7 +552,7 @@ func TestCreateReview_ShopNotFound(t *testing.T) {
 
 	_, err := svc.CreateReview(context.Background(), "ghost-shop", shop.CreateReviewRequest{
 		AuctionID: "a1", Rating: 3,
-	}, "buyer-1", "alice")
+	}, "buyer-1", "alice", "")
 	if !errors.Is(err, shop.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -563,11 +563,11 @@ func TestCreateReview_DuplicateRejected(t *testing.T) {
 	s := newShopWithOwner(t, svc, "seller-1")
 
 	req := shop.CreateReviewRequest{AuctionID: "auction-1", Rating: 5}
-	if _, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-1", "alice"); err != nil {
+	if _, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-1", "alice", ""); err != nil {
 		t.Fatalf("first review: %v", err)
 	}
 
-	_, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-1", "alice")
+	_, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-1", "alice", "")
 	if !errors.Is(err, shop.ErrAlreadyReviewed) {
 		t.Fatalf("expected ErrAlreadyReviewed, got %v", err)
 	}
@@ -578,12 +578,12 @@ func TestCreateReview_DifferentBuyerSameAuction(t *testing.T) {
 	s := newShopWithOwner(t, svc, "seller-1")
 
 	req := shop.CreateReviewRequest{AuctionID: "auction-1", Rating: 5}
-	if _, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-1", "alice"); err != nil {
+	if _, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-1", "alice", ""); err != nil {
 		t.Fatalf("first review: %v", err)
 	}
 
 	// A different buyer reviewing the same auction for the same shop should be allowed.
-	_, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-2", "bob")
+	_, err := svc.CreateReview(context.Background(), s.ShopID, req, "buyer-2", "bob", "")
 	if err != nil {
 		t.Fatalf("second buyer review should succeed, got %v", err)
 	}
@@ -596,7 +596,7 @@ func TestListReviews_AverageRating(t *testing.T) {
 	for i, r := range []int{5, 4, 3} {
 		if _, err := svc.CreateReview(context.Background(), s.ShopID, shop.CreateReviewRequest{
 			AuctionID: "auction-" + string(rune('0'+i)), Rating: r,
-		}, "buyer-"+string(rune('0'+i)), "user"); err != nil {
+		}, "buyer-"+string(rune('0'+i)), "user", ""); err != nil {
 			t.Fatalf("create review %d: %v", i, err)
 		}
 	}
@@ -636,7 +636,7 @@ func TestReplyToReview_Success(t *testing.T) {
 
 	rev, _ := svc.CreateReview(context.Background(), s.ShopID, shop.CreateReviewRequest{
 		AuctionID: "auction-1", Rating: 4,
-	}, "buyer-1", "alice")
+	}, "buyer-1", "alice", "")
 
 	updated, err := svc.ReplyToReview(context.Background(), s.ShopID, rev.ReviewID, "Thanks for your kind words!", "seller-1")
 	if err != nil {
@@ -653,7 +653,7 @@ func TestReplyToReview_Forbidden(t *testing.T) {
 
 	rev, _ := svc.CreateReview(context.Background(), s.ShopID, shop.CreateReviewRequest{
 		AuctionID: "auction-1", Rating: 3,
-	}, "buyer-1", "alice")
+	}, "buyer-1", "alice", "")
 
 	_, err := svc.ReplyToReview(context.Background(), s.ShopID, rev.ReviewID, "Unauthorized reply", "imposter")
 	if !errors.Is(err, shop.ErrForbidden) {
