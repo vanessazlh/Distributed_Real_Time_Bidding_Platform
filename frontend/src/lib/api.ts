@@ -78,6 +78,7 @@ interface BackendBid {
   auction_id: string
   user_id:    string
   item_title: string
+  shop_id:    string
   shop_name:  string
   amount:     number
   timestamp:  string  // RFC3339
@@ -89,6 +90,7 @@ function toUserBid(b: BackendBid): UserBid {
     bid_id:     b.bid_id,
     auction_id: b.auction_id,
     item_title: b.item_title ?? '',
+    shop_id:    b.shop_id    ?? '',
     shop_name:  b.shop_name  ?? '',
     amount:     b.amount,
     timestamp:  new Date(b.timestamp).getTime(),

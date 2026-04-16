@@ -8,6 +8,7 @@ type Bid struct {
 	AuctionID string    `json:"auction_id"`
 	UserID    string    `json:"user_id"`
 	ItemTitle string    `json:"item_title"`
+	ShopID    string    `json:"shop_id"`
 	ShopName  string    `json:"shop_name"`
 	Amount    int64     `json:"amount"`
 	Timestamp time.Time `json:"timestamp"`

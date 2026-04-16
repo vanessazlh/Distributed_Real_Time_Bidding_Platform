@@ -576,12 +576,16 @@ func (r *Repository) PersistClosedState(ctx context.Context, auctionID string) e
 	return err
 }
 
-// CleanupRedis removes the auction from the active set and deletes the
-// Redis hash and bids ZSET to reclaim memory.
+// closedAuctionTTL is how long a closed auction's Redis hash is kept before expiry.
+// Keeping it alive lets buyers view the result page without a DynamoDB round-trip.
+const closedAuctionTTL = 24 * time.Hour
+
+// CleanupRedis removes the auction from the active set, sets a TTL on the hash
+// so it expires naturally, and deletes the bids ZSET (no longer needed).
 func (r *Repository) CleanupRedis(ctx context.Context, auctionID string) error {
 	pipe := r.rdb.Pipeline()
 	pipe.SRem(ctx, activeSetKey, auctionID)
-	pipe.Del(ctx, auctionKey(auctionID))
+	pipe.Expire(ctx, auctionKey(auctionID), closedAuctionTTL)
 	pipe.Del(ctx, auctionBidsKey(auctionID))
 	_, err := pipe.Exec(ctx)
 	return err

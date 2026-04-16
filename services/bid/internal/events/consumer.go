@@ -199,6 +199,7 @@ func (c *Consumer) handleBidPlaced(payload string) error {
 		AuctionID: event.AuctionID,
 		UserID:    event.UserID,
 		ItemTitle: event.ItemTitle,
+		ShopID:    event.ShopID,
 		ShopName:  event.ShopName,
 		Amount:    event.Amount,
 		Timestamp: ts,

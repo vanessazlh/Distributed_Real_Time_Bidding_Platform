@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { api, ApiError } from '@/lib/api'
-import { Card, Button, Spinner, EmptyState } from '@/components/ui'
+import { Card, Button, EmptyState } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
 import { ChevronLeftIcon } from '@/components/icons'
 
@@ -35,29 +35,16 @@ export default function WriteReviewPage() {
   const navigate = useNavigate()
   const { user, token } = useAuth()
 
+  // All context is passed via URL params — no auction fetch needed
   const auctionId = searchParams.get('auction_id') ?? ''
-
-  const [shopId,    setShopId]    = useState<string | null>(null)
-  const [shopName,  setShopName]  = useState<string>('')
-  const [itemTitle, setItemTitle] = useState<string>('')
-  const [loadErr,   setLoadErr]   = useState<string | null>(null)
+  const shopId    = searchParams.get('shop_id')    ?? ''
+  const shopName  = searchParams.get('shop_name')  ?? ''
+  const itemTitle = searchParams.get('item_title') ?? ''
 
   const [rating,    setRating]    = useState(0)
   const [comment,   setComment]   = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitErr,  setSubmitErr]  = useState<string | null>(null)
-
-  // Fetch the auction to resolve shop_id, shop_name, item_title
-  useEffect(() => {
-    if (!auctionId) return
-    api.auctions.get(auctionId)
-      .then((auction) => {
-        setShopId(auction.item.shop_id)
-        setShopName(auction.item.shop_name)
-        setItemTitle(auction.item.title)
-      })
-      .catch(() => setLoadErr('Could not load auction details. Check the auction ID and try again.'))
-  }, [auctionId])
 
   const handleSubmit = async () => {
     if (!shopId || !token || rating === 0) return
@@ -84,7 +71,7 @@ export default function WriteReviewPage() {
     )
   }
 
-  if (!auctionId) {
+  if (!auctionId || !shopId) {
     return (
       <PageContainer narrow>
         <EmptyState message="No auction specified." />
@@ -110,53 +97,47 @@ export default function WriteReviewPage() {
         </p>
       )}
 
-      {loadErr ? (
-        <EmptyState message={loadErr} />
-      ) : !shopId ? (
-        <Spinner className="py-20" />
-      ) : (
-        <Card className="p-8">
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-text-secondary mb-2">Your Rating</label>
-            <StarInput value={rating} onChange={setRating} />
-            {rating > 0 && (
-              <p className="text-sm text-text-secondary mt-1">
-                {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][rating]}
-              </p>
-            )}
-          </div>
+      <Card className="p-8">
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-text-secondary mb-2">Your Rating</label>
+          <StarInput value={rating} onChange={setRating} />
+          {rating > 0 && (
+            <p className="text-sm text-text-secondary mt-1">
+              {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][rating]}
+            </p>
+          )}
+        </div>
 
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Comment <span className="font-normal">(optional)</span>
-            </label>
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              rows={4}
-              maxLength={500}
-              placeholder="Share your experience with this shop…"
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand/40"
-            />
-            <p className="text-xs text-text-secondary mt-1 text-right">{comment.length}/500</p>
-          </div>
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-text-secondary mb-2">
+            Comment <span className="font-normal">(optional)</span>
+          </label>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={4}
+            maxLength={500}
+            placeholder="Share your experience with this shop…"
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand/40"
+          />
+          <p className="text-xs text-text-secondary mt-1 text-right">{comment.length}/500</p>
+        </div>
 
-          {submitErr && <p className="text-red-500 text-sm mb-4">{submitErr}</p>}
+        {submitErr && <p className="text-red-500 text-sm mb-4">{submitErr}</p>}
 
-          <div className="flex items-center gap-3">
-            <Button
-              variant="primary"
-              onClick={handleSubmit}
-              disabled={submitting || rating === 0}
-            >
-              {submitting ? 'Submitting…' : 'Submit Review'}
-            </Button>
-            <Button variant="ghost" onClick={() => navigate('/profile/bids')}>
-              Cancel
-            </Button>
-          </div>
-        </Card>
-      )}
+        <div className="flex items-center gap-3">
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={submitting || rating === 0}
+          >
+            {submitting ? 'Submitting…' : 'Submit Review'}
+          </Button>
+          <Button variant="ghost" onClick={() => navigate('/profile/bids')}>
+            Cancel
+          </Button>
+        </div>
+      </Card>
     </PageContainer>
   )
 }

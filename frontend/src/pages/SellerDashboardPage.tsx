@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import type { Shop, Auction } from '@/types'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
-import { Card, Button, Spinner, EmptyState, StatCard } from '@/components/ui'
+import { Button, Spinner, EmptyState, StatCard } from '@/components/ui'
 import { PageContainer } from '@/components/layout'
 import { ArrowRightIcon } from '@/components/icons'
 
@@ -101,7 +101,11 @@ export default function SellerDashboardPage() {
               const openCount = auctions.filter((a) => a.status === 'OPEN').length
 
               return (
-                <Card key={shop.shop_id} padding="p-8" className="flex flex-col gap-5">
+                <Link
+                  key={shop.shop_id}
+                  to={`/seller/shops/${shop.shop_id}/items`}
+                  className="bg-surface-alt rounded-xl border border-border shadow-sm p-8 flex flex-col gap-5 cursor-pointer transition-transform hover:-translate-y-1 hover:shadow-lg"
+                >
                   {/* Shop header */}
                   <div className="flex items-start justify-between">
                     <div>
@@ -122,13 +126,10 @@ export default function SellerDashboardPage() {
                   </div>
 
                   {/* Manage link */}
-                  <Link
-                    to={`/seller/shops/${shop.shop_id}/items`}
-                    className="mt-auto inline-flex items-center gap-2 font-sans font-semibold text-brand hover:text-brand-dark transition-colors text-base"
-                  >
+                  <span className="mt-auto inline-flex items-center gap-2 font-sans font-semibold text-brand text-base">
                     Manage <ArrowRightIcon />
-                  </Link>
-                </Card>
+                  </span>
+                </Link>
               )
             })}
           </div>

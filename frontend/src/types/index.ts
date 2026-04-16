@@ -66,6 +66,7 @@ export interface UserBid {
   bid_id: string
   auction_id: string
   item_title: string
+  shop_id: string
   shop_name: string
   amount: number    // cents
   timestamp: number // Unix ms
