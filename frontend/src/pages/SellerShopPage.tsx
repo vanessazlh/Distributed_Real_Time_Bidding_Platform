@@ -181,10 +181,10 @@ export default function SellerShopPage() {
           </div>
         </Card>
       ) : (
-        <div className="py-6 flex items-end justify-between border-b border-border mb-8">
+        <div className="py-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-border mb-8">
           <div>
             <p className="text-text-secondary text-base mb-1">{shop.location}</p>
-            <h1 className="font-display text-3xl text-text-primary">{shop.name}</h1>
+            <h1 className="font-display text-2xl md:text-3xl text-text-primary">{shop.name}</h1>
           </div>
           <div className="flex items-center gap-4">
             <Button variant="outline" size="sm" onClick={startEditing}>Edit Shop</Button>
@@ -240,7 +240,7 @@ export default function SellerShopPage() {
               {items.map((item, i) => (
                 <div
                   key={item.item_id}
-                  className={`px-8 py-5 flex items-center gap-4 ${i !== 0 ? 'border-t border-border' : ''}`}
+                  className={`px-4 md:px-8 py-4 md:py-5 flex items-center gap-3 md:gap-4 ${i !== 0 ? 'border-t border-border' : ''}`}
                 >
                   {item.image_url ? (
                     <img
@@ -280,7 +280,7 @@ export default function SellerShopPage() {
       {activeTab === 'auctions' && (
         <>
           {/* Stats */}
-          <div className="flex gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <StatCard label="Active" value={open.length} />
             <StatCard label="Closed" value={closed.length} />
             <StatCard label="Total Bids" value={totalBids} />
@@ -316,9 +316,9 @@ export default function SellerShopPage() {
                   <Link
                     key={a.auction_id}
                     to={`/seller/auctions/${a.auction_id}`}
-                    className={`px-8 py-5 flex items-center justify-between gap-4 hover:bg-surface transition-colors ${i !== 0 ? 'border-t border-border' : ''}`}
+                    className={`px-4 md:px-8 py-4 md:py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 md:gap-4 hover:bg-surface transition-colors ${i !== 0 ? 'border-t border-border' : ''}`}
                   >
-                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                    <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
                       {a.image_url && (
                         <img
                           src={a.image_url}
@@ -374,9 +374,9 @@ export default function SellerShopPage() {
                   <Link
                     key={a.auction_id}
                     to={`/seller/auctions/${a.auction_id}`}
-                    className={`px-8 py-5 flex items-center justify-between gap-4 hover:bg-surface transition-colors ${i !== 0 ? 'border-t border-border' : ''}`}
+                    className={`px-4 md:px-8 py-4 md:py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 md:gap-4 hover:bg-surface transition-colors ${i !== 0 ? 'border-t border-border' : ''}`}
                   >
-                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                    <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
                       {a.image_url && (
                         <img
                           src={a.image_url}

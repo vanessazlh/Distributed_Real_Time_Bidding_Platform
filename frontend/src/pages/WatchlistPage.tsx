@@ -40,9 +40,14 @@ export default function WatchlistPage() {
 
   return (
     <PageContainer>
-      <div className="mb-8 flex items-center gap-3">
-        <HeartIcon filled width={24} height={24} className="text-red-500" />
-        <h1 className="font-display font-bold text-3xl text-text-primary">My Watchlist</h1>
+      <div className="mb-8 flex flex-col gap-4">
+        <Button variant="ghost" className="self-start -ml-2" onClick={() => navigate(-1)}>
+          ← Back
+        </Button>
+        <div className="flex items-center gap-3">
+          <HeartIcon filled width={24} height={24} className="text-red-500" />
+          <h1 className="font-display font-bold text-3xl text-text-primary">My Watchlist</h1>
+        </div>
       </div>
 
       {loading ? (

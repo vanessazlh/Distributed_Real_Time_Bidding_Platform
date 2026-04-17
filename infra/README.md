@@ -85,6 +85,50 @@ scale-in cooldown:  300s
 2. Note the peak `RequestCountPerTarget` in CloudWatch
 3. Set `autoscale_rps_target` to ~65% of that value and re-apply
 
+## Account and team setup
+
+### Which AWS account to use: Sandbox
+
+Use the **Sandbox account**, not the Learner Lab account.
+
+| | Learner Lab | Sandbox |
+|---|---|---|
+| Session credentials | Expire every ~4 hours | Persistent |
+| Running tasks | Survive session expiry | Survive session expiry |
+| Risk during experiments | CLI access lost mid-run | No interruption |
+| `LabRole` available | Yes | Yes |
+
+Learner Lab sessions expire mid-experiment — you may lose CLI access right when you need to check CloudWatch metrics or adjust autoscaling during an experiment run. Sandbox credentials stay valid indefinitely.
+
+The `LabRole` referenced in `main.tf` exists in both account types, so no code changes are needed.
+
+**Cost note:** ElastiCache + Fargate + ALB costs roughly $2–5/hour. Run `terraform destroy` between experiment sessions to avoid burning through the Sandbox budget.
+
+### Team deployment: one shared account, one deployment
+
+Deploy once to a single shared account. Do not split microservices across team members' individual accounts.
+
+All services are tightly coupled and cannot be split:
+- All services share **one ElastiCache Redis** instance (Streams, bid state, Lua scripts)
+- All services share **one set of DynamoDB tables** (no per-person namespacing)
+- JWTs are signed with **one `jwt_secret`** — tokens minted against one deployment are rejected by another
+
+**Recommended workflow:**
+- One person (or a CI job) owns `terraform apply` and image pushes
+- Use an S3 backend for shared Terraform state so any team member can run `plan`/`apply`:
+  ```hcl
+  # add to main.tf
+  terraform {
+    backend "s3" {
+      bucket = "<your-sandbox-bucket>"
+      key    = "rtb/terraform.tfstate"
+      region = "us-east-1"
+    }
+  }
+  ```
+- Pin deployments by git SHA: `terraform apply -var="image_tag=$(git rev-parse --short HEAD)" -var="jwt_secret=..."`
+- All team members test against the single shared ALB URL from `terraform output alb_url`
+
 ## Notes
 
 - **Learner Lab**: IAM resources are not created. All tasks use the pre-existing `LabRole`.

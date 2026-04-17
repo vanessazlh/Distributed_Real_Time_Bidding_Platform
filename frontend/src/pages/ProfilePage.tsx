@@ -16,21 +16,6 @@ const ALL_TABS: { key: Tab; label: string; path: string; sellerOnly?: false; buy
   { key: 'bids',    label: 'My Bids',  path: '/profile/bids', buyerOnly: true },
 ]
 
-const PAYMENT_STATUS_STYLE: Record<PaymentStatus, string> = {
-  pending:    'text-yellow-600',
-  processing: 'text-blue-600',
-  completed:  'text-green-600',
-  failed:     'text-red-600',
-  refunded:   'text-text-secondary',
-}
-
-const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
-  pending:    'Payment Pending',
-  processing: 'Payment Processing',
-  completed:  'Paid',
-  failed:     'Payment Failed',
-  refunded:   'Refunded',
-}
 
 function Avatar({ url, size = 16 }: { url?: string; size?: number }) {
   const px = size * 4
@@ -89,19 +74,19 @@ export default function ProfilePage() {
           <ChevronLeftIcon /> {isSeller ? 'Seller Dashboard' : 'All Auctions'}
         </Link>
       </div>
-      <div className="flex gap-8 max-w-5xl mx-auto">
+      <div className="flex flex-col md:flex-row gap-6 md:gap-8 max-w-5xl mx-auto">
         {/* Sidebar */}
-        <aside className="w-56 shrink-0">
-          <div className="flex flex-col items-center gap-3 mb-8 pt-4">
+        <aside className="md:w-56 md:shrink-0">
+          <div className="flex md:flex-col items-center gap-3 mb-4 md:mb-8 pt-2 md:pt-4">
             <Avatar url={user.avatar_url} size={16} />
             <p className="font-sans font-semibold text-base text-text-primary">{user.username}</p>
           </div>
-          <nav className="flex flex-col gap-1">
+          <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
             {tabs.map((t) => (
               <Link
                 key={t.key}
                 to={t.path}
-                className={`px-4 py-2.5 rounded-lg text-base font-medium text-center transition-colors ${
+                className={`px-4 py-2.5 rounded-lg text-base font-medium text-center whitespace-nowrap transition-colors ${
                   activeTab === t.key
                     ? 'bg-brand/10 text-brand'
                     : 'text-text-secondary hover:text-text-primary hover:bg-brand/5'
@@ -112,10 +97,10 @@ export default function ProfilePage() {
             ))}
             {isSeller && (
               <>
-                <div className="my-2 border-t border-border" />
+                <div className="hidden md:block my-2 border-t border-border" />
                 <Link
                   to="/seller/dashboard"
-                  className="px-4 py-2.5 rounded-lg text-base font-medium text-center text-text-secondary hover:text-text-primary hover:bg-brand/5 transition-colors"
+                  className="px-4 py-2.5 rounded-lg text-base font-medium text-center whitespace-nowrap text-text-secondary hover:text-text-primary hover:bg-brand/5 transition-colors"
                 >
                   Seller Dashboard
                 </Link>
@@ -290,7 +275,7 @@ function BidsTab({ user, token }: { user: { user_id: string }; token: string | n
     <>
       <h1 className="font-sans font-semibold text-2xl text-text-primary mb-6">My Bids</h1>
 
-      <div className="flex gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         {stats.map((s) => <StatCard key={s.label} label={s.label} value={s.value} />)}
       </div>
 
@@ -300,49 +285,44 @@ function BidsTab({ user, token }: { user: { user_id: string }; token: string | n
         <div className="flex flex-col gap-3">
           {bids.map((bid) => {
             const paymentStatus = bid.status === 'WON' ? paymentsByAuction.get(bid.auction_id) : undefined
-            const hasActions = bid.status === 'WON'
+            const showLinks = paymentStatus === 'completed'
             return (
               <Link
                 key={bid.bid_id}
                 to={`/auction/${bid.auction_id}`}
-                className="px-5 py-5 flex flex-col bg-surface-alt rounded-xl border border-border shadow-sm cursor-pointer transition-transform hover:-translate-y-1 hover:shadow-lg"
+                className="px-5 py-5 flex flex-col gap-1.5 bg-surface-alt rounded-xl border border-border shadow-sm cursor-pointer transition-transform hover:-translate-y-1 hover:shadow-lg"
               >
-                {/* Main row */}
+                {/* Row 1: shop name ↔ price */}
+                <div className="flex items-baseline justify-between">
+                  <p className="text-brand text-sm font-semibold">{bid.shop_name}</p>
+                  <p className="font-display text-2xl text-text-primary">{formatCurrency(bid.amount)}</p>
+                </div>
+                {/* Row 2: item title ↔ badge */}
                 <div className="flex items-center justify-between">
-                  <div>
-                    <Badge status={bid.status} />
-                    <p className="text-brand text-sm font-semibold mt-1.5 mb-1">{bid.shop_name}</p>
-                    <p className="font-sans font-medium text-lg text-text-primary mb-1">{bid.item_title}</p>
+                  <p className="font-sans font-medium text-lg text-text-primary">{bid.item_title}</p>
+                  <Badge status={bid.status} />
+                </div>
+                {/* Row 3: time ago ↔ links */}
+                <div className="flex items-center justify-between">
+                  <p className="text-text-secondary text-sm">{timeAgo(bid.timestamp)}</p>
+                  {showLinks && (
                     <div className="flex items-center gap-4">
-                      <p className="text-text-secondary text-base">{timeAgo(bid.timestamp)}</p>
-                      {hasActions && (
-                        <>
-                          <Link
-                            to={`/payment/auction/${bid.auction_id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-brand text-sm font-medium hover:underline"
-                          >
-                            View Payment →
-                          </Link>
-                          <Link
-                            to={`/reviews/new?auction_id=${bid.auction_id}&shop_id=${bid.shop_id}&shop_name=${encodeURIComponent(bid.shop_name)}&item_title=${encodeURIComponent(bid.item_title)}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-text-secondary text-sm font-medium hover:text-brand hover:underline transition-colors"
-                          >
-                            Leave a Review →
-                          </Link>
-                        </>
-                      )}
+                      <Link
+                        to={`/payment/auction/${bid.auction_id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-brand text-sm font-medium hover:underline"
+                      >
+                        View Payment →
+                      </Link>
+                      <Link
+                        to={`/reviews/new?auction_id=${bid.auction_id}&shop_id=${bid.shop_id}&shop_name=${encodeURIComponent(bid.shop_name)}&item_title=${encodeURIComponent(bid.item_title)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-text-secondary text-sm font-medium hover:text-brand hover:underline transition-colors"
+                      >
+                        Leave a Review →
+                      </Link>
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <p className="font-display text-2xl text-text-primary">{formatCurrency(bid.amount)}</p>
-                    {paymentStatus && (
-                      <span className={`text-sm font-medium ${PAYMENT_STATUS_STYLE[paymentStatus]}`}>
-                        {PAYMENT_STATUS_LABEL[paymentStatus]}
-                      </span>
-                    )}
-                  </div>
+                  )}
                 </div>
               </Link>
             )

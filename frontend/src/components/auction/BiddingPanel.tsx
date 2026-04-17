@@ -43,7 +43,7 @@ export function BiddingPanel({
     : highestBid + 1
 
   return (
-    <Card padding="p-8">
+    <Card padding="p-4 md:p-8">
       {/* Status banner */}
       {isPending && (
         <div className="mb-6">

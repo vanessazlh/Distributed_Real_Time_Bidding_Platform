@@ -102,11 +102,12 @@ resource "aws_ecs_task_definition" "shop" {
     essential = true
     portMappings = [{ containerPort = 8083 }]
     environment = [
-      { name = "SERVER_ADDR",   value = ":8083" },
-      { name = "JWT_SECRET",    value = var.jwt_secret },
-      { name = "AWS_REGION",    value = var.aws_region },
-      { name = "S3_BUCKET",     value = aws_s3_bucket.uploads.bucket },
-      { name = "S3_PUBLIC_URL", value = "http://${aws_alb.main.dns_name}/uploads" },
+      { name = "SERVER_ADDR",          value = ":8083" },
+      { name = "JWT_SECRET",           value = var.jwt_secret },
+      { name = "AWS_REGION",           value = var.aws_region },
+      { name = "S3_BUCKET",            value = aws_s3_bucket.uploads.bucket },
+      { name = "S3_PUBLIC_URL",        value = "http://${aws_alb.main.dns_name}/uploads" },
+      { name = "PAYMENT_SERVICE_URL",  value = "http://${aws_alb.main.dns_name}" },
       # S3_ENDPOINT intentionally unset → real S3 with task role credentials
     ]
     logConfiguration = {
@@ -137,6 +138,7 @@ resource "aws_ecs_task_definition" "bid" {
     environment = [
       { name = "SERVER_ADDR", value = ":8084" },
       { name = "REDIS_ADDR",  value = local.redis_addr },
+      { name = "JWT_SECRET",  value = var.jwt_secret },
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -167,6 +169,7 @@ resource "aws_ecs_task_definition" "payment" {
       { name = "SERVER_ADDR", value = ":8085" },
       { name = "REDIS_ADDR",  value = local.redis_addr },
       { name = "AWS_REGION",  value = var.aws_region },
+      { name = "JWT_SECRET",  value = var.jwt_secret },
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -196,6 +199,7 @@ resource "aws_ecs_task_definition" "notification" {
     environment = [
       { name = "REDIS_ADDR", value = local.redis_addr },
       { name = "PORT",       value = "8080" },
+      { name = "JWT_SECRET", value = var.jwt_secret },
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -222,9 +226,7 @@ resource "aws_ecs_task_definition" "frontend" {
     image     = "${local.ecr_base}/frontend:${var.image_tag}"
     essential = true
     portMappings = [{ containerPort = 3000 }]
-    environment = [
-      { name = "VITE_API_URL", value = "http://${aws_alb.main.dns_name}" },
-    ]
+    environment = []
     logConfiguration = {
       logDriver = "awslogs"
       options = {

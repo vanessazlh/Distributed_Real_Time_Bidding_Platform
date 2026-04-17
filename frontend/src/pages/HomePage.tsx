@@ -118,11 +118,11 @@ export default function HomePage() {
   return (
     <PageContainer>
       {/* Hero */}
-      <div className="py-12 text-center max-w-2xl mx-auto">
-        <h1 className="font-sans font-semibold text-4xl text-text-primary mb-4">
+      <div className="py-8 md:py-12 text-center max-w-2xl mx-auto">
+        <h1 className="font-sans font-semibold text-2xl sm:text-3xl md:text-4xl text-text-primary mb-4">
           Rescue today's surplus.<br />5 minutes to bid.
         </h1>
-        <p className="text-text-secondary text-lg mb-6">
+        <p className="text-text-secondary text-base md:text-lg mb-6">
           Premium unsold goods from local shops, auctioned at deep discounts to prevent food waste.
         </p>
         <div className="relative">
@@ -142,26 +142,28 @@ export default function HomePage() {
       </div>
 
       {/* Category tabs + secondary filters */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-end border-b border-border mb-8">
-        <div />
-        <div className="flex gap-8">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setFilter(tab)}
-              className={[
-                'pb-3 font-sans font-medium text-lg border-b-2 transition-colors',
-                filter === tab
-                  ? 'border-brand text-brand'
-                  : 'border-transparent text-text-secondary hover:text-text-primary',
-              ].join(' ')}
-            >
-              {tab}
-            </button>
-          ))}
+      <div className="border-b border-border mb-8">
+        {/* Category tabs — horizontal scroll on mobile */}
+        <div className="overflow-x-auto">
+          <div className="flex gap-4 md:gap-8 min-w-max md:min-w-0 md:justify-center">
+            {TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setFilter(tab)}
+                className={[
+                  'pb-3 font-sans font-medium text-base md:text-lg border-b-2 transition-colors whitespace-nowrap',
+                  filter === tab
+                    ? 'border-brand text-brand'
+                    : 'border-transparent text-text-secondary hover:text-text-primary',
+                ].join(' ')}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
         </div>
-
-        <div className="flex items-center justify-end gap-2 pb-2.5">
+        {/* Filters row */}
+        <div className="flex items-center justify-end gap-2 pb-2.5 mt-2">
           <FilterDropdown
             label="Pickup"
             options={[...PICKUP_OPTIONS]}

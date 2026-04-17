@@ -76,9 +76,9 @@ export default function PaymentPage() {
         <ChevronLeftIcon /> My Bids
       </Link>
 
-      <h1 className="font-sans font-semibold text-3xl text-text-primary mb-8">Payment</h1>
+      <h1 className="font-sans font-semibold text-2xl md:text-3xl text-text-primary mb-8">Payment</h1>
 
-      <Card padding="p-8" className="flex flex-col gap-6">
+      <Card padding="p-4 md:p-8" className="flex flex-col gap-6">
         {/* Status banner */}
         <div className={`flex items-center gap-3 px-4 py-3 rounded-lg ${style.classes}`}>
           <span className="font-sans font-semibold text-base">{style.label}</span>
