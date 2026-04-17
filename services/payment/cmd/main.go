@@ -75,7 +75,8 @@ func ensureTable(db *dynamodb.Client) {
 	defer cancel()
 
 	_, err := db.CreateTable(ctx, &dynamodb.CreateTableInput{
-		TableName: aws.String("payments"),
+		TableName:   aws.String("payments"),
+		BillingMode: types.BillingModePayPerRequest,
 		AttributeDefinitions: []types.AttributeDefinition{
 			{AttributeName: aws.String("payment_id"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("auction_id"), AttributeType: types.ScalarAttributeTypeS},
@@ -92,10 +93,6 @@ func ensureTable(db *dynamodb.Client) {
 					{AttributeName: aws.String("auction_id"), KeyType: types.KeyTypeHash},
 				},
 				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
-				ProvisionedThroughput: &types.ProvisionedThroughput{
-					ReadCapacityUnits:  aws.Int64(5),
-					WriteCapacityUnits: aws.Int64(5),
-				},
 			},
 			{
 				IndexName: aws.String("user-index"),
@@ -104,15 +101,7 @@ func ensureTable(db *dynamodb.Client) {
 					{AttributeName: aws.String("created_at"), KeyType: types.KeyTypeRange},
 				},
 				Projection: &types.Projection{ProjectionType: types.ProjectionTypeAll},
-				ProvisionedThroughput: &types.ProvisionedThroughput{
-					ReadCapacityUnits:  aws.Int64(5),
-					WriteCapacityUnits: aws.Int64(5),
-				},
 			},
-		},
-		ProvisionedThroughput: &types.ProvisionedThroughput{
-			ReadCapacityUnits:  aws.Int64(5),
-			WriteCapacityUnits: aws.Int64(5),
 		},
 	})
 	if err != nil {

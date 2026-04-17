@@ -149,16 +149,16 @@ export default function AuctionDetailPage() {
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row gap-10">
+      <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
         {/* ── Left: item info + bid history ── */}
-        <div className="flex-[1.2] flex flex-col gap-8">
+        <div className="flex-[1.2] flex flex-col gap-6 lg:gap-8">
           <Card>
             <img
               src={auction.image_url}
               alt={auction.item.title}
-              className="w-full h-[400px] object-cover mix-blend-multiply rounded-t-xl"
+              className="w-full h-48 sm:h-64 md:h-80 lg:h-[400px] object-cover mix-blend-multiply rounded-t-xl"
             />
-            <div className="p-8">
+            <div className="p-4 md:p-8">
               <div className="flex items-center gap-3 mb-4">
                 <Avatar src={auction.shop_logo_url} alt={auction.item.shop_name} size="lg" />
                 <div>
@@ -182,7 +182,7 @@ export default function AuctionDetailPage() {
                 </div>
               </div>
               <div className="flex items-start justify-between gap-4 mb-4">
-                <h1 className="font-sans font-semibold text-3xl text-text-primary">
+                <h1 className="font-sans font-semibold text-xl md:text-3xl text-text-primary">
                   {auction.item.title}
                 </h1>
                 {user && (
@@ -224,7 +224,7 @@ export default function AuctionDetailPage() {
 
         {/* ── Right: sticky bidding panel ── */}
         <div className="flex-1">
-          <div className="sticky top-28">
+          <div className="lg:sticky lg:top-28">
             <BiddingPanel
               auction={auction}
               highestBid={highestBid}

@@ -213,9 +213,9 @@ export default function ShopDetailPage() {
       </Link>
 
       {/* Shop header */}
-      <Card className="mb-10 flex flex-col items-center text-center" padding="p-10">
+      <Card className="mb-10 flex flex-col items-center text-center" padding="p-5 md:p-10">
         <Avatar src={shop.logo_url} alt={shop.name} size="xl" />
-        <h1 className="font-display text-4xl text-text-primary mt-4 mb-2">{shop.name}</h1>
+        <h1 className="font-display text-2xl md:text-4xl text-text-primary mt-4 mb-2">{shop.name}</h1>
         <p className="text-text-secondary mb-2">{shop.location}</p>
         <RatingSummary data={reviewData} />
         <p className="text-text-secondary text-base">Local shop selling surplus food at auction.</p>
@@ -246,13 +246,13 @@ export default function ShopDetailPage() {
             {closed.map((a, i) => (
               <div
                 key={a.auction_id}
-                className={`p-5 flex items-center justify-between ${i !== 0 ? 'border-t border-border' : ''}`}
+                className={`p-4 md:p-5 flex items-center justify-between gap-3 ${i !== 0 ? 'border-t border-border' : ''}`}
               >
-                <div>
-                  <p className="font-sans font-medium text-text-primary">{a.item.title}</p>
+                <div className="min-w-0">
+                  <p className="font-sans font-medium text-text-primary truncate">{a.item.title}</p>
                   <p className="text-text-secondary text-base mt-0.5">{a.bid_count} bids</p>
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <p className="font-display text-lg text-text-secondary line-through">{formatCurrency(a.retail_price)}</p>
                   <p className="font-display text-lg text-text-primary">{formatCurrency(a.current_highest_bid)}</p>
                 </div>

@@ -153,8 +153,8 @@ export default function SellerAuctionDetailPage() {
       </Link>
 
       {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="py-6 flex items-end justify-between border-b border-border mb-8">
-        <div className="flex items-center gap-5 min-w-0">
+      <div className="py-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-border mb-8">
+        <div className="flex items-center gap-4 md:gap-5 min-w-0">
           {auction.image_url && (
             <img
               src={auction.image_url}
@@ -171,7 +171,7 @@ export default function SellerAuctionDetailPage() {
                 </span>
               )}
             </div>
-            <h1 className="font-display text-3xl text-text-primary truncate">
+            <h1 className="font-display text-xl md:text-3xl text-text-primary truncate">
               {auction.item.title}
             </h1>
             <p className="text-text-secondary text-base mt-1">
@@ -194,14 +194,14 @@ export default function SellerAuctionDetailPage() {
       </div>
 
       {/* ── Stats row ────────────────────────────────────────────────────── */}
-      <div className="flex gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 auto-rows-fr">
         <StatCard label="Current Bid" value={formatCurrency(highestBid)} />
         <StatCard label="Retail Price" value={formatCurrency(auction.retail_price)} />
         <StatCard label="Total Bids" value={bidCount} />
         {auction.max_price > 0 && (
           <StatCard label="Max Price" value={formatCurrency(auction.max_price)} />
         )}
-        <Card className="flex-1 text-center" padding="p-5">
+        <Card className="text-center" padding="p-5">
           <p className="text-text-secondary text-sm mb-1">Time Left</p>
           <div className="font-display text-2xl text-text-primary">
             {isClosed
@@ -213,7 +213,7 @@ export default function SellerAuctionDetailPage() {
         </Card>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-10">
+      <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
         {/* ── Left: Bid History ────────────────────────────────────────── */}
         <div className="flex-[1.4]">
           <h2 className="font-sans font-semibold text-xl text-text-primary mb-4">
@@ -224,40 +224,44 @@ export default function SellerAuctionDetailPage() {
             <EmptyState message="No bids placed yet." />
           ) : (
             <Card>
-              {/* Table header */}
-              <div className="px-8 py-3 flex items-center text-text-secondary text-sm font-semibold border-b border-border">
-                <span className="flex-1">Bidder</span>
-                <span className="w-28 text-right">Amount</span>
-                <span className="w-24 text-center">Status</span>
-                <span className="w-28 text-right">Time</span>
-              </div>
+              {/* Table — horizontally scrollable on mobile */}
+              <div className="overflow-x-auto">
+                <div className="min-w-[480px]">
+                  <div className="px-4 md:px-8 py-3 flex items-center text-text-secondary text-sm font-semibold border-b border-border">
+                    <span className="flex-1">Bidder</span>
+                    <span className="w-28 text-right">Amount</span>
+                    <span className="w-24 text-center">Status</span>
+                    <span className="w-28 text-right">Time</span>
+                  </div>
 
-              {bids.map((bid, i) => (
-                <div
-                  key={bid.bid_id}
-                  className={`px-8 py-4 flex items-center ${i !== 0 ? 'border-t border-border' : ''}`}
-                >
-                  <span className="flex-1 font-sans text-text-primary">
-                    {maskUsername(bid.user_id)}
-                  </span>
-                  <span className="w-28 text-right font-serif text-lg text-text-primary">
-                    {formatCurrency(bid.amount)}
-                  </span>
-                  <span className="w-24 flex justify-center">
-                    <Badge status={bid.status} />
-                  </span>
-                  <span className="w-28 text-right text-text-secondary text-sm">
-                    {timeAgo(bid.timestamp)}
-                  </span>
+                  {bids.map((bid, i) => (
+                    <div
+                      key={bid.bid_id}
+                      className={`px-4 md:px-8 py-4 flex items-center ${i !== 0 ? 'border-t border-border' : ''}`}
+                    >
+                      <span className="flex-1 font-sans text-text-primary">
+                        {maskUsername(bid.user_id)}
+                      </span>
+                      <span className="w-28 text-right font-serif text-lg text-text-primary">
+                        {formatCurrency(bid.amount)}
+                      </span>
+                      <span className="w-24 flex justify-center">
+                        <Badge status={bid.status} />
+                      </span>
+                      <span className="w-28 text-right text-text-secondary text-sm">
+                        {timeAgo(bid.timestamp)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </Card>
           )}
         </div>
 
         {/* ── Right: Details + Payment ─────────────────────────────────── */}
         <div className="flex-1">
-          <div className="sticky top-28 flex flex-col gap-6">
+          <div className="lg:sticky lg:top-28 flex flex-col gap-6">
             {/* Item details */}
             <Card padding="p-6">
               <h3 className="font-sans font-semibold text-lg text-text-primary mb-4">

@@ -89,19 +89,19 @@ export default function ProfilePage() {
           <ChevronLeftIcon /> {isSeller ? 'Seller Dashboard' : 'All Auctions'}
         </Link>
       </div>
-      <div className="flex gap-8 max-w-5xl mx-auto">
+      <div className="flex flex-col md:flex-row gap-6 md:gap-8 max-w-5xl mx-auto">
         {/* Sidebar */}
-        <aside className="w-56 shrink-0">
-          <div className="flex flex-col items-center gap-3 mb-8 pt-4">
+        <aside className="md:w-56 md:shrink-0">
+          <div className="flex md:flex-col items-center gap-3 mb-4 md:mb-8 pt-2 md:pt-4">
             <Avatar url={user.avatar_url} size={16} />
             <p className="font-sans font-semibold text-base text-text-primary">{user.username}</p>
           </div>
-          <nav className="flex flex-col gap-1">
+          <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible">
             {tabs.map((t) => (
               <Link
                 key={t.key}
                 to={t.path}
-                className={`px-4 py-2.5 rounded-lg text-base font-medium text-center transition-colors ${
+                className={`px-4 py-2.5 rounded-lg text-base font-medium text-center whitespace-nowrap transition-colors ${
                   activeTab === t.key
                     ? 'bg-brand/10 text-brand'
                     : 'text-text-secondary hover:text-text-primary hover:bg-brand/5'
@@ -112,10 +112,10 @@ export default function ProfilePage() {
             ))}
             {isSeller && (
               <>
-                <div className="my-2 border-t border-border" />
+                <div className="hidden md:block my-2 border-t border-border" />
                 <Link
                   to="/seller/dashboard"
-                  className="px-4 py-2.5 rounded-lg text-base font-medium text-center text-text-secondary hover:text-text-primary hover:bg-brand/5 transition-colors"
+                  className="px-4 py-2.5 rounded-lg text-base font-medium text-center whitespace-nowrap text-text-secondary hover:text-text-primary hover:bg-brand/5 transition-colors"
                 >
                   Seller Dashboard
                 </Link>
@@ -290,7 +290,7 @@ function BidsTab({ user, token }: { user: { user_id: string }; token: string | n
     <>
       <h1 className="font-sans font-semibold text-2xl text-text-primary mb-6">My Bids</h1>
 
-      <div className="flex gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         {stats.map((s) => <StatCard key={s.label} label={s.label} value={s.value} />)}
       </div>
 

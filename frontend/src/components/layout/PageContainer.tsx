@@ -8,7 +8,7 @@ interface PageContainerProps {
 
 export function PageContainer({ children, narrow = false }: PageContainerProps) {
   return (
-    <div className={`${narrow ? 'max-w-4xl' : 'max-w-7xl'} w-full mx-auto px-8 pt-6 pb-10`}>
+    <div className={`${narrow ? 'max-w-4xl' : 'max-w-7xl'} w-full mx-auto px-4 sm:px-6 md:px-8 pt-6 pb-10`}>
       {children}
     </div>
   )
