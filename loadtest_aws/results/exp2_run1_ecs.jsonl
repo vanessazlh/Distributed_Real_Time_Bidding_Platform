@@ -1,0 +1,70 @@
+2026-04-17T08:52:48Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:52:55Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:01Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:07Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:12Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:18Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:24Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:30Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:36Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:42Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:48Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:53:54Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:54:00Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:54:13Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:54:19Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:54:25Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:54:31Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:54:37Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:54:43Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:54:49Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:54:55Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:01Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:06Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:12Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:18Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:24Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:30Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:36Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:42Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:48Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:55:54Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:56:00Z {"desired":2,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:56:05Z {"desired":10,"running":2,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:56:11Z {"desired":10,"running":2,"pending":8,"events":"(service rtb-auction) has started 8 tasks: (task 10016992282a496ea678bc0d8a9cfea5) (task 193b59ece4ec4af4972e434dc97c9370) (task 20b399f477bb478db2034491883efc61) (task 57ba1aef7e9c4f92bbcb9e9c65ec4c2b) (task 83c57e2b5f9f474e849f2c97e3aba3d3) (task 88e9aa35e86f47ccbc318ff8e6e28651) (task bb805b481f714f5493169d0a55d32174) (task cfdb1d8d6ce348b2abca587d50aa1ee7)."}
+2026-04-17T08:56:17Z {"desired":10,"running":2,"pending":8,"events":"(service rtb-auction) has started 8 tasks: (task 10016992282a496ea678bc0d8a9cfea5) (task 193b59ece4ec4af4972e434dc97c9370) (task 20b399f477bb478db2034491883efc61) (task 57ba1aef7e9c4f92bbcb9e9c65ec4c2b) (task 83c57e2b5f9f474e849f2c97e3aba3d3) (task 88e9aa35e86f47ccbc318ff8e6e28651) (task bb805b481f714f5493169d0a55d32174) (task cfdb1d8d6ce348b2abca587d50aa1ee7)."}
+2026-04-17T08:56:23Z {"desired":10,"running":2,"pending":8,"events":"(service rtb-auction) has started 8 tasks: (task 10016992282a496ea678bc0d8a9cfea5) (task 193b59ece4ec4af4972e434dc97c9370) (task 20b399f477bb478db2034491883efc61) (task 57ba1aef7e9c4f92bbcb9e9c65ec4c2b) (task 83c57e2b5f9f474e849f2c97e3aba3d3) (task 88e9aa35e86f47ccbc318ff8e6e28651) (task bb805b481f714f5493169d0a55d32174) (task cfdb1d8d6ce348b2abca587d50aa1ee7)."}
+2026-04-17T08:56:29Z {"desired":10,"running":2,"pending":8,"events":"(service rtb-auction) has started 8 tasks: (task 10016992282a496ea678bc0d8a9cfea5) (task 193b59ece4ec4af4972e434dc97c9370) (task 20b399f477bb478db2034491883efc61) (task 57ba1aef7e9c4f92bbcb9e9c65ec4c2b) (task 83c57e2b5f9f474e849f2c97e3aba3d3) (task 88e9aa35e86f47ccbc318ff8e6e28651) (task bb805b481f714f5493169d0a55d32174) (task cfdb1d8d6ce348b2abca587d50aa1ee7)."}
+2026-04-17T08:56:35Z {"desired":10,"running":2,"pending":8,"events":"(service rtb-auction) has started 8 tasks: (task 10016992282a496ea678bc0d8a9cfea5) (task 193b59ece4ec4af4972e434dc97c9370) (task 20b399f477bb478db2034491883efc61) (task 57ba1aef7e9c4f92bbcb9e9c65ec4c2b) (task 83c57e2b5f9f474e849f2c97e3aba3d3) (task 88e9aa35e86f47ccbc318ff8e6e28651) (task bb805b481f714f5493169d0a55d32174) (task cfdb1d8d6ce348b2abca587d50aa1ee7)."}
+2026-04-17T08:56:41Z {"desired":10,"running":5,"pending":5,"events":"(service rtb-auction) registered 8 targets in (target-group arn:aws:elasticloadbalancing:us-east-1:573628268485:targetgroup/rtb-auction/32de3bf3c6d22ab4)"}
+2026-04-17T08:56:47Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:56:52Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:56:58Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:04Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:10Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:16Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:22Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:28Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:34Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:40Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:45Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:51Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:57:57Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:03Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:09Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:15Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:21Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:27Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:33Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:39Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:45Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:50Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:58:56Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:59:02Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:59:08Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:59:14Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:59:20Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:59:26Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:59:32Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:59:38Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}
+2026-04-17T08:59:43Z {"desired":10,"running":10,"pending":0,"events":"(service rtb-auction) has reached a steady state."}

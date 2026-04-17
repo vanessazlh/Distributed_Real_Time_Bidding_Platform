@@ -4,8 +4,14 @@ resource "aws_dynamodb_table" "users" {
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "user_id"
 
-  attribute { name = "user_id" type = "S" }
-  attribute { name = "email"   type = "S" }
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+  attribute {
+    name = "email"
+    type = "S"
+  }
 
   global_secondary_index {
     name            = "email-index"
@@ -19,8 +25,14 @@ resource "aws_dynamodb_table" "shops" {
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "shop_id"
 
-  attribute { name = "shop_id"  type = "S" }
-  attribute { name = "owner_id" type = "S" }
+  attribute {
+    name = "shop_id"
+    type = "S"
+  }
+  attribute {
+    name = "owner_id"
+    type = "S"
+  }
 
   global_secondary_index {
     name            = "owner_id-index"
@@ -34,8 +46,14 @@ resource "aws_dynamodb_table" "items" {
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "item_id"
 
-  attribute { name = "item_id" type = "S" }
-  attribute { name = "shop_id" type = "S" }
+  attribute {
+    name = "item_id"
+    type = "S"
+  }
+  attribute {
+    name = "shop_id"
+    type = "S"
+  }
 
   global_secondary_index {
     name            = "shop_id-index"
@@ -49,10 +67,22 @@ resource "aws_dynamodb_table" "payments" {
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "payment_id"
 
-  attribute { name = "payment_id" type = "S" }
-  attribute { name = "auction_id" type = "S" }
-  attribute { name = "user_id"    type = "S" }
-  attribute { name = "created_at" type = "S" }
+  attribute {
+    name = "payment_id"
+    type = "S"
+  }
+  attribute {
+    name = "auction_id"
+    type = "S"
+  }
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
 
   global_secondary_index {
     name            = "auction-index"
@@ -74,8 +104,14 @@ resource "aws_dynamodb_table" "auctions" {
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "auction_id"
 
-  attribute { name = "auction_id" type = "S" }
-  attribute { name = "shop_id"    type = "S" }
+  attribute {
+    name = "auction_id"
+    type = "S"
+  }
+  attribute {
+    name = "shop_id"
+    type = "S"
+  }
 
   global_secondary_index {
     name            = "shop_id-index"

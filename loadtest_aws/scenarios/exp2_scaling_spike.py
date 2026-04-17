@@ -6,8 +6,9 @@ NOTE: This experiment requires AWS ECS Fargate + ALB. It cannot be run locally.
 Setup checklist (see tests/TESTING.md for full details):
   - ECS Task Definitions created for all services
   - ALB routing rules configured (path-based)
-  - Auto-scaling policy on Auction Service: CPU > 60%, scale up by 1, cooldown 60s
-  - CloudWatch dashboard: CPU %, task count, ALB latency
+  - Auto-scaling policy on Auction Service: ALBRequestCountPerTarget target tracking
+    (default threshold: 3000 req/target/min, scale-out cooldown: 60s)
+  - CloudWatch dashboard: RequestCountPerTarget, task count, ALB latency
 
 Goal:
   50 simultaneous auctions, 100 bidders each (5000 total users).

@@ -113,7 +113,8 @@ Metrics are auto-saved to `loadtest/results/exp1_<strategy>_metrics.json` at end
 **Setup:**
 
 - 50 simultaneous auctions, 100 bidders each (5000 total users)
-- Start with 2 ECS tasks for Auction Service, auto-scaling enabled (target CPU > 60%)
+- Start with 2 ECS tasks for Auction Service, auto-scaling enabled via
+  `ALBRequestCountPerTarget` target tracking (default threshold: 3000 req/target/min)
 - Locust ramps from 0 → 5000 users over 60s
 
 **Metrics:**
@@ -129,8 +130,9 @@ Metrics are auto-saved to `loadtest/results/exp1_<strategy>_metrics.json` at end
 
 - [ ] ECS Task Definitions created for all services
 - [ ] ALB routing rules configured (path-based)
-- [ ] Auto-scaling policy set on Auction Service (CPU > 60%, scale up by 1, cooldown 60s)
-- [ ] CloudWatch dashboard configured (CPU %, task count, ALB latency)
+- [ ] Auto-scaling policy set on Auction Service (`ALBRequestCountPerTarget` target
+      tracking, 60s scale-out cooldown)
+- [ ] CloudWatch dashboard configured (`RequestCountPerTarget`, task count, ALB latency)
 - [ ] Locust script written: `loadtest/scenarios/exp2_scaling_spike.py`
 - [ ] At least 2 runs for consistency
 - [ ] Results saved to `loadtest/results/exp2_*.csv`
