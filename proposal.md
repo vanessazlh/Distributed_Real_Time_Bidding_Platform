@@ -101,6 +101,11 @@ Simulate a **rush-hour scenario**:
 
 System starts with **2 ECS tasks** with auto-scaling enabled.
 
+This proposal keeps the original conservative starting point, but the later AWS
+validation for this workload showed that a stronger operating point works better:
+baseline `4` tasks, `ALBRequestCountPerTarget` target `2000`, and optional
+service-level scheduled prewarm for predictable spike windows.
+
 ### Metrics
 
 - Auto-scaling response time to the spike

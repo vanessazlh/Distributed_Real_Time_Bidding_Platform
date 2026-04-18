@@ -1,16 +1,18 @@
-# Experiment 2 Run 1 Report
+# Experiment 2 AWS Load Test Report
 
 ## Scope
 
-This report summarizes the first full AWS deployment and load-test run for **Experiment 2 — Horizontal Scaling During Auction Spikes**.
+This report summarizes the AWS deployment and the completed load-test runs for **Experiment 2 — Horizontal Scaling During Auction Spikes**.
 
 It covers:
 
 - infrastructure deployment to AWS ECS Fargate
 - seed data creation for the scaling scenario
 - a short sanity run to validate the setup
-- one full load-test run using the intended Experiment 2 parameters
-- key findings observed during and after the run
+- the original full load-test run using the intended Experiment 2 parameters
+- a distributed Locust rerun to remove the client-side bottleneck
+- a tuned autoscaling rerun using a higher baseline and lower target
+- key findings observed across all runs
 
 ## Environment
 
@@ -85,7 +87,7 @@ This confirmed that the deployed stack and the test script were working correctl
 
 ### Target parameters
 
-The full run used the intended Experiment 2 settings from `loadtest/scenarios/exp2_scaling_spike.py`:
+The full run used the intended Experiment 2 settings from `loadtest_aws/scenarios/exp2_scaling_spike.py`:
 
 - users: `5000`
 - spawn rate: `83/s`
@@ -97,7 +99,7 @@ This matches the intended workload of roughly `100` bidders per auction during a
 
 ### Final Locust results
 
-From `loadtest/results/exp2_run1_stats.csv`:
+From `loadtest_aws/results/exp2_run1_stats.csv`:
 
 - total requests: `598,786`
 - total failures: `1`
@@ -122,7 +124,7 @@ Per endpoint:
   - average latency: `1561 ms`
   - p99 latency: `3900 ms`
 
-From `loadtest/results/exp2_run1_failures.csv`:
+From `loadtest_aws/results/exp2_run1_failures.csv`:
 
 - the only recorded failure was a single `GET /auctions/:id` request with `GET auction failed: 0`
 
@@ -140,7 +142,7 @@ So the non-zero exit code reflects a **client-side load-generator limitation on 
 
 Autoscaling did trigger successfully.
 
-Observed ECS timeline from `loadtest/results/exp2_run1_ecs.jsonl`:
+Observed ECS timeline from `loadtest_aws/results/exp2_run1_ecs.jsonl`:
 
 - `08:52:35Z` full run started
 - until `08:56:00Z`, auction service stayed at `desired=2`, `running=2`
@@ -196,7 +198,7 @@ This suggests the current threshold is conservative enough to protect correctnes
 
 ### 4. `/admin/metrics` is not a reliable global metric source behind the ALB
 
-During the full run, the values captured in `exp2_run1_metrics.jsonl` jumped between much smaller and much larger totals.
+During the full run, the values captured in `loadtest_aws/results/exp2_run1_metrics.jsonl` jumped between much smaller and much larger totals.
 
 This is consistent with the current `/admin/metrics` endpoint being **instance-local in memory**, while requests are distributed across multiple auction tasks by the ALB.
 
@@ -219,22 +221,255 @@ The root cause was not AWS infrastructure; it was application behavior:
 
 After providing coordinates explicitly, seed creation succeeded and the full test proceeded normally.
 
+## Run 2: Distributed Locust Baseline
+
+After Run 1, the next question was whether the poor latency was partly caused by the single-machine Locust process rather than the auction service itself.
+
+To isolate that factor, the same workload was rerun with Locust in multi-process mode:
+
+- command shape: `locust --processes 4`
+- autoscaling config unchanged from Run 1
+- auction service baseline unchanged at min `2`, max `10`, target `3000`
+
+### Final Locust results
+
+From `loadtest_aws/exp2_run2_dist_stats.csv`:
+
+- total requests: `1,160,611`
+- total failures: `0`
+- aggregated median latency: `450 ms`
+- aggregated average latency: `530 ms`
+- aggregated p95 latency: `1200 ms`
+- aggregated p99 latency: `1600 ms`
+- worst observed latency: `13,565 ms`
+- achieved throughput: `4834 req/s`
+
+Per endpoint:
+
+- `GET /auctions/:id`
+  - requests: `580,244`
+  - failures: `0`
+  - average latency: `400 ms`
+  - p99 latency: `1100 ms`
+- `POST /auctions/:id/bid`
+  - requests: `580,367`
+  - failures: `0`
+  - average latency: `660 ms`
+  - p99 latency: `1800 ms`
+
+### Autoscaling behavior
+
+Observed ECS timeline from `loadtest_aws/exp2_run2_dist_ecs.jsonl` and AWS scaling activities:
+
+- full Locust process started at `22:52:08Z`
+- all `5000` users were spawned and stats reset at `22:53:09Z`
+- auction service stayed at `desired=2`, `running=2` for the measured run
+- `22:57:02Z`: target tracking triggered scale-out to `desired=10`
+- `22:57:09Z`: the test finished before new capacity materially helped the measured window
+
+### Interpretation
+
+This rerun showed that Run 1 was **partly distorted by the load generator**:
+
+- throughput increased from about `1848 req/s` to about `4834 req/s`
+- median latency dropped from about `1700 ms` to `450 ms`
+- Locust finished with exit code `0`
+
+However, it also confirmed the core infrastructure finding from Run 1:
+
+- the autoscaling policy still reacted **too late**
+- the scale-out trigger happened only in the final seconds of the run
+
+## Run 3: Tuned Autoscaling Rerun
+
+Because Run 2 removed the client-side bottleneck but still showed late scale-out, the next step was a limited tuning pass on the live autoscaling policy.
+
+The following overrides were applied with Terraform before rerunning the same distributed Locust workload:
+
+- auction min tasks: `2 -> 4`
+- `ALBRequestCountPerTarget` target value: `3000 -> 2000`
+- max tasks remained `10`
+- cooldowns remained `scale_out=60s`, `scale_in=300s`
+
+### Final Locust results
+
+From `loadtest_aws/exp2_run3_tuned_dist_stats.csv`:
+
+- total requests: `1,785,381`
+- total failures: `0`
+- aggregated median latency: `140 ms`
+- aggregated average latency: `167 ms`
+- aggregated p95 latency: `300 ms`
+- aggregated p99 latency: `720 ms`
+- worst observed latency: `25,225 ms`
+- achieved throughput: `7441 req/s`
+
+Per endpoint:
+
+- `GET /auctions/:id`
+  - requests: `892,531`
+  - failures: `0`
+  - average latency: `163 ms`
+  - p99 latency: `640 ms`
+- `POST /auctions/:id/bid`
+  - requests: `892,850`
+  - failures: `0`
+  - average latency: `170 ms`
+  - p99 latency: `790 ms`
+
+### Autoscaling behavior
+
+Observed ECS timeline from `loadtest_aws/exp2_run3_tuned_dist_ecs.jsonl` and AWS scaling activities:
+
+- Locust process started at `23:03:24Z`
+- all `5000` users were spawned and stats reset at `23:04:25Z`
+- auction service stayed at `desired=4`, `running=4` throughout the measured run
+- `23:08:25Z`: target tracking triggered scale-out to `desired=10`
+- `23:08:32Z`: ECS started launching `6` additional tasks
+
+### Interpretation
+
+The tuning worked **as performance tuning**, but not yet as **responsiveness tuning**:
+
+- throughput improved again, from about `4834 req/s` to about `7441 req/s`
+- median latency dropped again, from `450 ms` to `140 ms`
+- p99 latency dropped from `1600 ms` to `720 ms`
+- request success remained effectively perfect
+
+But the scale-out still arrived at the **very end** of the run, which means:
+
+- raising the baseline from `2` to `4` helped absorb the spike
+- lowering the target from `3000` to `2000` did not make target tracking react early enough for a short five-minute surge
+
+## Run 4: Scheduled Prewarm + Reactive Fallback
+
+Because Run 3 showed that `min=4` and `target=2000` improved performance but still left
+target tracking too slow for a short spike, the next step was to test the full
+three-layer strategy:
+
+- baseline scaling: keep auction min tasks at `4`
+- scheduled prewarm: temporarily raise the auction service floor to `8`
+- reactive scaling: keep `ALBRequestCountPerTarget` target tracking enabled
+
+This run used one-off AWS Application Auto Scaling scheduled actions:
+
+- `23:59:29Z`: set auction service `min_capacity` to `8`
+- `00:12:29Z`: restore auction service `min_capacity` to `4`
+
+Before the measured load window began, ECS reached:
+
+- `desired=8`
+- `running=8`
+
+### Final Locust results
+
+From `loadtest_aws/exp2_run4_prewarm_dist_stats.csv`:
+
+- total requests: `1,862,754`
+- total failures: `0`
+- aggregated median latency: `120 ms`
+- aggregated average latency: `140 ms`
+- aggregated p95 latency: `230 ms`
+- aggregated p99 latency: `500 ms`
+- worst observed latency: `37,129 ms`
+- achieved throughput: `7765 req/s`
+
+Per endpoint:
+
+- `GET /auctions/:id`
+  - requests: `930,991`
+  - failures: `0`
+  - average latency: `137 ms`
+  - p99 latency: `480 ms`
+- `POST /auctions/:id/bid`
+  - requests: `931,763`
+  - failures: `0`
+  - average latency: `142 ms`
+  - p99 latency: `530 ms`
+
+### Autoscaling behavior
+
+Observed ECS timeline from `loadtest_aws/exp2_run4_prewarm_dist_ecs.jsonl` and AWS scaling activities:
+
+- `23:59:30Z`: scheduled prewarm scale-out action triggered
+- `00:00:36Z`: ECS completed the move to `desired=8`, `running=8`
+- `00:01:57Z`: all `5000` Locust users were spawned and stats were reset
+- throughout the measured five-minute run, auction service stayed at `desired=8`, `running=8`
+- `00:06:25Z`: target tracking still triggered a reactive scale-out to `desired=10`
+- `00:13:11Z`: scheduled prewarm scale-in action triggered and restored `min_capacity` to `4`
+
+### Interpretation
+
+This is the first run where the full layered strategy was exercised end-to-end.
+
+Compared with Run 3:
+
+- throughput improved from about `7441 req/s` to about `7765 req/s`
+- median latency improved from `140 ms` to `120 ms`
+- p99 latency improved from `720 ms` to `500 ms`
+- request success remained perfect (`0` failures)
+
+Most importantly, the measured spike no longer depended on late target tracking to
+save the run:
+
+- the service entered the spike already prewarmed at `8` tasks
+- the full run completed while ECS remained stable at `8/8`
+- the reactive signal still fired later, but only as a fallback after the main run
+
+One operational nuance is worth noting:
+
+- the scheduled scale-in action successfully restored the scalable target floor from `8` back to `4`
+- however, that action restored `min_capacity`, not the already-elevated `desiredCount`
+- because a reactive high alarm had already pushed `desiredCount` to `10` after the run, ECS did not immediately drop back to `4`
+
+That behavior is acceptable for this experiment, but it means scheduled prewarm is
+best understood as controlling the **floor** of the service rather than forcing an
+instant post-run shrink.
+
+## Cross-Run Summary
+
+Across the four runs:
+
+- `Run 1` proved the AWS deployment and policy wiring worked, but it mixed server behavior with a Locust CPU bottleneck
+- `Run 2` removed the client bottleneck and confirmed the main remaining problem was **late autoscaling**
+- `Run 3` showed that a higher baseline plus a lower target can dramatically improve latency and throughput even before horizontal scale-out happens
+- `Run 4` showed that scheduled prewarm solves the short-spike timing problem much more effectively than reactive target tracking alone
+
+The strongest current configuration for this workload is therefore:
+
+- keep Terraform defaults conservative for initial bring-up, but use the tuned `4`-task baseline for spike experiments
+- use scheduled prewarm for known spike windows
+- keep `ALBRequestCountPerTarget` target tracking as the fallback layer, not the primary protection for a five-minute surge
+
 ## Overall Conclusion
 
-The deployment and Experiment 2 load test were both successfully executed on AWS.
+The deployment and all follow-up Experiment 2 runs were successfully executed on AWS.
 
-The run demonstrates that:
+The combined evidence now shows that:
 
 - the ECS/Fargate deployment works end-to-end
-- the auction service autoscaling policy is active and functional
-- the system maintains very high request success under heavy spike load
-- the main weakness is **latency during the pre-scale window**, not correctness or availability
+- the auction service autoscaling policy is correctly wired and does trigger
+- system correctness and availability remain strong under heavy spike load
+- the best results came from combining a stronger baseline with scheduled prewarm and reactive fallback
 
-In short: the current autoscaling setup is **correct but slow to react** for this spike profile.
+Repository note:
+
+- Terraform variable defaults are still the conservative `2` / `3000`
+- the validated Experiment 2 recommendation is `4` / `2000` plus optional prewarm to `8`
+
+In short:
+
+- distributed Locust removed the client-side distortion from Run 1
+- tuning the baseline to `4` and the target to `2000` materially improved observed performance
+- scheduled prewarm to `8` before the spike improved performance again and avoided dependence on late reactive scale-out
+- for this short, predictable spike profile, the most effective strategy is:
+  baseline + scheduled prewarm + reactive target tracking fallback
 
 ## Recommended Next Steps
 
-1. Lower `autoscale_rps_target` and rerun the same scenario to see whether earlier scale-out reduces the latency spike.
-2. Capture CloudWatch `RequestCountPerTarget`, `TargetResponseTime`, and task-count charts alongside this run for the final report.
-3. Fix the shop service validation path so missing `lat/lng` returns a `4xx` instead of `500`.
-4. Replace instance-local auction metrics with a centralized or scrapeable aggregate if cross-task experiment metrics are needed.
+1. Keep the stronger baseline (`4` tasks) for future spike runs, since it materially improves latency even before scale-out.
+2. Keep scheduled prewarm in the experiment design for known load windows, since it performed better than target tracking alone on a five-minute surge.
+3. Capture CloudWatch charts for `RequestCountPerTarget`, `TargetResponseTime`, scalable target min capacity, and task count so the final report can show the interaction between prewarm and reactive scaling.
+4. If post-spike cost recovery becomes important, consider an additional mechanism that more aggressively reduces `desiredCount` after the run instead of only restoring `min_capacity`.
+5. Fix the shop service validation path so missing `lat/lng` returns a `4xx` instead of `500`.
+6. Replace instance-local auction metrics with a centralized or scrapeable aggregate if cross-task experiment metrics are needed.
