@@ -33,3 +33,40 @@ resource "aws_appautoscaling_policy" "auction_rps" {
     scale_in_cooldown  = 300 # slow scale-in — avoid flapping during the experiment window
   }
 }
+
+locals {
+  auction_prewarm_actions = var.auction_prewarm_enabled ? {
+    scale_out = {
+      schedule     = trimspace(var.auction_prewarm_scale_out_schedule)
+      min_capacity = var.auction_prewarm_min_tasks
+    }
+    scale_in = {
+      schedule     = trimspace(var.auction_prewarm_scale_in_schedule)
+      min_capacity = var.auction_min_tasks
+    }
+  } : {}
+
+  auction_prewarm_actions_enabled = {
+    for name, action in local.auction_prewarm_actions : name => action
+    if action.schedule != ""
+  }
+}
+
+# Optional service-level prewarm for predictable high-traffic windows.
+# This raises the auction service floor ahead of the spike, then returns it
+# to the normal baseline afterward. Reactive target tracking remains enabled.
+resource "aws_appautoscaling_scheduled_action" "auction_prewarm" {
+  for_each = local.auction_prewarm_actions_enabled
+
+  name               = "${var.app}-auction-prewarm-${each.key}"
+  service_namespace  = aws_appautoscaling_target.auction.service_namespace
+  resource_id        = aws_appautoscaling_target.auction.resource_id
+  scalable_dimension = aws_appautoscaling_target.auction.scalable_dimension
+  schedule           = each.value.schedule
+  timezone           = var.auction_prewarm_timezone
+
+  scalable_target_action {
+    min_capacity = each.value.min_capacity
+    max_capacity = var.auction_max_tasks
+  }
+}
