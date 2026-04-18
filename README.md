@@ -314,9 +314,15 @@ Simulate 500 concurrent users bidding on the same auction in its final 10 second
 - Consistency violations (lower bid winning)
 
 ### 2. Horizontal Scaling During Auction Spikes
-Simulate a rush-hour scenario: 50 auctions go live simultaneously, each attracting 100 bidders, against 2 ECS tasks with auto-scaling enabled. Measure:
+Simulate a rush-hour spike in which 50 auctions go live simultaneously and each attracts 100 bidders, using AWS ECS Fargate capacity managed with a layered scaling strategy:
+- conservative Terraform defaults of `2` tasks and `3000 req/target/min` for initial bring-up
+- a validated experiment baseline of `4` tasks and `2000 req/target/min`
+- optional scheduled prewarm to `8` tasks for predictable spike windows, with `ALBRequestCountPerTarget` retained as the reactive fallback
+
+Measure:
 - Auto-scaling response time
 - Latency during the scale-up window
+- Throughput before and after new capacity becomes available
 - Bids lost during scaling transitions
 
 ### 3. Notification Fan-Out

@@ -113,9 +113,18 @@ Metrics are auto-saved to `loadtest/results/exp1_<strategy>_metrics.json` at end
 **Setup:**
 
 - 50 simultaneous auctions, 100 bidders each (5000 total users)
-- Start with 2 ECS tasks for Auction Service, auto-scaling enabled via
-  `ALBRequestCountPerTarget` target tracking (default threshold: 3000 req/target/min)
+- Terraform defaults remain `2` ECS tasks and `3000` req/target/min for initial bring-up
+- Validated experiment configuration uses `4` ECS tasks and
+  `ALBRequestCountPerTarget` target tracking with threshold `2000` req/target/min
 - Locust ramps from 0 → 5000 users over 60s
+
+**Recommended next iteration (service-level prewarm):**
+
+- Raise the steady baseline to `4` tasks
+- Add a scheduled prewarm window for the whole auction service (for example `4 -> 8`)
+- Start the prewarm `2-3` minutes before the planned load spike
+- Return to baseline `5-10` minutes after the run
+- Keep `ALBRequestCountPerTarget` target tracking enabled as the fallback signal
 
 **Metrics:**
 
@@ -132,11 +141,23 @@ Metrics are auto-saved to `loadtest/results/exp1_<strategy>_metrics.json` at end
 - [ ] ALB routing rules configured (path-based)
 - [ ] Auto-scaling policy set on Auction Service (`ALBRequestCountPerTarget` target
       tracking, 60s scale-out cooldown)
+- [ ] Optional scheduled prewarm configured for the auction service if testing a known spike window
 - [ ] CloudWatch dashboard configured (`RequestCountPerTarget`, task count, ALB latency)
-- [ ] Locust script written: `loadtest/scenarios/exp2_scaling_spike.py`
+- [x] Locust script written: `loadtest_aws/scenarios/exp2_scaling_spike.py`
 - [ ] At least 2 runs for consistency
-- [ ] Results saved to `loadtest/results/exp2_*.csv`
+- [x] Results saved to `loadtest_aws/results/exp2_*.csv`
 - [ ] Screenshot CloudWatch scaling event timeline
+
+Current status:
+
+- [x] ECS Task Definitions created for all services
+- [x] ALB routing rules configured (path-based)
+- [x] Auto-scaling policy set on Auction Service (`ALBRequestCountPerTarget` target tracking, 60s scale-out cooldown)
+- [x] Optional scheduled prewarm implemented with `aws_appautoscaling_scheduled_action`
+- [ ] CloudWatch dashboard captured as final artifact
+- [x] Distributed Locust scenario executed across multiple Experiment 2 runs
+- [x] Results recorded in `loadtest_aws/exp2_run1_report.md` and `loadtest_aws/results/`
+- [ ] Final screenshot set added to the external report / milestone package
 
 > **Note:** Local Docker has no auto-scaling. This experiment is only meaningful on AWS. Bids lost during task transitions should be captured as Locust `failure` responses, not just latency spikes.
 
