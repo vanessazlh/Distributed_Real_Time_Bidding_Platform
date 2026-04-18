@@ -72,6 +72,8 @@ curl $(terraform output -raw alb_url)/auctions
 
 Only the auction service autoscales. Metric: `ALBRequestCountPerTarget`.
 
+Terraform defaults in this repo stay conservative for initial deployment:
+
 ```
 min tasks: 2  (var.auction_min_tasks)
 max tasks: 10 (var.auction_max_tasks)
@@ -79,6 +81,56 @@ scale-out threshold: 3000 req/target/min (var.autoscale_rps_target)
 scale-out cooldown: 60s
 scale-in cooldown:  300s
 ```
+
+For the validated Experiment 2 configuration, the recommended overrides are:
+
+```
+min tasks: 4
+max tasks: 10
+scale-out threshold: 2000 req/target/min
+optional prewarm floor: 8
+```
+
+This split is intentional: the variable defaults remain safer for first-time bring-up,
+while the experiment docs and report describe the stronger configuration that performed
+best for short, predictable spike windows.
+
+### Optional scheduled prewarm
+
+For predictable high-traffic windows, you can prewarm the **entire auction service**
+before the spike instead of waiting for target tracking to react.
+
+Terraform now supports two optional scheduled actions:
+
+- prewarm scale-out: temporarily raise auction service `min_capacity`
+- prewarm scale-in: return `min_capacity` to the normal baseline
+
+Enable it with variables such as:
+
+```bash
+terraform apply \
+  -var="jwt_secret=<your-secret>" \
+  -var="auction_min_tasks=4" \
+  -var="auction_prewarm_enabled=true" \
+  -var="auction_prewarm_min_tasks=8" \
+  -var='auction_prewarm_scale_out_schedule=cron(55 21 * * ? *)' \
+  -var='auction_prewarm_scale_in_schedule=cron(10 23 * * ? *)' \
+  -var="auction_prewarm_timezone=UTC"
+```
+
+Notes:
+
+- Schedules use EventBridge/Application Auto Scaling syntax: `at(...)`, `rate(...)`, or `cron(...)`
+- `auction_prewarm_timezone` defaults to `UTC`
+- Target tracking stays enabled; prewarm only lifts the service floor ahead of time
+- This is intentionally **service-level**, not per-auction prewarm
+
+Recommended experiment flow:
+
+1. Keep a stronger baseline, for example `auction_min_tasks=4`
+2. Prewarm to `6` or `8` shortly before the known spike window
+3. Drop back to baseline after the run
+4. Keep `ALBRequestCountPerTarget` as the reactive fallback
 
 **Calibrating the threshold before the experiment:**
 1. Run Locust without autoscaling (set `auction_min_tasks = auction_max_tasks`)
