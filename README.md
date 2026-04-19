@@ -326,6 +326,15 @@ Measure:
 - Bids lost during scaling transitions
 
 ### 3. Notification Fan-Out
-Simulate 1000 clients watching a single popular auction with rapid bid updates. Compare:
-- Push (WebSocket) vs. pull (polling) delivery latency
-- Resource usage as connected clients scale
+Simulate 1000 clients watching a single popular auction with rapid bid updates. Split the study into two parts:
+- Experiment 3A: compare push transports for one-way auction updates (`WebSocket` vs `SSE`)
+- Experiment 3B: compare architectural trade-offs between push delivery and pull polling
+
+Measure:
+- Delivery latency and connection behavior for `WebSocket` vs `SSE`
+- HTTP load and stale-read risk for push vs polling
+
+Current local result summary (3 runs per mode, 999 subscribers + 1 bidder, 180s each):
+- `WebSocket`: faster connection setup and lower server-side fan-out latency on average
+- `SSE`: comparable push behavior with lower average client-observed latency, but less stable connection tails
+- `Polling`: about `164k` extra HTTP reads per run, confirming the cost of pull-based updates

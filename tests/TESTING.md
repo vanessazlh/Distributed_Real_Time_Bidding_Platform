@@ -165,18 +165,24 @@ Current status:
 
 ## Experiment 3 — Notification Fan-Out
 
-**Goal:** Measure WebSocket push vs. polling pull latency as connected clients scale to 1000.
+**Goal:** Split notification fan-out evaluation into two clearer questions:
+
+- **Experiment 3A:** Which push transport is better for one-way auction updates: `WebSocket` or `SSE`?
+- **Experiment 3B:** What is the architectural trade-off between push delivery and pull polling?
 
 **Infrastructure:** Local Docker is sufficient for this experiment.
 
 **Setup:**
 
 - 1 popular auction
-- Locust simulates 1000 clients connecting to `/auctions/:id/subscribe` (WebSocket)
-- A separate Locust user places 1 bid per second (the bid source)
-- Measure time from `bid_accepted_at` (stamped in the event) to when each client receives the notification
+- Locust simulates 1000 total users: 999 subscribers and 1 bidder
+- `MODE=ws`: subscribers connect to `/auctions/:id/subscribe`
+- `MODE=sse`: subscribers connect to `/auctions/:id/subscribe/sse`
+- `MODE=pull`: subscribers poll `GET /auctions/:id` every second
+- A separate Locust bidder places 1 bid every ~2 seconds
+- For push modes, measure time from `bid_accepted_at` (stamped in the event) to when each client receives the update
 
-**Metrics** (from `GET /admin/metrics` on Notification Service `:8080`):
+**Metrics** (from `GET /metrics` on Notification Service `:8080` for push runs):
 
 | Metric                | Field                     |
 | --------------------- | ------------------------- |
@@ -185,32 +191,54 @@ Current status:
 | Avg delivery latency  | `avg_delivery_latency_ms` |
 | Tail latency          | `p99_delivery_latency_ms` |
 
+For Experiment 3A (`ws` vs `sse`), compare:
+
+- server-side fan-out latency from `/metrics`
+- client-side push latency from `bid_accepted_at`
+- connection setup success / latency
+
+For Experiment 3B (`push` vs `pull`), compare:
+
+- auction-service HTTP request volume and latency
+- polling stale-read risk analytically from the poll interval
+- do **not** compare notification delivery latency for `pull`, because there are no push subscribers in that mode
+
 **Checklist:**
 
-- [ ] Notification service `/admin/metrics` endpoint working and returning all 4 fields
-- [ ] Locust WebSocket scenario written: `loadtest/scenarios/exp3_notification.py`
-- [ ] Push run: 1000 WebSocket clients, 1 bid/sec, 5 minutes
-- [ ] Pull run: 1000 polling clients, each polling `GET /auctions/:id` every 1s
-- [ ] Compare P99 latency and server CPU between push and pull
-- [ ] Results saved to `loadtest/results/exp3_ws_vs_poll.json`
+- [x] Notification service `/metrics` endpoint working and returning all 4 fields
+- [x] Notification service SSE endpoint working at `/auctions/:id/subscribe/sse`
+- [x] Canonical local script updated: `tests/loadtest_local/scenarios/exp3_notification.py`
+- [x] Experiment 3A WebSocket run completed
+- [x] Experiment 3A SSE run completed
+- [x] Experiment 3B pull baseline run completed
+- [x] Results saved to `tests/loadtest_local/results/exp3_{ws,sse,pull}_run*.json`
+- [x] Compare push transport latency on equal workload parameters
+- [x] Compare push vs pull HTTP load without treating pull as notification delivery
 
-> **Note:** Delivery latency is calculated as `now - bid_accepted_at` where `bid_accepted_at` is the timestamp stamped by Auction Service in the `BidPlacedEvent` (already implemented in `shared/events/events.go`). Notification Service must subtract this from receive time.
+Current 3-run snapshot:
+
+- `ws`: avg connect `22.2 ms`; server-side fan-out avg `13.5 ms`, p99 `51.0 ms`; client-side push latency avg `47.2 ms`, p99 `107.9 ms`
+- `sse`: avg connect `33.1 ms`; server-side fan-out avg `14.8 ms`, p99 `62.5 ms`; client-side push latency avg `27.4 ms`, p99 `92.5 ms`
+- `pull`: about `163,800` poll requests per run over 180s; avg poll latency `27.7 ms`, p99 `96 ms`; notification-side values are stored only as internal processing overhead, not delivery latency
+
+Per-run notes:
+
+- `ws` remained consistent across all three runs and had the lowest connection setup cost
+- `sse` remained competitive on end-to-end push latency, but one run produced a noticeable connection tail outlier
+- `pull` consistently reproduced the high read amplification expected from 1-second polling across 999 subscribers
+
+> **Note:** Delivery latency is calculated as `now - bid_accepted_at` where `bid_accepted_at` is the timestamp stamped by Auction Service in the `BidPlacedEvent` (already implemented in `shared/events/events.go`). This is meaningful for `ws` and `sse` push clients. In `pull` mode, users observe changes only on the next poll, so the comparable question is freshness lag rather than push delivery latency.
 
 ---
 
 ## Results Directory Structure
 
-```
-loadtest/
+```text
+tests/loadtest_local/
 ├── scenarios/
-│   ├── exp1_bid_contention.py
-│   ├── exp2_scaling_spike.py
 │   └── exp3_notification.py
 └── results/
-    ├── exp1_optimistic.json
-    ├── exp1_pessimistic.json
-    ├── exp1_queue.json
-    ├── exp2_run1.csv
-    ├── exp2_run2.csv
-    └── exp3_ws_vs_poll.json
+    ├── exp3_ws_run1_metrics.json
+    ├── exp3_sse_run1_metrics.json
+    └── exp3_pull_run1_metrics.json
 ```

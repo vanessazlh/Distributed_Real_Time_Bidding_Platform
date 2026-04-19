@@ -235,9 +235,9 @@ Test script: `loadtest/scenarios/exp1_bid_contention.py`
 
 ---
 
-# Experiment 3: Notification Fan-Out — WebSocket Push vs Polling Pull
+# Experiment 3: Notification Fan-Out
 
-**Date:** 2026-03-30
+**Date:** 2026-04-18
 
 ---
 
@@ -245,194 +245,219 @@ Test script: `loadtest/scenarios/exp1_bid_contention.py`
 
 ### Goal
 
-Quantify the server-side cost difference between two delivery models as concurrent client count
-reaches 1,000: (a) server-push via WebSocket, where the server proactively delivers bid updates,
-and (b) client-pull via HTTP polling, where each client queries the auction state every second.
+The original Experiment 3 question turned out to contain two different comparisons, so the final
+local rerun split it into:
+
+- **Experiment 3A:** compare two push transports for one-way auction updates: `WebSocket` vs `SSE`
+- **Experiment 3B:** compare push delivery vs pull polling as an architectural trade-off
+
+This produces cleaner conclusions than treating polling as if it were a direct peer of push
+delivery latency.
 
 ### Delivery Models Under Test
 
-| Model    | Mechanism                                                   | Description                                                                                             |
-| -------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Push** | WebSocket (`ws://notification:8080/auctions/:id/subscribe`) | Clients hold persistent connections; notification service fans out each `bid_placed` event in real time |
-| **Pull** | HTTP polling (`GET auction:8081/auctions/:id` every 1s)     | Clients periodically request the latest auction state; no persistent connection                         |
+| Variant | Mechanism | What it answers |
+| --- | --- | --- |
+| `ws` | `ws://notification:8080/auctions/:id/subscribe` | Is WebSocket a strong push transport for 1-to-many auction updates? |
+| `sse` | `http://notification:8080/auctions/:id/subscribe/sse` | How does SSE compare with WebSocket for the same one-way push path? |
+| `pull` | `GET http://auction:8081/auctions/:id` every ~1s | What is the HTTP cost of polling compared with push delivery? |
 
 ### Test Parameters
 
-| Parameter               | Value                                            |
-| ----------------------- | ------------------------------------------------ |
-| Total Locust users      | 1,000                                            |
-| Subscriber/bidder ratio | 999 subscribers : 1 bidder                       |
-| Ramp-up rate            | 50 users/second                                  |
-| Test duration           | 180 seconds per run                              |
-| Runs per mode           | 3                                                |
-| Bid frequency           | 1 bid every ~2 seconds (constant)                |
-| Infrastructure          | Local Docker Compose                             |
-| Services                | auction:8081, notification:8080, bid:8084, Redis |
+| Parameter | Value |
+| --- | --- |
+| Total Locust users | 1,000 |
+| Subscriber / bidder ratio | 999 subscribers : 1 bidder |
+| Ramp-up rate | 50 users / second |
+| Test duration | 180 seconds per run |
+| Runs per mode | 3 |
+| Bid frequency | 1 bid every ~2 seconds |
+| Infrastructure | Local Docker Compose |
+| Services exercised | auction:8081, notification:8080, bid:8084, Redis |
 
 ### Metrics Collected
 
-**Locust (HTTP layer):**
+For **Experiment 3A** (`ws` vs `sse`):
 
-- Total request count, median/p99 response time per run
+- connection setup success / latency
+- server-side fan-out latency from Notification Service `GET /metrics`
+- client-observed push latency from `bid_accepted_at` to message receipt
 
-**Notification service (`GET /metrics`):**
+For **Experiment 3B** (`push` vs `pull`):
 
-- `delta_broadcasts` — broadcast events fired during the test window
-- `avg_delivery_latency_ms` / `p99_delivery_latency_ms` — time for notification service to fan out one event to all connected WebSocket clients
+- auction-service request count and response times
+- polling read amplification
+- theoretical stale-read risk from the 1-second poll interval
+
+Important caveat:
+
+- in `pull` mode there are no push subscribers, so Notification Service timing is stored only as
+  **internal processing overhead**, not delivery latency
 
 ---
 
 ## 2. Raw Results
 
-### 2a. Push (WebSocket)
+### 2a. Experiment 3A — WebSocket
 
-Auction ID: `cd511a87-0a38-454f-90e7-bc5eedab86ec`
+| Run | Avg connect | Avg fan-out | p99 fan-out | Avg client push latency | p99 client push latency |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 24.4 ms | 15.7 ms | 49.8 ms | 48.2 ms | 90.2 ms |
+| 2 | 20.2 ms | 12.9 ms | 51.6 ms | 47.7 ms | 138.2 ms |
+| 3 | 22.1 ms | 12.0 ms | 51.6 ms | 45.7 ms | 95.2 ms |
+| **Avg** | **22.2 ms** | **13.5 ms** | **51.0 ms** | **47.2 ms** | **107.9 ms** |
 
-**Locust stats (auction service HTTP traffic):**
+Additional notes:
 
-| Run     | Total requests | WS connects  | Bid requests | Median latency | p99 latency |
-| ------- | -------------- | ------------ | ------------ | -------------- | ----------- |
-| 1       | 1,172          | 999 (0 fail) | ~173         | 12 ms          | 38 ms       |
-| 2       | 1,172          | 999 (0 fail) | ~173         | 12 ms          | 76 ms       |
-| 3       | 1,172          | 999 (0 fail) | ~173         | 13 ms          | 42 ms       |
-| **Avg** | **1,172**      | **999**      | **~173**     | **12 ms**      | **52 ms**   |
+- all three runs established `999 / 999` WebSocket connections
+- all three runs finished with `0` failures
 
-**Notification service metrics:**
+### 2b. Experiment 3A — SSE
 
-| Run     | delta_broadcasts | avg delivery latency | p99 delivery latency |
-| ------- | ---------------- | -------------------- | -------------------- |
-| 1       | 85               | 0.6 ms               | 8.4 ms               |
-| 2       | 86               | 0.7 ms               | 11.7 ms              |
-| 3       | 86               | 0.7 ms               | 11.7 ms              |
-| **Avg** | **85.7**         | **0.67 ms**          | **10.6 ms**          |
+| Run | Avg connect | Avg fan-out | p99 fan-out | Avg client push latency | p99 client push latency |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 27.9 ms | 17.3 ms | 60.3 ms | 29.0 ms | 87.3 ms |
+| 2 | 33.7 ms | 14.0 ms | 60.3 ms | 26.0 ms | 81.6 ms |
+| 3 | 37.6 ms | 13.1 ms | 66.8 ms | 27.2 ms | 108.7 ms |
+| **Avg** | **33.1 ms** | **14.8 ms** | **62.5 ms** | **27.4 ms** | **92.5 ms** |
 
-### 2b. Pull (HTTP Polling)
+Additional notes:
 
-Auction ID: `cd511a87-0a38-454f-90e7-bc5eedab86ec`
+- all three runs established `999 / 999` SSE connections
+- all three runs finished with `0` failures
+- run 3 contained a connection setup outlier, which widened the SSE tail metrics
 
-**Locust stats (auction service HTTP traffic):**
+### 2c. Experiment 3B — Pull Baseline
 
-| Run     | Total requests | Poll requests | Bid requests | Median latency | p99 latency |
-| ------- | -------------- | ------------- | ------------ | -------------- | ----------- |
-| 1       | 167,521        | ~167,348      | ~173         | 10 ms          | 52 ms       |
-| 2       | 167,822        | ~167,649      | ~173         | 8 ms           | 56 ms       |
-| 3       | 167,939        | ~167,766      | ~173         | 9 ms           | 50 ms       |
-| **Avg** | **167,761**    | **~167,588**  | **~173**     | **9 ms**       | **53 ms**   |
+| Run | Poll requests | Avg poll latency | p99 poll latency | Avg internal processing | p99 internal processing |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 164,184 | 24.9 ms | 85 ms | 11.8 ms | 51.6 ms |
+| 2 | 164,024 | 25.9 ms | 93 ms | 11.9 ms | 51.6 ms |
+| 3 | 163,191 | 32.2 ms | 110 ms | 11.7 ms | 62.6 ms |
+| **Avg** | **163,800** | **27.7 ms** | **96 ms** | **11.8 ms** | **55.3 ms** |
 
-**Notification service metrics (broadcast events from bidder, no WS subscribers in pull mode):**
+Interpretation note:
 
-| Run     | delta_broadcasts | avg delivery latency | p99 delivery latency |
-| ------- | ---------------- | -------------------- | -------------------- |
-| 1       | 85               | 0.7 ms               | 10.1 ms              |
-| 2       | 85               | 0.6 ms               | 9.0 ms               |
-| 3       | 86               | 0.6 ms               | 9.0 ms               |
-| **Avg** | **85.3**         | **0.63 ms**          | **9.4 ms**           |
+- the internal processing numbers above are **not** delivery latency
+- they reflect the notification service consuming bid events while iterating over zero subscribers
 
 ---
 
 ## 3. Comparative Summary
 
-| Metric                           | Push (WebSocket) | Pull (Polling) |
-| -------------------------------- | ---------------- | -------------- |
-| Avg total HTTP requests / run    | **1,172**        | 167,761        |
-| Auction service RPS              | **~6.5 req/s**   | ~934 req/s     |
-| HTTP request ratio               | **1×**           | **143×**       |
-| WS connections established       | 999 / 999 (100%) | 0              |
-| WS connect failure rate          | **0%**           | —              |
-| Avg notification fan-out latency | 0.67 ms          | 0.63 ms\*      |
-| p99 notification fan-out latency | 10.6 ms          | 9.4 ms\*       |
-| Per-request median latency       | 12 ms            | 9 ms           |
+### 3A — WebSocket vs SSE
 
-\*Pull mode has no WebSocket subscribers — notification service fans out to 0 clients, so these values reflect internal event processing overhead only, not per-subscriber delivery.
+| Metric | WebSocket | SSE |
+| --- | --- | --- |
+| Connection success | 999 / 999 in every run | 999 / 999 in every run |
+| Avg connect latency | **22.2 ms** | 33.1 ms |
+| Avg server-side fan-out | **13.5 ms** | 14.8 ms |
+| Avg fan-out p99 | **51.0 ms** | 62.5 ms |
+| Avg client push latency | 47.2 ms | **27.4 ms** |
+| Avg client push p99 | 107.9 ms | **92.5 ms** |
+
+### 3B — Push vs Pull
+
+| Metric | Push (`ws` / `sse`) | Pull (`poll`) |
+| --- | --- | --- |
+| Long-lived push connections | 999 | 0 |
+| Auction-service read load | initial connection only, then bid traffic | about **163,800** extra reads / run |
+| Avg subscriber request cost | negligible after connect | **27.7 ms** avg poll latency |
+| Update staleness | event-driven | up to one poll interval |
+| Notification delivery latency | meaningful | not directly comparable |
 
 ---
 
 ## 4. Analysis
 
-### 4.1 HTTP Traffic — The Core Difference
+### 4.1 Why the Experiment Was Split
 
-The most significant finding is the 143× difference in HTTP request volume on the auction service:
+The earlier version of Experiment 3 mixed two distinct questions:
 
-- **Push:** 999 clients each make exactly 1 request (WebSocket handshake, ~13 ms). After that, the
-  persistent connection carries all future updates at zero HTTP cost. Total auction service traffic
-  for 999 subscribers over 180 seconds: **999 requests**.
+1. which push transport is better for one-way updates?
+2. why is push preferable to polling for a real-time auction?
 
-- **Pull:** 999 clients each poll every 1 second for 180 seconds. Total: 999 × 180 ≈ **179,820
-  requests** (observed: ~167,588, accounting for ramp-up lag). This is continuous load that scales
-  linearly with both client count and poll frequency.
+Separating them made the results easier to interpret.
 
-At 1,000 users with 1-second polling the auction service sustained ~934 req/s of read traffic
-just from subscribers — traffic that carries no information value on any poll where the price has
-not changed (the majority). WebSocket push eliminates this entirely after connection setup.
+### 4.2 WebSocket vs SSE
 
-### 4.2 WebSocket Scalability
+Across three local runs, both push transports handled `999` subscribers with zero failures.
 
-999 WebSocket connections were established with **zero failures** across all three push runs.
-Median connection time was ~13 ms; p99 was 42–76 ms. Once connected, all 999 clients held their
-connections open for the full 180 seconds with no drops.
+The main pattern was:
 
-The notification service's fan-out latency (avg **0.67 ms**, p99 **10.6 ms**) shows that broadcasting
-one event to all 999 connected clients takes under 1 ms on average. This demonstrates that the
-Go-based WebSocket hub scales well to hundreds of concurrent connections on a single local instance.
+- **WebSocket** connected faster and had lower server-side fan-out latency
+- **SSE** showed lower average client-observed push latency
+- **SSE** also showed less stable connection tails in one run because of a startup outlier
 
-### 4.3 Update Latency (User Experience)
+That means both are viable push transports for this one-way update path, but they have different
+operational trade-offs:
 
-A metric not captured in the raw numbers but important architecturally:
+- WebSocket is stronger on connection setup and server-side control
+- SSE is competitive when the workload is strictly one-way and browser-oriented
 
-- **Push:** Users receive the update within milliseconds of the bid being placed (avg 0.67 ms
-  fan-out latency on the notification service). A bidder sees the new price near-instantly.
+### 4.3 Push vs Polling
 
-- **Pull:** Users receive the update on their next poll, introducing up to 1 second of artificial
-  delay. In a real-time auction where the price can change every few seconds, this lag is
-  noticeable and can lead to stale-price decisions (bidding on an outdated current_highest).
+Polling repeatedly reproduced the same architectural penalty:
 
-### 4.4 Notification Latency Comparison Caveat
+- around `164k` extra reads in the same `180s` window
+- average poll latency in the high-20ms range
+- p99 poll latency around `96 ms`
 
-The notification service delivery latency appears similar in both modes (push: 0.67 ms, pull:
-0.63 ms). This is because the metric measures **broadcast processing time on the notification
-service**, not end-to-end delivery to each subscriber. In pull mode there are no WebSocket
-subscribers, so the notification service processes each bid event and iterates over 0 connections —
-near-instant. The push mode value (0.67 ms) represents real fan-out to 999 clients and is the
-meaningful number for this experiment.
+This is the more important architectural result. Even if each poll is individually cheap, the
+aggregate read amplification is substantial compared with push delivery.
+
+### 4.4 Why Pull Latency Was Not Treated as Delivery Latency
+
+In `pull` mode there are no WebSocket or SSE subscribers. Notification Service still consumes the
+bid event stream, but it does not actually deliver updates to push clients. Therefore its recorded
+timing is only internal processing overhead and should not be compared directly against push
+delivery latency.
+
+The meaningful comparison for `pull` is:
+
+- request volume on Auction Service
+- poll latency
+- the stale-read window introduced by the polling interval
 
 ---
 
 ## 5. Conclusions
 
-**Finding 1 — Pull generates 143× more HTTP traffic than push at 1,000 clients.**
-Every additional client in pull mode linearly increases read load on the auction service.
-At 10,000 users with 1-second polling that becomes ~10,000 req/s of read traffic — a significant
-horizontal scaling requirement. WebSocket push converts this per-second-per-client cost to a
-one-time connection setup, after which the server fans out updates to all clients simultaneously.
+**Finding 1 — Both WebSocket and SSE are viable push transports for one-way auction updates.**
 
-**Finding 2 — The notification service successfully fans out to 999 clients in avg 0.67 ms.**
-Zero WebSocket connection failures across 2,997 total connections (999 × 3 runs). The Go
-WebSocket hub's broadcast loop handles hundreds of concurrent connections with sub-millisecond
-average delivery. p99 at 10.6 ms is acceptable for a real-time auction where bids arrive every
-few seconds, not hundreds of times per second.
+Both modes connected `999 / 999` subscribers with zero failures in all three runs. WebSocket had
+the faster connection setup and lower server-side fan-out latency, while SSE showed lower average
+client-observed push latency.
 
-**Finding 3 — Pull introduces up to 1 second of update latency; push is near-instant.**
-For a real-time auction, poll-based clients risk placing bids on stale price data. Push eliminates
-this class of user experience problem entirely.
+**Finding 2 — Polling is the wrong primary architecture for real-time auction updates.**
 
-**Recommendation:** WebSocket push is the correct architecture for this use case. The only
-scenario where polling is appropriate is as a fallback when WebSocket connections cannot be
-established (firewalls, corporate proxies). The current implementation already supports both
-WebSocket and SSE endpoints on the notification service, providing a natural degradation path.
-A production deployment would additionally move from Redis Pub/Sub to Redis Streams to guarantee
-no messages are dropped when the notification service restarts.
+The pull baseline generated about `163,800` extra reads per run in the same 180-second window,
+which is the clearest evidence that polling scales poorly for this use case.
+
+**Finding 3 — Experiment 3 is better expressed as two sub-experiments.**
+
+`WebSocket vs SSE` answers the transport-selection question. `Push vs polling` answers the
+architecture-selection question. Combining them into one table obscures the real trade-offs.
+
+**Recommendation:** Keep `WebSocket` as the default real-time transport for the project, retain
+`SSE` as a reasonable one-way push alternative for discussion and fallback design, and treat
+polling only as a baseline / degradation path rather than the primary delivery mechanism.
 
 ---
 
 ## 6. Result Files
 
-All raw data is in `loadtest/results/`:
+All raw data for the refined local rerun is in `tests/loadtest_local/results/`:
 
-```
-exp3_push_run{1,2,3}_metrics.json   (notification service metrics)
-exp3_push_run{1,2,3}_stats.csv      (Locust HTTP stats)
+```text
+exp3_ws_run{1,2,3}_metrics.json
+exp3_ws_run{1,2,3}_stats.csv
+exp3_sse_run{1,2,3}_metrics.json
+exp3_sse_run{1,2,3}_stats.csv
 exp3_pull_run{1,2,3}_metrics.json
 exp3_pull_run{1,2,3}_stats.csv
 ```
 
-Test script: `loadtest/scenarios/exp3_notification.py`
+Canonical script:
+
+- `tests/loadtest_local/scenarios/exp3_notification.py`
