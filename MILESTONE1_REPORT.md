@@ -57,7 +57,7 @@ The system exposes a `/admin/metrics` endpoint on the Auction Service that track
 - **Monorepo restructured**: All six services migrated to `services/<name>/` under a single root `go.mod` (`module rtb`, Go 1.25).
 - **Auction + Bid Services**: Complete. Three concurrency strategies are implemented and switchable at runtime via `PUT /admin/strategy`. Auto-close background goroutine running.
 - **User + Shop Services**: Complete. JWT issuance using `"sub"` claim. Owner-only endpoints enforced.
-- **Notification Service**: WebSocket, SSE, and polling fan-out implemented. Redis Pub/Sub subscription to `bid_placed` live.
+- **Notification Service**: WebSocket and SSE push endpoints implemented for per-auction fan-out, plus polling baseline support via the Auction Service. Redis Streams subscription to bid events is live.
 - **Payment Service**: Event consumer subscribing to `auction_closed`. Full payment lifecycle (PENDING → PROCESSING → COMPLETED / FAILED → REFUNDED) backed by DynamoDB. Payment events published to Redis for downstream consumption.
 - **Frontend**: React + Vite. Live auction browsing, real-time bid updates via WebSocket, authentication, My Bids page.
 - **Shared event schema**: `shared/events/events.go` defines canonical types for all cross-service events, eliminating duplication.
@@ -225,11 +225,21 @@ Each experiment run is bracketed by a `POST /admin/metrics/reset` call. During t
 
 ### Experiment 3 — Notification Fan-Out
 
-**Status**: WebSocket, SSE, and polling all implemented in Notification Service. Locust WebSocket client script in progress.
+**Status**: The refined local rerun has completed three runs per mode. Experiment 3A compares `WebSocket` vs `SSE` for one-way auction updates; Experiment 3B compares push delivery vs polling as an architectural trade-off.
 
-**Expected results**: WebSocket and SSE will show significantly lower delivery latency than polling at all connection counts. Polling at 1,000 clients will generate substantial unnecessary load. Resource consumption for WebSocket and SSE will scale linearly with connection count.
+**Current local observations (3 runs per mode, 999 subscribers + 1 bidder, 180s each):**
 
-**[PLACEHOLDER — insert delivery latency comparison table, resource usage graphs once Experiment 3 is run]**
+| Variant | Connection result | Server-side fan-out / processing | Client-side push latency | Key takeaway |
+| --- | --- | --- | --- | --- |
+| `WebSocket` | 999 / 999 connected in every run, 0 failures; avg connect `22.2 ms` | avg `13.5 ms`, p99 `51.0 ms` | avg `47.2 ms`, p99 `107.9 ms` | Faster connection setup and consistently low server-side fan-out cost |
+| `SSE` | 999 / 999 connected in every run, 0 failures; avg connect `33.1 ms` | avg `14.8 ms`, p99 `62.5 ms` | avg `27.4 ms`, p99 `92.5 ms` | Competitive push transport with lower average client-observed latency, but less stable connection tail behavior |
+| `Pull` | no persistent push connections | internal processing avg `11.8 ms`, p99 `55.3 ms` | not comparable | generated about `163,800` poll requests per 180-second run; avg poll latency `27.7 ms`, p99 `96 ms` |
+
+**Interpretation:** The full rerun validates the new split design. `WebSocket` and `SSE` can now be compared directly as push transports under the same workload, while `pull` is treated as a high-load baseline rather than a fake delivery-latency peer. The clearest pattern across all three runs is:
+
+- `WebSocket` established connections faster and kept lower server-side fan-out latency
+- `SSE` showed lower average client-observed push latency, but its connection tail was less stable in one run because of a startup outlier
+- `Pull` repeatedly generated roughly `164k` extra HTTP reads in the same 180-second window, confirming the cost difference between push and polling
 
 ### Pathological Worst Case
 

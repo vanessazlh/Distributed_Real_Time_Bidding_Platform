@@ -1,10 +1,18 @@
 {
   "mode": "pull",
   "run": "1",
-  "timestamp": "2026-03-30T05:05:16Z",
+  "timestamp": "2026-04-19T03:41:30Z",
   "active_connections": 0,
-  "total_broadcasts": 173401,
+  "total_broadcasts": 255,
   "delta_broadcasts": 85,
-  "avg_delivery_latency_ms": 0.7,
-  "p99_delivery_latency_ms": 10.1
+  "delivery_latency_comparable": false,
+  "avg_delivery_latency_ms": null,
+  "p99_delivery_latency_ms": null,
+  "avg_internal_processing_ms": 11.8,
+  "p99_internal_processing_ms": 51.6,
+  "client_side_push_latency": {
+    "samples": 0,
+    "avg_ms": null,
+    "p99_ms": null
+  }
 }

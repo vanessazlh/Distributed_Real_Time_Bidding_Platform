@@ -1,0 +1,18 @@
+{
+  "mode": "sse",
+  "run": "2",
+  "timestamp": "2026-04-19T03:56:52Z",
+  "active_connections": 999,
+  "total_broadcasts": 426,
+  "delta_broadcasts": 85,
+  "delivery_latency_comparable": true,
+  "avg_delivery_latency_ms": 14,
+  "p99_delivery_latency_ms": 60.3,
+  "avg_internal_processing_ms": null,
+  "p99_internal_processing_ms": null,
+  "client_side_push_latency": {
+    "samples": 83098,
+    "avg_ms": 26.0,
+    "p99_ms": 81.6
+  }
+}

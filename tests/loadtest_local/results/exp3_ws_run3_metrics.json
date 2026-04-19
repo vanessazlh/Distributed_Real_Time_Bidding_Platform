@@ -1,0 +1,18 @@
+{
+  "mode": "ws",
+  "run": "3",
+  "timestamp": "2026-04-19T04:05:34Z",
+  "active_connections": 0,
+  "total_broadcasts": 597,
+  "delta_broadcasts": 86,
+  "delivery_latency_comparable": true,
+  "avg_delivery_latency_ms": 12,
+  "p99_delivery_latency_ms": 51.6,
+  "avg_internal_processing_ms": null,
+  "p99_internal_processing_ms": null,
+  "client_side_push_latency": {
+    "samples": 66914,
+    "avg_ms": 45.7,
+    "p99_ms": 95.2
+  }
+}

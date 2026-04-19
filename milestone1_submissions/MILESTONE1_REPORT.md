@@ -47,7 +47,7 @@ The system exposes a `/admin/metrics` endpoint on the Auction Service that track
 
 | Week                                    | Milestone                                                                                                                                                                                                                                                                                                                                                                         |
 | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Week 1 _(complete — ending 2026-03-29)_ | Architecture design, monorepo setup, shared event schema; all six services implemented; frontend MVP; docker-compose full-stack integration; Locust scripts for Experiments 1 and 3; Experiment 1 data collection (all three concurrency strategies, 3 runs each); Experiment 3 data collection (WebSocket push vs polling pull, 3 runs each); Milestone 1 report                 |
+| Week 1 _(complete — ending 2026-03-29)_ | Architecture design, monorepo setup, shared event schema; all six services implemented; frontend MVP; docker-compose full-stack integration; Locust scripts for Experiments 1 and 3; Experiment 1 data collection (all three concurrency strategies, 3 runs each); initial Experiment 3 fan-out data collection; Milestone 1 report                 |
 | Week 2                                  | Feature completion: seller auction dashboard (backend `GET /shops/:id/auctions` + frontend), automatic auction expiry (background goroutine), My Bids enrichment (item title + shop name stored at bid write time), WebSocket outbid and close notifications, role/ownership checks on auction endpoints; Experiment 2 preparation (ECS Fargate infra setup, auto-scaling policy) |
 | Week 3                                  | Deployment and DevOps: ECS Fargate task definitions, ALB path-based routing, CloudWatch logging, auto-scaling configuration; Experiment 2 data collection; final results analysis and report writeup                                                                                                                                                                              |
 | Week 4 _(final)_                        | Demo polish, presentation prep, submission                                                                                                                                                                                                                                                                                                                                        |
@@ -57,7 +57,7 @@ The system exposes a `/admin/metrics` endpoint on the Auction Service that track
 - **Monorepo restructured**: All six services migrated to `services/<name>/` under a single root `go.mod` (`module rtb`, Go 1.25).
 - **Auction + Bid Services**: Complete. Three concurrency strategies are implemented and switchable at runtime via `PUT /admin/strategy`. Auto-close background goroutine running.
 - **User + Shop Services**: Complete. JWT issuance using `"sub"` claim. Owner-only endpoints enforced.
-- **Notification Service**: WebSocket, SSE, and polling fan-out implemented. Redis Pub/Sub subscription to `bid_placed` live.
+- **Notification Service**: WebSocket and SSE push endpoints implemented for per-auction fan-out, plus polling baseline support via the Auction Service. Redis Streams subscription to bid events is live.
 - **Payment Service**: Event consumer subscribing to `auction_closed`. Full payment lifecycle (PENDING → PROCESSING → COMPLETED / FAILED → REFUNDED) backed by DynamoDB. Payment events published to Redis for downstream consumption.
 - **Frontend**: React + Vite. Live auction browsing, real-time bid updates via WebSocket, authentication, My Bids page.
 - **Shared event schema**: `shared/events/events.go` defines canonical types for all cross-service events, eliminating duplication.
@@ -232,14 +232,23 @@ Pessimistic locking had the highest success rate and the most stable latency. Op
 
 > Full raw data and analysis are in [`LOAD_TEST_REPORT.md`](LOAD_TEST_REPORT.md).
 
-999 subscribers + 1 bidder, 180-second runs, 3 runs per mode. Summary:
+999 subscribers + 1 bidder, 180-second local runs, 3 runs per mode. The refined design splits the question into:
 
-| Mode             | Auction Service Load | WS Connect Failures | Avg Fan-Out Latency  |
-| ---------------- | -------------------- | ------------------- | -------------------- |
-| Push (WebSocket) | **~7 req/s**         | 0%                  | 0.7 ms               |
-| Pull (Polling)   | ~934 req/s           | —                   | ~1 s (poll interval) |
+- **Experiment 3A:** `WebSocket` vs `SSE` for one-way auction updates
+- **Experiment 3B:** push delivery vs pull polling as an architectural trade-off
 
-Push generated 133x less traffic on the auction service. All 999 WebSocket connections were established with zero failures. Pull clients have up to 1 second of inherent update delay vs sub-millisecond for WebSocket push.
+| Mode | Main result |
+| --- | --- |
+| `WebSocket` | avg connect `22.2 ms`; server-side fan-out avg `13.5 ms`, p99 `51.0 ms`; client-side push latency avg `47.2 ms`, p99 `107.9 ms` |
+| `SSE` | avg connect `33.1 ms`; server-side fan-out avg `14.8 ms`, p99 `62.5 ms`; client-side push latency avg `27.4 ms`, p99 `92.5 ms` |
+| `Pull` | about `163,800` poll requests per run; avg poll latency `27.7 ms`, p99 `96 ms`; notification-side timing treated only as internal processing overhead |
+
+Key takeaways:
+
+- both push transports connected `999 / 999` subscribers with zero failures in all runs
+- `WebSocket` established connections faster and kept lower server-side fan-out latency
+- `SSE` produced lower average client-observed push latency, but one run showed a startup tail outlier
+- `Pull` repeatedly generated roughly `164k` extra HTTP reads in the same 180-second window, confirming the cost difference between push and polling
 
 ---
 
