@@ -13,6 +13,7 @@ import (
 // Routes:
 //
 //	GET  /auctions/{auction_id}/subscribe — per-auction WebSocket (push)
+//	GET  /auctions/{auction_id}/subscribe/sse — per-auction SSE (push)
 //	GET  /notifications/subscribe         — per-user WebSocket (global push, JWT in query)
 //	GET  /notifications                   — list stored notifications (JWT in header)
 //	POST /notifications/read              — mark all as read (JWT in header)
@@ -21,6 +22,11 @@ func RegisterRoutes(mux *http.ServeMux, hub *notification.Hub, store *notificati
 	// Per-auction WebSocket.
 	mux.HandleFunc("GET /auctions/{auction_id}/subscribe", func(w http.ResponseWriter, r *http.Request) {
 		notification.ServeWS(hub, w, r)
+	})
+
+	// Per-auction Server-Sent Events.
+	mux.HandleFunc("GET /auctions/{auction_id}/subscribe/sse", func(w http.ResponseWriter, r *http.Request) {
+		notification.ServeSSE(hub, w, r)
 	})
 
 	// Per-user global WebSocket.
