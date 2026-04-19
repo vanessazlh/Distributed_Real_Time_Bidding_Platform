@@ -1,8 +1,10 @@
 # SurpriseAuction — Real-Time Surplus Auction Platform
 
-A microservices platform where local stores auction surplus items in short live windows. Buyers compete in real-time bidding; winners are charged automatically when the auction closes.
+A microservices platform where local stores auction surplus items in short live windows. Buyers compete in real-time bidding, and winners are charged automatically when the auction closes.
 
 Built for a distributed systems course, with a focus on **concurrent bid processing**, **horizontal scaling**, and **real-time notification fan-out**.
+
+The repository supports both local development with Docker Compose and cloud experiments on AWS ECS Fargate.
 
 ---
 
@@ -20,6 +22,7 @@ Browser (React + Vite)
         ├── /auctions/:id/bids     → Bid Service        :8084  (Redis + DynamoDB)
         ├── /auctions, /bids       → Auction Service    :8081  (Redis)
         ├── /auctions/:id/subscribe→ Notification Svc   :8080  (Redis Streams → WebSocket)
+        ├── /auctions/:id/subscribe/sse → Notification Svc :8080  (Redis Streams → SSE)
         ├── /notifications/subscribe→ Notification Svc  :8080  (per-user WebSocket)
         ├── /notifications          → Notification Svc  :8080  (REST — list/mark-read)
         ├── /bids                  → Bid Service        :8084  (Redis + DynamoDB)
@@ -27,6 +30,8 @@ Browser (React + Vite)
 ```
 
 **Infrastructure:** DynamoDB Local (dev) · Redis 7 · Docker Compose
+
+**Cloud experiments:** AWS ECS Fargate + ALB + Application Auto Scaling. Only the Auction Service autoscales in Experiment 2 because it is the hot path under burst bidding traffic.
 
 ---
 
@@ -38,7 +43,7 @@ Browser (React + Vite)
 | Shop | 8083 | DynamoDB | Shop + item CRUD, seller ownership checks |
 | Auction | 8081 | Redis + DynamoDB | Auction lifecycle, bid validation, concurrency control |
 | Bid | 8084 | Redis + DynamoDB | Bid history, outbid tracking, per-user bid queries |
-| Notification | 8080 | Redis Streams + Redis | Per-auction WebSocket fan-out, per-user global WebSocket, persistent notification inbox |
+| Notification | 8080 | Redis Streams + Redis | Per-auction WebSocket and SSE fan-out, per-user global WebSocket, persistent notification inbox |
 | Payment | 8085 | DynamoDB | Winner charge processing, payment status tracking |
 | Frontend | 3000 | — | React SPA + nginx reverse proxy |
 
@@ -134,6 +139,7 @@ All requests pass through nginx at `localhost:3000`. Protected routes require `A
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/auctions/:id/subscribe` | — | WebSocket — live bid/close events for an auction |
+| `GET` | `/auctions/:id/subscribe/sse` | — | Server-Sent Events — one-way live bid/close events for an auction |
 | `GET` | `/notifications/subscribe?token=<jwt>` | ✓ | WebSocket — global per-user notifications (outbid, won) |
 | `GET` | `/notifications` | ✓ | List stored notifications + unread count |
 | `POST` | `/notifications/read` | ✓ | Mark all notifications as read |
